@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1
+
+No change to the code. The package page now names the documentation site,
+<https://dualmeta-gmbh.github.io/query_kit/>, as its homepage and
+documentation, the README opens with a link to it, the quick start, the
+examples and the API reference, and the description says what the package is:
+TanStack Query for Dart.
+
 ## 1.0.0
 
 First release. `query_kit` is a Dart port of TanStack Query's `query-core`:
