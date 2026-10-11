@@ -21,7 +21,6 @@
   --qk-accent-2: #13b9fd;
   --qk-accent-soft: rgb(4 104 200 / 8%);
   --qk-accent-ring: rgb(4 104 200 / 22%);
-  --qk-gradient: linear-gradient(115deg, #0468c8 10%, #13a4f0 60%, #2dd4bf 110%);
   --qk-shadow-sm: 0 1px 2px rgb(15 20 30 / 5%);
   --qk-shadow-md: 0 1px 2px rgb(15 20 30 / 4%), 0 8px 24px -8px rgb(15 20 30 / 12%);
   --qk-shadow-lg: 0 2px 4px rgb(15 20 30 / 4%), 0 24px 60px -20px rgb(15 20 30 / 28%);
@@ -88,7 +87,6 @@
   --qk-accent-2: #7dd3fc;
   --qk-accent-soft: rgb(86 184 255 / 11%);
   --qk-accent-ring: rgb(86 184 255 / 28%);
-  --qk-gradient: linear-gradient(115deg, #56b8ff 10%, #7dd3fc 55%, #5eead4 110%);
   --qk-shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
   --qk-shadow-md: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px -8px rgb(0 0 0 / 60%);
   --qk-shadow-lg: 0 2px 4px rgb(0 0 0 / 30%), 0 24px 60px -20px rgb(0 0 0 / 80%);
@@ -143,17 +141,11 @@ h4 {
    as an inline style that dark mode could not then override. */
 
 .theme-announcement-bar {
-  background: linear-gradient(90deg, rgb(4 104 200 / 7%), rgb(19 185 253 / 7%)),
-    var(--qk-paper);
+  background: var(--qk-sunken);
   color: var(--qk-muted);
   border-bottom: 1px solid var(--qk-rule);
   font-size: 0.78rem;
   line-height: 1.5;
-}
-
-[data-theme='dark'] .theme-announcement-bar {
-  background: linear-gradient(90deg, rgb(86 184 255 / 8%), rgb(94 234 212 / 6%)),
-    var(--qk-paper);
 }
 
 .theme-announcement-bar > div {
@@ -433,10 +425,8 @@ h4 {
 }
 
 .markdown blockquote {
-  border-left-width: 3px;
-  border-radius: 0 8px 8px 0;
-  padding: 0.6rem 1.1rem;
-  background: var(--qk-sunken);
+  border-left-width: 2px;
+  padding: 0.1rem 1.1rem;
   font-style: normal;
 }
 
@@ -709,8 +699,7 @@ a code {
   --ifm-button-color: #ffffff;
   background: var(--ifm-color-primary);
   border-color: var(--ifm-color-primary);
-  box-shadow: 0 1px 2px rgb(4 104 200 / 30%), 0 6px 18px -6px rgb(4 104 200 / 55%),
-    inset 0 1px 0 rgb(255 255 255 / 18%);
+  box-shadow: var(--qk-shadow-sm);
 }
 
 .button--primary:hover {
@@ -721,8 +710,7 @@ a code {
 
 [data-theme='dark'] .button--primary {
   --ifm-button-color: #04111f;
-  box-shadow: 0 6px 22px -6px rgb(86 184 255 / 50%),
-    inset 0 1px 0 rgb(255 255 255 / 30%);
+  box-shadow: none;
 }
 
 .button--secondary,

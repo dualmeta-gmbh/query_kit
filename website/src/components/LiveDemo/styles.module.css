@@ -11,12 +11,8 @@
   height: min(var(--live-demo-height, 640px), 85vh);
   min-height: 320px;
   border: 1px solid var(--qk-rule);
-  border-radius: 14px;
-  background:
-    radial-gradient(28rem 18rem at 85% 0%, var(--qk-accent-soft), transparent 70%),
-    radial-gradient(circle at 1px 1px, var(--qk-rule) 1px, transparent 0) 0 0 / 20px 20px,
-    var(--qk-sunken);
-  box-shadow: var(--qk-shadow-md);
+  border-radius: 10px;
+  background: var(--qk-sunken);
   overflow: hidden;
 }
 
@@ -31,24 +27,10 @@
 }
 
 .kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.2rem 0.65rem;
-  border: 1px solid var(--qk-accent-ring);
-  border-radius: 999px;
-  background: var(--qk-accent-soft);
+  font-family: var(--ifm-font-family-monospace);
   font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--qk-accent);
-}
-
-.kicker::before {
-  content: '';
-  width: 0.4rem;
-  height: 0.4rem;
-  border-radius: 999px;
-  background: currentColor;
+  font-weight: 500;
+  color: var(--qk-muted);
 }
 
 .title {

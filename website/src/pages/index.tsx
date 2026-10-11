@@ -41,85 +41,8 @@ const aiNotice =
 
 const install = 'flutter pub add query_kit_flutter'
 
-// Stroke icons on a 24-unit grid, drawn in the current colour. Inline rather
-// than a package: twelve small shapes are not worth a dependency.
+// Stroke icons on a 24-unit grid, drawn in the current colour.
 const icons = {
-  cache: (
-    <>
-      <ellipse cx="12" cy="5" rx="8" ry="3" />
-      <path d="M4 5v14a8 3 0 0 0 16 0V5" />
-      <path d="M4 12a8 3 0 0 0 16 0" />
-    </>
-  ),
-  stale: (
-    <>
-      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-      <path d="M3 3v5h5" />
-      <path d="M12 7v5l3.5 2" />
-    </>
-  ),
-  refresh: (
-    <>
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M8 16H3v5" />
-    </>
-  ),
-  write: (
-    <>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </>
-  ),
-  optimistic: <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />,
-  infinite: <path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z" />,
-  cancel: (
-    <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="m15 9-6 6" />
-      <path d="m9 9 6 6" />
-    </>
-  ),
-  offline: (
-    <>
-      <path d="M12 20h.01" />
-      <path d="M8.5 16.43a5 5 0 0 1 7 0" />
-      <path d="M2 8.82a15 15 0 0 1 4.17-2.65" />
-      <path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76" />
-      <path d="M16.85 11.25a10 10 0 0 1 2.22 1.68" />
-      <path d="M5 13a10 10 0 0 1 5.24-2.76" />
-      <path d="m2 2 20 20" />
-    </>
-  ),
-  styles: (
-    <>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
-    </>
-  ),
-  sealed: (
-    <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <path d="m9 12 2 2 4-4" />
-    </>
-  ),
-  core: (
-    <>
-      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-      <path d="m3.3 7 8.7 5 8.7-5" />
-      <path d="M12 22V12" />
-    </>
-  ),
-  light: (
-    <>
-      <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
-      <path d="M16 8 2 22" />
-      <path d="M17.5 15H9" />
-    </>
-  ),
   copy: (
     <>
       <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -154,14 +77,13 @@ function Icon({ name, className }: { name: IconName; className?: string }): Reac
   )
 }
 
-type Feature = { title: string; body: ReactNode; to: string; icon: IconName }
+type Feature = { title: string; body: ReactNode; to: string }
 
 const features: Feature[] = [
   {
     title: 'Caching and deduplication',
     body: 'Five widgets reading one key make one request and share its answer.',
     to: '/docs/guides/caching',
-    icon: 'cache',
   },
   {
     title: 'Stale-while-revalidate',
@@ -172,31 +94,26 @@ const features: Feature[] = [
       </>
     ),
     to: '/docs/important-defaults',
-    icon: 'stale',
   },
   {
     title: 'Refetch on focus and reconnect',
     body: 'The app returning to the foreground, or the network returning, refreshes what is on screen.',
     to: '/docs/guides/window-focus-refetching',
-    icon: 'refresh',
   },
   {
     title: 'Mutations and invalidation',
     body: 'A write names the keys it made stale, and whatever shows them fetches again.',
     to: '/docs/guides/invalidations-from-mutations',
-    icon: 'write',
   },
   {
     title: 'Optimistic updates',
     body: 'Show the write before the server answers, and roll it back when the server refuses.',
     to: '/docs/guides/optimistic-updates',
-    icon: 'optimistic',
   },
   {
     title: 'Infinite and paginated lists',
     body: 'Pages fetched in either direction, kept under one key, refetched in order.',
     to: '/docs/guides/infinite-queries',
-    icon: 'infinite',
   },
   {
     title: 'Retries and cancellation',
@@ -207,13 +124,11 @@ const features: Feature[] = [
       </>
     ),
     to: '/docs/guides/query-cancellation',
-    icon: 'cancel',
   },
   {
     title: 'Offline-aware',
     body: 'Told when the device is offline, queries wait for the network instead of failing, and writes made offline pause until it is back.',
     to: '/docs/guides/network-mode',
-    icon: 'offline',
   },
   {
     title: 'Four equal ways to read',
@@ -224,7 +139,6 @@ const features: Feature[] = [
       </>
     ),
     to: '/docs/guides/reading-queries-in-widgets',
-    icon: 'styles',
   },
   {
     title: 'Sealed results',
@@ -235,13 +149,11 @@ const features: Feature[] = [
       </>
     ),
     to: '/docs/dart-type-safety',
-    icon: 'sealed',
   },
   {
     title: 'A pure-Dart core',
     body: 'The cache runs without Flutter: in a CLI, on a server, in a shared package.',
     to: '/docs/guides/pure-dart',
-    icon: 'core',
   },
   {
     title: 'Nothing but Flutter',
@@ -252,7 +164,26 @@ const features: Feature[] = [
       </>
     ),
     to: '/docs/guides/connectivity',
-    icon: 'light',
+  },
+]
+
+// Test names that appear verbatim in upstream's query-core suite (at the
+// pinned revision) and in the port's; checked by grep, not by a test.
+const concordance = [
+  {
+    name: 'should go through a pending state even when the queryFn returns synchronously',
+    upstream: 'queryObserver.test.tsx',
+    port: 'query_observer_test.dart',
+  },
+  {
+    name: 'should continue retry after reconnect and resolve all promises',
+    upstream: 'query.test.tsx',
+    port: 'query_test.dart',
+  },
+  {
+    name: 'should apply the maxPages option to limit the number of pages',
+    upstream: 'infiniteQueryBehavior.test.tsx',
+    port: 'infinite_query_behavior_test.dart',
   },
 ]
 
@@ -297,15 +228,8 @@ export default function Home(): ReactNode {
   return (
     <Layout title="TanStack Query for Dart and Flutter" description={siteConfig.tagline}>
       <header className={styles.hero}>
-        <div className={styles.heroBackdrop} aria-hidden="true" />
         <div className={styles.heroInner}>
           <div className={styles.heroText}>
-            <p className={styles.eyebrow}>
-              <span className={styles.eyebrowDot} aria-hidden="true" />
-              <span className={styles.name}>query_kit</span>
-              <span className={styles.eyebrowSep} aria-hidden="true" />
-              <span>for Dart and Flutter</span>
-            </p>
             <h1 className={styles.title}>
               Server data in Flutter, <span className={styles.titleAccent}>cached and kept&nbsp;fresh</span>
             </h1>
@@ -326,13 +250,22 @@ export default function Home(): ReactNode {
               </Link>
             </div>
             <InstallCommand />
+            <ul className={styles.facts}>
+              <li>
+                <a href="https://pub.dev/packages/query_kit_flutter">query_kit_flutter</a>
+              </li>
+              <li>
+                <a href="https://pub.dev/packages/query_kit">query_kit</a>
+              </li>
+              <li>Dart 3.6+</li>
+              <li>Flutter 3.27+</li>
+              <li>MIT</li>
+            </ul>
           </div>
           <div className={styles.heroCode}>
-            <div className={styles.window}>
-              <CodeBlock language="dart" title="task_list.dart">
-                {sample}
-              </CodeBlock>
-            </div>
+            <CodeBlock language="dart" title="task_list.dart">
+              {sample}
+            </CodeBlock>
           </div>
         </div>
 
@@ -361,7 +294,7 @@ export default function Home(): ReactNode {
                 once, and the network drops at the worst moment.
               </p>
               <p>
-                A <code>FutureBuilder</code> gets the first load on screen. What comes after is the real work —
+                A <code>FutureBuilder</code> gets the first load on screen. What comes after is the real work:
                 caching, sharing one request between readers, refreshing when the app comes back, retrying,
                 cancelling, invalidating after a write, paging. query_kit does that work the way TanStack Query does
                 it on the web, so a screen only says what it shows.
@@ -396,9 +329,6 @@ export default function Home(): ReactNode {
           <dl className={styles.features}>
             {features.map((feature) => (
               <div key={feature.title} className={styles.feature}>
-                <span className={styles.featureIcon}>
-                  <Icon name={feature.icon} />
-                </span>
                 <dt className={styles.featureTitle}>
                   <Link to={feature.to}>{feature.title}</Link>
                 </dt>
@@ -429,6 +359,29 @@ export default function Home(): ReactNode {
                 </p>
               </div>
             </div>
+            <table className={styles.concordance}>
+              <caption>Three of the ported cases, with the name they carry in both suites</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Test name</th>
+                  <th scope="col">Upstream</th>
+                  <th scope="col">query_kit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {concordance.map((row) => (
+                  <tr key={row.name}>
+                    <td>{row.name}</td>
+                    <td>
+                      <code>{row.upstream}</code>
+                    </td>
+                    <td>
+                      <code>{row.port}</code>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </section>
 
@@ -443,7 +396,7 @@ export default function Home(): ReactNode {
             <p>
               <strong>It is not theirs.</strong> Not affiliated with, endorsed by, reviewed by, or connected in any way
               to Tanner Linsley, the TanStack team, or the TanStack organisation. Please do not take problems with this
-              package to them —{' '}
+              package to them;{' '}
               <a href="https://github.com/dualmeta-gmbh/query_kit/issues">they belong here</a>.
             </p>
           </div>
