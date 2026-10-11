@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+No change to the code. The package description on pub.dev read "AI- coded",
+because its line was wrapped at the hyphen; it reads "AI-coded" again.
+
 ## 1.0.1
 
 No change to the code. The package page now names the documentation site,
