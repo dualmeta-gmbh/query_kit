@@ -67,7 +67,7 @@
   width: 17rem;
   padding: 0.35rem;
   border: 1px solid var(--qk-rule);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--qk-paper);
   box-shadow: var(--qk-shadow-lg);
 }

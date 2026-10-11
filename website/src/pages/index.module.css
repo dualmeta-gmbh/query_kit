@@ -1,26 +1,52 @@
 /* The landing page: a hero with the sample beside the pitch, then sections
-   that each lead with one large sentence. Flat surfaces and hairline rules,
-   the way the docs pages are drawn; blue only on what a reader acts on. */
+   that each lead with one sentence as their heading. Flat surfaces and
+   hairline rules, the way the docs pages are drawn; blue only on what a
+   reader acts on. Radii: 10px on a panel, 8px on a control. */
 
 /* --- Hero --------------------------------------------------------------- */
 
 .hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   padding: 5rem 1.5rem 3.5rem;
   border-bottom: 1px solid var(--qk-rule);
+}
+
+/* Graph paper fading out from the top, and one blue light behind the
+   sample. Decoration only; it sits behind everything. */
+.heroBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(42rem 28rem at 76% 38%, var(--qk-glow), transparent 70%);
+}
+
+.heroBackdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--qk-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--qk-grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: center top;
+  mask-image: radial-gradient(ellipse 70% 75% at 50% 0%, #000 25%, transparent 75%);
 }
 
 .heroInner {
   max-width: 1200px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  gap: 3.5rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 3rem;
   align-items: center;
 }
 
 .title {
-  font-size: clamp(2.4rem, 4.8vw, 3.6rem);
-  line-height: 1.06;
+  font-size: clamp(2.3rem, 3.9vw, 3rem);
+  line-height: 1.08;
   letter-spacing: -0.04em;
   font-weight: 700;
   margin: 0 0 1.35rem;
@@ -36,7 +62,7 @@
   line-height: 1.65;
   color: var(--qk-muted);
   margin: 0 0 2rem;
-  max-width: 34rem;
+  max-width: 32rem;
   text-wrap: pretty;
 }
 
@@ -72,7 +98,7 @@
   transform: translateX(3px);
 }
 
-/* --- The install line and the package facts ----------------------------- */
+/* --- The install line -------------------------------------------------- */
 
 .install {
   display: inline-flex;
@@ -125,34 +151,8 @@
 }
 
 .installCopy svg {
-  width: 0.95rem;
-  height: 0.95rem;
-}
-
-/* Package names, floors and licence: a row of mono facts, as a package's
-   page lists them. */
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem 1.1rem;
-  margin: 1rem 0 0;
-  padding: 0;
-  list-style: none;
-  font-family: var(--ifm-font-family-monospace);
-  font-size: 0.78rem;
-  color: var(--qk-muted);
-}
-
-.facts a {
-  color: var(--qk-muted);
-  text-decoration: underline;
-  text-decoration-color: var(--qk-rule-strong);
-  text-underline-offset: 3px;
-}
-
-.facts a:hover {
-  color: var(--ifm-color-primary);
-  text-decoration-color: currentColor;
+  width: 1rem;
+  height: 1rem;
 }
 
 /* --- The sample --------------------------------------------------------- */
@@ -160,7 +160,7 @@
 .heroCode > div {
   margin-bottom: 0;
   border: 1px solid var(--qk-rule);
-  box-shadow: var(--qk-shadow-md) !important;
+  box-shadow: var(--qk-shadow-code) !important;
 }
 
 /* Small enough that the sample's longest line fits the column on a desk;
@@ -178,27 +178,14 @@
 .disclosure {
   max-width: 1200px;
   margin: 3rem auto 0;
-  display: flex;
-  gap: 1rem;
-  padding: 1.1rem 1.35rem;
-  border: 1px solid var(--qk-rule);
-  border-radius: 10px;
-  background: var(--qk-sunken);
-}
-
-.disclosureIcon {
-  flex: none;
-  width: 1.15rem;
-  height: 1.15rem;
-  margin-top: 0.15rem;
-  color: var(--qk-muted);
-}
-
-.disclosureBody {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   column-gap: 2rem;
   row-gap: 0.35rem;
+  padding: 1.1rem 1.35rem;
+  border: 1px solid var(--qk-rule);
+  border-radius: 10px;
+  background: var(--qk-sunken);
 }
 
 .disclosureLabel {
@@ -224,27 +211,10 @@
   padding: 0 1.5rem;
 }
 
-/* The section's name, set small in code type above its sentence, the way a
-   file or a group is named in an editor. */
-.sectionLabel {
-  margin: 0 0 0.9rem;
-  font-family: var(--ifm-font-family-monospace);
-  font-size: 0.8rem;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--qk-muted);
-}
-
-.problem {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  column-gap: 4rem;
-  row-gap: 1.25rem;
-  align-items: start;
-}
-
-.lede {
-  margin: 0;
+/* A section's heading is its one sentence; the prose stacks under it. */
+.heading {
+  margin: 0 0 1.25rem;
+  max-width: 34rem;
   font-size: clamp(1.7rem, 3vw, 2.25rem);
   line-height: 1.15;
   font-weight: 700;
@@ -253,16 +223,23 @@
   color: var(--qk-ink);
 }
 
-.ledeWide {
+.headingWide {
   max-width: 40rem;
   margin-bottom: 2.5rem;
+}
+
+.headingSmall {
+  margin: 0 0 1rem;
+  font-size: 1.2rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
 }
 
 .prose {
   color: var(--qk-muted);
   font-size: 1.05rem;
   line-height: 1.72;
-  max-width: 40rem;
+  max-width: 65ch;
 }
 
 .prose code {
@@ -289,7 +266,7 @@
 }
 
 .demoIntro .prose {
-  margin: 1.25rem 0 0;
+  margin: 0;
 }
 
 .demo em {
@@ -305,24 +282,56 @@
 }
 
 /* --- The feature list ---------------------------------------------------
-   A reference list, not cards: hairline rules between entries, the title a
-   link to its guide. */
+   Four named groups, one rule between them; each title links its guide. */
 
-.features {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 2.5rem;
-  margin: 0;
+.groups {
   border-top: 1px solid var(--qk-rule);
 }
 
-.feature {
-  padding: 1.25rem 0 1.5rem;
+.group {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  column-gap: 2.5rem;
+  padding: 1.75rem 0;
   border-bottom: 1px solid var(--qk-rule);
 }
 
+.groupName {
+  margin: 0.1rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--qk-muted);
+}
+
+.groupApi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.groupApi code {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--qk-accent-ring);
+  border-radius: 6px;
+  background: var(--qk-accent-soft);
+  color: var(--qk-accent);
+  font-size: 0.72rem;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 2.5rem;
+  margin: 0;
+}
+
 .featureTitle {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.3rem;
   font-size: 1rem;
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -355,14 +364,16 @@
 .fidelity {
   padding: 2.75rem clamp(1.5rem, 4vw, 3.25rem);
   border: 1px solid var(--qk-rule);
-  border-radius: 12px;
-  background: var(--qk-sunken);
+  border-radius: 10px;
+  background:
+    radial-gradient(34rem 18rem at 100% 0%, var(--qk-glow), transparent 70%),
+    var(--qk-sunken);
 }
 
 .concordance {
   display: table;
   width: 100%;
-  margin: 2.5rem 0 0;
+  margin: 2rem 0 1.75rem;
   border-collapse: collapse;
   font-size: 0.82rem;
   line-height: 1.5;
@@ -441,52 +452,114 @@
   margin-bottom: 0;
 }
 
-/* --- Where next --------------------------------------------------------- */
+/* --- The packages, and where to start ---------------------------------- */
 
-.next {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
+.closing {
   margin-bottom: 6rem;
 }
 
-.nextLink {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding: 1.15rem 1.35rem 1.25rem;
+.closingPanel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 3rem clamp(1.5rem, 4vw, 3.25rem);
+  border: 1px solid var(--qk-rule);
+  border-radius: 10px;
+  background: var(--qk-sunken);
+}
+
+/* The hero's graph paper again, fading in from the bottom: the page ends
+   where it began. */
+.closingPanel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(var(--qk-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--qk-grid) 1px, transparent 1px),
+    radial-gradient(40rem 20rem at 50% 100%, var(--qk-glow), transparent 70%);
+  background-size: 48px 48px, 48px 48px, auto;
+  background-position: center bottom;
+  mask-image: linear-gradient(to top, #000, transparent 85%);
+  pointer-events: none;
+}
+
+.packages {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2.25rem;
+}
+
+.package {
+  padding: 1.35rem 1.4rem 1.25rem;
   border: 1px solid var(--qk-rule);
   border-radius: 10px;
   background: var(--qk-surface);
-  color: var(--qk-ink);
-  transition: border-color 140ms ease, color 140ms ease;
+  box-shadow: var(--qk-shadow-sm);
+  transition: border-color 160ms ease;
 }
 
-.nextLink:hover {
-  text-decoration: none;
-  color: var(--ifm-color-primary);
+.package:hover {
   border-color: var(--qk-accent-ring);
 }
 
-.nextKicker {
-  font-size: 0.8rem;
-  font-weight: 500;
+.packageName {
+  margin: 0 0 0.4rem;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.packageUse {
+  margin: 0;
+  color: var(--qk-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.packageUse code {
+  color: var(--qk-ink);
+  font-size: 0.82em;
+}
+
+.package .install {
+  display: flex;
+  margin-top: 1rem;
+  background: var(--qk-sunken);
+}
+
+.packageFloor {
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
   color: var(--qk-muted);
 }
 
-.nextTitle {
-  font-size: 1.25rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+/* Each section rises a little as it scrolls into view, where the browser
+   can tie an animation to scrolling; elsewhere, and for a reader who asked
+   for less motion, it is simply there. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .section {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+  }
 }
 
-.nextTitle span {
-  display: inline-block;
-  transition: transform 140ms ease;
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
 }
 
-.nextLink:hover .nextTitle span {
-  transform: translateX(3px);
+@media (prefers-reduced-motion: reduce) {
+  .textAction span {
+    transition: none;
+  }
 }
 
 @media (max-width: 996px) {
@@ -500,11 +573,8 @@
   }
 
   .disclosure {
-    margin-top: 2.5rem;
-  }
-
-  .disclosureBody {
     grid-template-columns: minmax(0, 1fr);
+    margin-top: 2.5rem;
   }
 
   .section {
@@ -512,20 +582,20 @@
     padding: 0 1rem;
   }
 
-  .problem,
   .demo {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .group {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 1rem;
   }
 
   .demoIntro {
     margin-bottom: 1.75rem;
   }
 
-  .features {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .next {
+  .closing {
     margin-bottom: 4.5rem;
   }
 }
@@ -544,11 +614,12 @@
   }
 
   .features,
-  .next {
+  .packages {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .fidelity {
+  .fidelity,
+  .closingPanel {
     padding: 2rem 1.25rem;
   }
 

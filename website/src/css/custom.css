@@ -25,6 +25,9 @@
   --qk-shadow-md: 0 1px 2px rgb(15 20 30 / 4%), 0 8px 24px -8px rgb(15 20 30 / 12%);
   --qk-shadow-lg: 0 2px 4px rgb(15 20 30 / 4%), 0 24px 60px -20px rgb(15 20 30 / 28%);
   --qk-radius-lg: 14px;
+  --qk-grid: rgb(15 20 30 / 7%);
+  --qk-glow: rgb(4 104 200 / 12%);
+  --qk-shadow-code: 0 1px 2px rgb(15 20 30 / 4%), 0 30px 60px -28px rgb(4 104 200 / 30%);
 
   --ifm-color-primary: #0468c8;
   --ifm-color-primary-dark: #045eb4;
@@ -90,6 +93,9 @@
   --qk-shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
   --qk-shadow-md: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px -8px rgb(0 0 0 / 60%);
   --qk-shadow-lg: 0 2px 4px rgb(0 0 0 / 30%), 0 24px 60px -20px rgb(0 0 0 / 80%);
+  --qk-grid: rgb(255 255 255 / 6%);
+  --qk-glow: rgb(86 184 255 / 12%);
+  --qk-shadow-code: 0 1px 2px rgb(0 0 0 / 30%), 0 30px 70px -30px rgb(86 184 255 / 22%);
 
   --ifm-color-primary: #56b8ff;
   --ifm-color-primary-dark: #34a9ff;
@@ -210,7 +216,7 @@ h4 {
   font-weight: 500;
   color: var(--qk-muted);
   padding: 0.35rem 0.75rem;
-  border-radius: 999px;
+  border-radius: 8px;
   transition: color 120ms ease, background-color 120ms ease;
 }
 
@@ -226,7 +232,7 @@ h4 {
 }
 
 .navbar .clean-btn[class*='toggleButton'] {
-  border-radius: 999px;
+  border-radius: 8px;
   transition: background-color 120ms ease;
 }
 
@@ -347,7 +353,7 @@ h4 {
 .breadcrumbs__link {
   color: var(--qk-muted);
   padding: 0.2rem 0.55rem;
-  border-radius: 999px;
+  border-radius: 8px;
 }
 
 .breadcrumbs__item--active .breadcrumbs__link {
@@ -494,7 +500,7 @@ h4 {
 
 .theme-code-block {
   border: 1px solid var(--qk-rule);
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: var(--qk-shadow-sm) !important;
   overflow: hidden;
 }
@@ -573,7 +579,7 @@ a code {
 .theme-admonition {
   --qk-callout: var(--ifm-alert-border-color);
   border: 1px solid color-mix(in srgb, var(--qk-callout) 28%, transparent);
-  border-radius: 12px;
+  border-radius: 10px;
   background: color-mix(in srgb, var(--qk-callout) 6%, var(--qk-paper));
   box-shadow: none;
   padding: 0.95rem 1.2rem;
@@ -616,7 +622,7 @@ a code {
 }
 
 .pagination-nav__link {
-  border-radius: 12px;
+  border-radius: 10px;
   border-color: var(--qk-rule);
   padding: 1rem 1.25rem;
   transition: border-color 140ms ease, box-shadow 140ms ease,
@@ -643,7 +649,7 @@ a code {
 
 .card {
   border: 1px solid var(--qk-rule);
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: none;
 }
 
@@ -699,7 +705,12 @@ a code {
   --ifm-button-color: #ffffff;
   background: var(--ifm-color-primary);
   border-color: var(--ifm-color-primary);
-  box-shadow: var(--qk-shadow-sm);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 16%), 0 1px 2px rgb(4 104 200 / 25%),
+    0 6px 16px -8px rgb(4 104 200 / 45%);
+}
+
+.button:active {
+  transform: translateY(1px);
 }
 
 .button--primary:hover {
@@ -710,7 +721,7 @@ a code {
 
 [data-theme='dark'] .button--primary {
   --ifm-button-color: #04111f;
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 25%), 0 6px 18px -8px rgb(86 184 255 / 40%);
 }
 
 .button--secondary,
@@ -732,7 +743,7 @@ a code {
 
 .header-github-link {
   padding: 0.4rem !important;
-  border-radius: 999px;
+  border-radius: 8px;
 }
 
 .header-github-link::before {

@@ -12,7 +12,11 @@
   min-height: 320px;
   border: 1px solid var(--qk-rule);
   border-radius: 10px;
-  background: var(--qk-sunken);
+  background:
+    linear-gradient(var(--qk-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, var(--qk-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    radial-gradient(30rem 18rem at 85% 0%, var(--qk-glow), transparent 70%),
+    var(--qk-sunken);
   overflow: hidden;
 }
 

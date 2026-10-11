@@ -17,7 +17,7 @@
   margin: 0;
   padding: 0.85rem 1rem 0.95rem;
   border: 1px solid var(--qk-rule);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--qk-surface);
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
