@@ -78,6 +78,16 @@ const config: Config = {
       tagName: 'link',
       attributes: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: `${baseUrl}llms.txt` },
     },
+    // Ownership proof for the Google Search Console property
+    // `https://dualmeta-gmbh.github.io/query_kit/`. Google re-checks it now
+    // and then; removing it drops the property's verification.
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'google-site-verification',
+        content: 'uLToA5k0XxJoDHXEH5Pw0t7MQCZd1e1XM-BLf3BHb-4',
+      },
+    },
   ],
   stylesheets: [
     'https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap',
