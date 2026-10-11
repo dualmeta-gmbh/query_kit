@@ -1,9 +1,11 @@
 name: query_kit_flutter
 description: >-
-  Flutter binding for query_kit: a provider, controllers, builder widgets, a
-  State mixin and context.query. An AI-coded community port, not affiliated
-  with TanStack.
+  TanStack Query for Flutter: cached server data, background refetching,
+  retries, mutations and infinite queries, read in four equal styles. AI-
+  coded, not affiliated with TanStack.
 version: 1.0.0
+homepage: https://dualmeta-gmbh.github.io/query_kit/
+documentation: https://dualmeta-gmbh.github.io/query_kit/docs/overview
 repository: https://github.com/dualmeta-gmbh/query_kit
 issue_tracker: https://github.com/dualmeta-gmbh/query_kit/issues
 topics:
@@ -11,7 +13,7 @@ topics:
   - state-management
   - data-fetching
   - tanstack-query
-  - async
+  - react-query
 
 environment:
   sdk: ^3.6.0

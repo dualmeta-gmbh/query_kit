@@ -1,9 +1,16 @@
-# query_kit_flutter
+# query_kit_flutter: TanStack Query for Flutter
 
-TanStack Query for Flutter: cached server state with background refetching,
-retries, mutations and infinite queries, read from your widgets in whichever
-of four equal styles suits the screen. **No dependency beyond Flutter** — not
+Cached server state for Flutter, with background refetching, retries,
+mutations and infinite queries, read from your widgets in whichever of four
+equal styles suits the screen. **No dependency beyond Flutter** — not
 `flutter_hooks`, not a signals package, not `connectivity_plus`.
+
+**Documentation: [dualmeta-gmbh.github.io/query_kit](https://dualmeta-gmbh.github.io/query_kit/)**, with
+guides, a cookbook and live examples.
+[Quick start](https://dualmeta-gmbh.github.io/query_kit/docs/quick-start) ·
+[Four ways to read a query](https://dualmeta-gmbh.github.io/query_kit/docs/guides/reading-queries-in-widgets) ·
+[Examples](https://dualmeta-gmbh.github.io/query_kit/docs/examples) ·
+[API reference](https://pub.dev/documentation/query_kit_flutter/latest/)
 
 > **AI-coded.** query_kit is an entirely AI-coded project: all code, tests
 > and documentation were written by AI coding agents (Anthropic's Claude). A

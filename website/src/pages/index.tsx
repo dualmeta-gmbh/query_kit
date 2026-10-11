@@ -1,3 +1,4 @@
+import Head from '@docusaurus/Head'
 import Link from '@docusaurus/Link'
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext'
 import LiveDemo from '@site/src/components/LiveDemo'
@@ -40,6 +41,24 @@ const aiNotice =
   "query_kit is an entirely AI-coded project: all code, tests and documentation were written by AI coding agents (Anthropic's Claude). A human maintainer set the goals and reviews releases, but did not write the code."
 
 const install = 'flutter pub add query_kit_flutter'
+
+// What a search engine may read as the page's subject: the source code of a
+// Dart library, its repository and its licence (schema.org).
+function structuredData(url: string): string {
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareSourceCode',
+    name: 'query_kit',
+    description:
+      "TanStack Query for Dart and Flutter: a port of TanStack Query's query-core with a Flutter binding. An AI-coded community port, not affiliated with TanStack.",
+    url,
+    codeRepository: 'https://github.com/dualmeta-gmbh/query_kit',
+    programmingLanguage: 'Dart',
+    runtimePlatform: 'Flutter',
+    license: 'https://opensource.org/licenses/MIT',
+    keywords: ['TanStack Query', 'React Query', 'Flutter', 'Dart', 'cache', 'data fetching'],
+  })
+}
 
 // Stroke icons on a 24-unit grid, drawn in the current colour.
 const icons = {
@@ -226,7 +245,12 @@ export default function Home(): ReactNode {
   const { siteConfig } = useDocusaurusContext()
 
   return (
-    <Layout title="TanStack Query for Dart and Flutter" description={siteConfig.tagline}>
+    <Layout
+      title="TanStack Query for Dart and Flutter"
+      description="TanStack Query for Flutter and Dart: cached server data, background refetching, retries, mutations and infinite queries, ported test for test.">
+      <Head>
+        <script type="application/ld+json">{structuredData(siteConfig.url + siteConfig.baseUrl)}</script>
+      </Head>
       <header className={styles.hero}>
         <div className={styles.heroInner}>
           <div className={styles.heroText}>

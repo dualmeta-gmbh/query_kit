@@ -1,9 +1,11 @@
 name: query_kit
 description: >-
-  Dart port of TanStack Query's query-core: caching, background refetching,
-  retries and mutations, no Flutter needed. An AI-coded community port, not
+  TanStack Query for Dart: a port of query-core with caching, background
+  refetching, retries and mutations, no Flutter needed. AI-coded, not
   affiliated with TanStack.
 version: 1.0.0
+homepage: https://dualmeta-gmbh.github.io/query_kit/
+documentation: https://dualmeta-gmbh.github.io/query_kit/docs/overview
 repository: https://github.com/dualmeta-gmbh/query_kit
 issue_tracker: https://github.com/dualmeta-gmbh/query_kit/issues
 topics:
@@ -11,7 +13,7 @@ topics:
   - state-management
   - data-fetching
   - tanstack-query
-  - async
+  - react-query
 
 environment:
   sdk: ^3.6.0

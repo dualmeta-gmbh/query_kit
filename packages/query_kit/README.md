@@ -1,11 +1,17 @@
-# query_kit
+# query_kit: TanStack Query for Dart
 
-TanStack Query for Dart: a cache for server state that knows when data is
-stale, refetches it in the background, retries, cancels, deduplicates
-requests, and runs mutations and infinite queries — with **no Flutter
-dependency**. In a Flutter app, use
+A cache for server state that knows when data is stale, refetches it in the
+background, retries, cancels, deduplicates requests, and runs mutations and
+infinite queries — with **no Flutter dependency**. In a Flutter app, use
 [`query_kit_flutter`](https://pub.dev/packages/query_kit_flutter), which
 re-exports all of this.
+
+**Documentation: [dualmeta-gmbh.github.io/query_kit](https://dualmeta-gmbh.github.io/query_kit/)**, with
+guides, a cookbook and live examples.
+[Quick start](https://dualmeta-gmbh.github.io/query_kit/docs/quick-start) ·
+[Pure Dart](https://dualmeta-gmbh.github.io/query_kit/docs/guides/pure-dart) ·
+[Examples](https://dualmeta-gmbh.github.io/query_kit/docs/examples) ·
+[API reference](https://pub.dev/documentation/query_kit/latest/)
 
 > **AI-coded.** query_kit is an entirely AI-coded project: all code, tests
 > and documentation were written by AI coding agents (Anthropic's Claude). A
