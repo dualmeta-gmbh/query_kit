@@ -12,6 +12,31 @@ npm run build      # what CI runs
 npm run serve      # serve the built output
 ```
 
+## Metadata and social previews
+
+The landing page's `Layout` and every doc page's front matter supply their
+own title and description. Docusaurus emits the matching Open Graph tags,
+canonical URL, language, charset and viewport; the existing sitemap covers
+the public pages, and the landing page includes `SoftwareSourceCode` JSON-LD.
+
+`themeConfig.image` supplies `static/img/og-image.png` as the default image
+for Open Graph and Twitter's large-image card. Its URL includes the GitHub
+Pages base path. `themeConfig.metadata` supplies the site name, page type,
+image dimensions, format, alt text, browser theme colour and indexing policy.
+Twitter uses each page's Open Graph title and description as its card text.
+The 404 page has its own description and opts out of indexing.
+
+The PNG is included in the static assets, so builds need no image-generation
+tools. Its editable source is `static/img/og-image.svg`. After editing it, regenerate
+the 1200 × 630 PNG with the existing Playwright tooling:
+
+```bash
+cd e2e
+npm ci
+npx playwright install chromium
+npm run generate-og-image
+```
+
 ## Live demos
 
 A doc page embeds one of the example apps, running in the browser against its

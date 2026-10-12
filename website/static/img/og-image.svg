@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">query_kit — TanStack Query for Dart and Flutter</title>
+  <desc id="desc">Server data, cached and kept fresh. The three blue cached entries of the query_kit logo.</desc>
+  <rect width="1200" height="630" fill="#0a0b0f"/>
+  <path d="M768 136V532M848 136V532M928 136V532M1008 136V532M1088 136V532M1168 136V532M736 172H1200M736 252H1200M736 332H1200M736 412H1200M736 492H1200" stroke="#22252d"/>
+  <!-- Essential content stays inside 104px horizontal margins. -->
+  <g transform="translate(104 53) scale(1.5)">
+    <rect x="4" y="4.5" width="20" height="8" rx="2.5" fill="#a8cdf4"/>
+    <rect x="6" y="11.5" width="20" height="8" rx="2.5" fill="#4b9bea"/>
+    <rect x="8" y="18.5" width="20" height="8" rx="2.5" fill="#0b6bcb"/>
+  </g>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="164" y="90" font-size="34" font-weight="700" fill="#ececf1" letter-spacing="-1">query_kit</text>
+    <text x="104" y="232" font-size="76" font-weight="700" fill="#ececf1" letter-spacing="-3">Server data.</text>
+    <text x="104" y="313" font-size="76" font-weight="700" fill="#56b8ff" letter-spacing="-3">Cached.</text>
+    <text x="104" y="394" font-size="76" font-weight="700" fill="#56b8ff" letter-spacing="-3">Kept fresh.</text>
+    <text x="107" y="467" font-size="29" fill="#9aa1ad">TanStack Query for Dart and Flutter</text>
+  </g>
+  <!-- The existing logo, enlarged: three cached entries, newest in front. -->
+  <g transform="translate(736 156) scale(12)">
+    <rect x="4" y="4.5" width="20" height="8" rx="2.5" fill="#a8cdf4"/>
+    <rect x="6" y="11.5" width="20" height="8" rx="2.5" fill="#4b9bea"/>
+    <rect x="8" y="18.5" width="20" height="8" rx="2.5" fill="#0b6bcb"/>
+  </g>
+  <path d="M104 534H1096" stroke="#343843"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#9aa1ad">
+    <text x="104" y="582" font-size="19">AI-coded community port · MIT</text>
+    <text x="1096" y="582" font-size="17" text-anchor="end">dualmeta-gmbh.github.io/query_kit/</text>
+  </g>
+</svg>

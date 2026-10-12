@@ -5,10 +5,7 @@ import dartSource from './plugins/dart-source'
 import llmsTxt, { type LlmsTxtOptions } from './plugins/llms-txt'
 import { geist } from './src/prismThemes'
 
-// Nothing is deployed yet. The url/baseUrl below are the GitHub Pages
-// coordinates the repository would use, so that `onBrokenLinks: 'throw'` has
-// something real to check against rather than a placeholder.
-//
+// The live documentation site's GitHub Pages coordinates.
 // The path is the repository's name. It is written once, here, and the
 // Pages project name and every hard-coded link that `baseUrl` does not reach
 // (the announcement bar is raw HTML) are built from it, so renaming the
@@ -136,6 +133,27 @@ Install with \`flutter pub add query_kit_flutter\` in a Flutter app, or \`dart p
   ],
 
   themeConfig: {
+    // Docusaurus emits absolute og:image and twitter:image URLs, including
+    // baseUrl, for the landing page and every doc page. Titles, descriptions,
+    // canonical URLs and og:locale remain specific to each page.
+    image: 'img/og-image.png',
+    metadata: [
+      { property: 'og:type', content: 'website' },
+      { property: 'og:site_name', content: 'query_kit' },
+      { property: 'og:image:type', content: 'image/png' },
+      { property: 'og:image:width', content: '1200' },
+      { property: 'og:image:height', content: '630' },
+      {
+        property: 'og:image:alt',
+        content: 'query_kit — TanStack Query for Dart and Flutter. Server data, cached and kept fresh.',
+      },
+      {
+        name: 'twitter:image:alt',
+        content: 'query_kit — TanStack Query for Dart and Flutter. Server data, cached and kept fresh.',
+      },
+      { name: 'theme-color', content: '#0468c8' },
+      { name: 'robots', content: 'index, follow, max-image-preview:large' },
+    ],
     colorMode: { respectPrefersColorScheme: true },
     // Dismissible: a reader who has read it once can close it, and
     // Docusaurus keeps that in localStorage under this `id` (change the id
