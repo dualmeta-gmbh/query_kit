@@ -285,4 +285,49 @@ void main() {
     expect(find.text('query_kit showcase'), findsOneWidget);
     expect(h.client.queryCache.queries.single.observersCount, 0);
   });
+
+  showcaseTest(
+      'a value class around the list: a leaf is replaced whole, a '
+      'StructurallyShareable one keeps the todos that did not change',
+      (tester, h) async {
+    // Tall enough for the section below the five readers: the scaffold's
+    // list builds only what is in view.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await h.open(tester, '/select-and-sharing');
+
+    // Off at first: the five readers made the only request.
+    expect(groupNamed('leaf board'), findsNothing);
+    expect(h.requests('GET', '/api/todos'), 1);
+
+    await tester.tap(find.text('Measure a value class'));
+    await tester.pumpAndSettle();
+    for (final board in ['leaf board', 'shared board']) {
+      expect(factIn(board, 'todos=3'), findsOneWidget, reason: board);
+      expect(factIn(board, 'instances=1'), findsOneWidget, reason: board);
+      expect(factIn(board, 'kept=none yet'), findsOneWidget, reason: board);
+    }
+    expect(h.requests('GET', '/api/todos'), 3);
+
+    // Nothing changed at the backend: equal boards, both kept whole.
+    await tester.tap(find.byTooltip('Refetch boards'));
+    await tester.pumpAndSettle();
+    expect(h.requests('GET', '/api/todos'), 5);
+    for (final board in ['leaf board', 'shared board']) {
+      expect(factIn(board, 'instances=1'), findsOneWidget, reason: board);
+      expect(factIn(board, 'isFetching=false'), findsOneWidget, reason: board);
+    }
+
+    // One todo renamed: the leaf renews every todo, the shareable board
+    // only the renamed one.
+    await tester.tap(find.byTooltip('Rename todo 2'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Refetch boards'));
+    await tester.pumpAndSettle();
+    expect(factIn('leaf board', 'instances=2'), findsOneWidget);
+    expect(factIn('leaf board', 'kept=0 of 3'), findsOneWidget);
+    expect(factIn('shared board', 'instances=2'), findsOneWidget);
+    expect(factIn('shared board', 'kept=2 of 3'), findsOneWidget);
+  });
 }

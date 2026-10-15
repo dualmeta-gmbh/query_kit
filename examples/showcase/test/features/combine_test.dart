@@ -44,6 +44,32 @@ Finder combined(String text) => factIn('combined', text);
 
 Finder overview(String text) => factIn('overview', text);
 
+Finder details(String text) => factIn('details', text);
+
+Finder pinned(String text) => factIn('pinned', text);
+
+/// The list, every detail, and the third detail alone.
+const String listPath = '/api/posts';
+final RegExp detailPaths = RegExp(r'^/api/posts/[234]$');
+const String thirdDetailPath = '/api/posts/4';
+
+/// The post behind each pinned choice.
+const String pinnedPath = '/api/posts/5';
+const String deletedPath = '/api/posts/999';
+
+/// Brings the list section into view and lets its reads land.
+Future<void> showList(WidgetTester tester) async {
+  await tester.scrollUntilVisible(groupNamed('pinned'), 300,
+      scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
+}
+
+Future<void> press(WidgetTester tester, String label) async {
+  await tester.ensureVisible(find.text(label));
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+}
+
 /// The number behind `key=` in the `combined` group.
 int combinedNumber(WidgetTester tester, String key) {
   final text = tester
@@ -217,5 +243,87 @@ void main() {
     await tester.pumpAndSettle();
     expect(overview('counter=1'), findsOneWidget);
     expect(combined('combines=2'), findsOneWidget);
+  });
+
+  showcaseTest('combineWith: the list and a read per item, one combination',
+      (tester, h) async {
+    await open(tester, h);
+    await showList(tester);
+
+    final posts = seeded('posts', Post.fromJson);
+    expect(details('state=data'), findsOneWidget);
+    expect(details('items=3'), findsOneWidget);
+    expect(details('refetchError=none'), findsOneWidget);
+    // The three posts after the screen's own, read one by one.
+    expect(find.text(posts.skip(1).take(3).map((p) => p.title).join(' · ')),
+        findsOneWidget);
+    expect(h.requests('GET', listPath), 1);
+    expect(h.requests('GET', detailPaths), 3);
+  });
+
+  showcaseTest(
+      'a refused detail keeps the titles as refetchError, and retry reads '
+      'only that detail', (tester, h) async {
+    await open(tester, h);
+    await showList(tester);
+    h.backend.log.clear();
+
+    await press(tester, 'the third is refused');
+    await press(tester, 'Refetch details');
+
+    // `refetch()` went to the list and every detail; the third was refused.
+    expect(h.requests('GET', listPath), 1);
+    expect(h.requests('GET', detailPaths), 3);
+    expect(details('state=data'), findsOneWidget);
+    expect(details('items=3'), findsOneWidget);
+    expect(details('refetchError=Requested: 500'), findsOneWidget);
+
+    await press(tester, 'all answer');
+    h.backend.log.clear();
+    await press(tester, 'Retry details');
+
+    expect(h.requests('GET', thirdDetailPath), 1);
+    expect(h.requests('GET', detailPaths), 1);
+    expect(h.requests('GET', listPath), 0);
+    expect(details('refetchError=none'), findsOneWidget);
+  });
+
+  showcaseTest(
+      'optional: a deleted pinned post leaves the combination data, and retry '
+      'still reads it', (tester, h) async {
+    await open(tester, h);
+    await showList(tester);
+
+    final title = seeded('posts', Post.fromJson)[4].title;
+    expect(pinned('state=data'), findsOneWidget);
+    expect(pinned('pinned=$title'), findsOneWidget);
+
+    await press(tester, 'a deleted post');
+
+    // A 404 with nothing to fall back on — and the whole is still data.
+    expect(h.requests('GET', deletedPath), 1);
+    expect(pinned('state=data'), findsOneWidget);
+    expect(pinned('pinned=none'), findsOneWidget);
+    expect(pinned('isFetching=false'), findsOneWidget);
+
+    h.backend.log.clear();
+    await press(tester, 'Retry pinned');
+    // The stand-in carries its origin: retry reached the refused read, and
+    // left the list alone.
+    expect(h.requests('GET', deletedPath), 1);
+    expect(h.requests('GET', listPath), 0);
+    expect(pinned('pinned=none'), findsOneWidget);
+
+    // Back to a post that is there: its entry shows at once, and refetches
+    // behind the title because it is stale.
+    h.backend.latency = latency;
+    await tester.tap(find.text('post 5'));
+    await tester.pump();
+    expect(pinned('pinned=$title'), findsOneWidget);
+    expect(pinned('isFetching=true'), findsOneWidget);
+    await tester.pump(latency);
+    await tester.pumpAndSettle();
+    expect(pinned('isFetching=false'), findsOneWidget);
+    expect(h.requests('GET', pinnedPath), 1);
   });
 }

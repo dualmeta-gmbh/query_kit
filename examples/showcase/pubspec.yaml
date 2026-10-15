@@ -24,6 +24,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # The native end-to-end suite (integration_test/, run by e2e-native/run.sh)
+  # on iOS simulators and Android emulators.
+  integration_test:
+    sdk: flutter
   lints: '>=5.1.1 <7.0.0'
 
 flutter:

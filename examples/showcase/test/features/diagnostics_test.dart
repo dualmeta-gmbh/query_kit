@@ -107,4 +107,61 @@ void main() {
     expect(h.requests('POST', '/api/counter/increment'), 1);
     expect(h.backend.counter, 1);
   });
+
+  showcaseTest(
+      'options that throw in a build show the error widget, keep the '
+      'observer, and recover', (tester, h) async {
+    tester.view.physicalSize = const Size(900, 2200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await h.open(tester, '/diagnostics');
+    expect(factOf('keyed', 'value=0'), findsOneWidget);
+    // The card's builder and the one in the first card's header.
+    expect(h.fact('counter', 'observers=2'), findsOneWidget);
+    final requests = h.requests('GET', '/api/counter');
+
+    await tester.tap(find.text('the String entry'));
+    await tester.pump();
+    final error = tester.takeException();
+    expect(error, isA<QueryDataTypeError>());
+    expect('$error', contains('String'));
+    expect(find.byType(ErrorWidget), findsOneWidget);
+    expect(factOf('keyed', 'value=0'), findsNothing);
+    // The refused options left the observer where it was.
+    await tester.pumpAndSettle();
+    expect(h.fact('counter', 'observers=2'), findsOneWidget);
+    expect(find.text('counter=0'), findsOneWidget);
+
+    await tester.tap(find.text('the counter'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(factOf('keyed', 'value=0'), findsOneWidget);
+    expect(h.fact('counter', 'observers=2'), findsOneWidget);
+    expect(h.requests('GET', '/api/counter'), requests);
+
+    // And leaving releases it like any other reader.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    for (final query in h.client.queryCache.queries) {
+      expect(query.observersCount, 0, reason: '${query.queryKey}');
+    }
+  });
+
+  showcaseTest('a reader that is gone while its build failed holds nothing',
+      (tester, h) async {
+    tester.view.physicalSize = const Size(900, 2200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await h.open(tester, '/diagnostics');
+    await tester.tap(find.text('the String entry'));
+    await tester.pump();
+    expect(tester.takeException(), isA<QueryDataTypeError>());
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    for (final query in h.client.queryCache.queries) {
+      expect(query.observersCount, 0, reason: '${query.queryKey}');
+    }
+  });
 }

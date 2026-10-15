@@ -179,6 +179,53 @@ void main() {
   });
 
   showcaseTest(
+      'an abandoned needle whose answer arrives after the next one never '
+      'shows', (tester, h) async {
+    tall(tester);
+    h.backend.latency = Duration.zero;
+    await h.open(tester, '/cancellation', settle: false);
+    await tester.tap(find.text('Search ignores the signal'));
+    await tester.pump();
+
+    // `a` goes out slow: two seconds on top of the one-second request.
+    h.backend.latency = const Duration(seconds: 2);
+    await tester.enterText(find.byType(TextField), 'a');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(cardFact('search', 'needle=a'), findsOneWidget);
+
+    // `az` goes out fast, and is answered first. (The latency is read when
+    // a request reaches the backend, a pump after the needle is committed.)
+    await tester.pump(const Duration(milliseconds: 200));
+    h.backend.latency = Duration.zero;
+    await tester.enterText(find.byType(TextField), 'az');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pumpAndSettle();
+    expect(cardFact('search', 'needle=az'), findsOneWidget);
+    expect(cardFact('search', 'results=0'), findsOneWidget);
+    expect(h.requests('GET', search), 1);
+
+    // Then `a`'s answer: it reaches the app, and is thrown away.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(h.requests('GET', search), 2);
+    expect(
+      h.backend.log
+          .where((entry) => search.hasMatch(entry.path))
+          .map((entry) => entry.query['q']),
+      <String>['az', 'a'],
+    );
+    expect(cardFact('search', 'needle=az'), findsOneWidget);
+    expect(cardFact('search', 'results=0'), findsOneWidget);
+    expect(find.text('Local development: setup guide'), findsNothing);
+    // Cancelled, so reverted: the late answer was not written either.
+    expect(h.fact('previous', 'status=pending'), findsOneWidget);
+    expect(h.fact('previous', 'fetchStatus=idle'), findsOneWidget);
+  });
+
+  showcaseTest(
       'a query function that ignores the signal is cancelled all the same, '
       'but its request is not', (tester, h) async {
     tall(tester);
@@ -189,7 +236,7 @@ void main() {
     // Clear the fetch that started on mount; the switch governs the next one.
     await tester.tap(button('Cancel'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(SwitchListTile));
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Ignore the signal'));
     await tester.pumpAndSettle();
 
     await tester.tap(button('Start slow fetch'));
@@ -225,7 +272,7 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.tap(button('Cancel'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(SwitchListTile));
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Ignore the signal'));
     await tester.pumpAndSettle();
     await tester.tap(button('Start slow fetch'));
     await tester.pump();

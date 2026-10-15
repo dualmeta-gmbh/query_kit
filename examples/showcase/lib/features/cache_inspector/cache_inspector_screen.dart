@@ -29,6 +29,10 @@
 /// five seconds later; the missing post lands as `status=error`; a todo shows
 /// up in the mutations table going `pending` then `success`; and leaving the
 /// screen unsubscribes without leaving a timer or an exception behind.
+///
+/// The end-to-end suite also uses this screen as the leak sweep: every other
+/// screen of the catalogue opened and left in turn, then every row here must
+/// read `observers=0`, and the backend must hear nothing for six seconds.
 library;
 
 import 'package:flutter/material.dart';

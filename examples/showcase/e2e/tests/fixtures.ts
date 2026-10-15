@@ -1,6 +1,6 @@
 // What every spec shares: a backend scenario of the test's own, a way to open
 // a feature inside it, and the two selectors the debug strip is built for.
-import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test as base, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 export const BACKEND = 'http://localhost:5175/api'
 
@@ -77,6 +77,43 @@ export const test = base.extend<{ scenario: Scenario; open: (route: string) => P
 export { expect }
 export type { Page }
 
+/// Clicks a Flutter text field and types `text` into it. A click can leave
+/// Flutter's input connection inactive, and a `fill` then lands in an
+/// element nobody listens to: the app never sees the text. So focus and fill
+/// are retried until the field keeps the text and, in Chromium, until the
+/// focused element has Flutter's `input` listener (DevTools' view of it;
+/// Firefox and WebKit have no such session). `fill` replaces what is there,
+/// so a retry types nothing twice. The task manager's rename test met the
+/// same.
+export async function typeInto(page: Page, field: Locator, text: string) {
+  const browser = page.context().browser()?.browserType().name()
+  const editing = browser === 'chromium' ? await page.context().newCDPSession(page) : null
+  try {
+    await expect(async () => {
+      await field.click({ timeout: 1000 })
+      await expect(field).toBeFocused({ timeout: 1000 })
+      if (!editing) return
+      const { result } = await editing.send('Runtime.evaluate', {
+        expression: `(() => {
+          let element = document.activeElement
+          while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement
+          return getEventListeners(element).input?.length ?? 0
+        })()`,
+        includeCommandLineAPI: true,
+        returnByValue: true,
+      })
+      expect(result.value).toBeGreaterThan(0)
+    }).toPass({ timeout: 15_000, intervals: [100, 250, 500] })
+  } finally {
+    await editing?.detach()
+  }
+  await expect(async () => {
+    await field.click({ timeout: 1000 })
+    await field.fill(text, { timeout: 1000 })
+    await expect(field).toHaveValue(text, { timeout: 1000 })
+  }).toPass({ timeout: 15_000, intervals: [100, 250, 500] })
+}
+
 /// The semantics group named `name`.
 ///
 /// One name addresses a group in both test layers: the screen publishes it
@@ -124,12 +161,13 @@ export const fact = (page: Page, label: string, text: string) => factIn(page, `d
 /// is ever matched.
 export const snackBar = (page: Page, text: string) => page.locator('flt-semantics-host').getByText(text, { exact: true })
 
-/// Holds every request matching `glob` in the browser until `release()`, so
+/// Holds every request matching `glob` — a glob, a RegExp or a predicate on
+/// the URL, as `page.route` takes — in the browser until `release()`, so
 /// an assertion between the action and the release runs while the backend
 /// provably has not answered. After the release the handler is a passthrough;
 /// unrouting it would race the handler that is still letting the held request
 /// go.
-export function holdRequest(page: Page, glob: string) {
+export function holdRequest(page: Page, glob: Parameters<Page['route']>[0]) {
   let letGo: () => void = () => {}
   const held = new Promise<void>((resolve) => {
     letGo = resolve

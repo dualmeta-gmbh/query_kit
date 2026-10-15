@@ -266,7 +266,7 @@ test('an unreachable backend shows the error panel after one retry, and recovers
   await expect(page.getByText(/\d+ of \d+ synced/)).toBeVisible()
 })
 
-test('shared data stays consistent through rename, rollback and network recovery', async ({ page, request }) => {
+test('shared data stays consistent through rename, rollback and network recovery', async ({ page, request, browserName }) => {
   const task = await createTask(request, uniqueName('Confidence'))
   const renamed = uniqueName('Confirmed')
   const requests = requestCounter(page)
@@ -293,9 +293,10 @@ test('shared data stays consistent through rename, rollback and network recovery
   // After the button click, DOM refocus alone can leave Flutter's input
   // connection inactive. Retry the focus traversal as well as the readiness
   // check: polling alone cannot repair a traversal Flutter did not accept.
-  // Chromium's debugger observes the listener without changing the app.
+  // Chromium's debugger observes the listener without changing the app;
+  // Firefox and WebKit have no such session, and there focus is the check.
   // Only focus is retried here; filling and submitting remain outside.
-  const editing = await page.context().newCDPSession(page)
+  const editing = browserName === 'chromium' ? await page.context().newCDPSession(page) : null
   try {
     await expect(async () => {
       await field.click({ timeout: 1000 })
@@ -303,6 +304,7 @@ test('shared data stays consistent through rename, rollback and network recovery
       await field.press('Tab', { timeout: 1000 })
       await page.keyboard.press('Shift+Tab')
       await expect(field).toBeFocused({ timeout: 1000 })
+      if (!editing) return
       const { result } = await editing.send('Runtime.evaluate', {
         expression: `(() => {
           let element = document.activeElement
@@ -315,7 +317,7 @@ test('shared data stays consistent through rename, rollback and network recovery
       expect(result.value).toBeGreaterThan(0)
     }).toPass({ timeout: 15_000, intervals: [100, 250, 500] })
   } finally {
-    await editing.detach()
+    await editing?.detach()
   }
   await field.fill('fail')
   await expect(field).toHaveValue('fail')

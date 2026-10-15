@@ -199,3 +199,50 @@ test('a todo shows up in the mutations table, pending then success', async ({ pa
   ])
   expect(await scenario.count('POST', /^\/api\/todos$/)).toBe(1)
 })
+
+test.describe('the leak sweep', () => {
+  // The catalogue's thirty rows and the inspector's table of every entry the
+  // sweep left behind, unscrolled.
+  test.use({ viewport: { width: 1280, height: 4000 } })
+
+  test('every screen opened and left leaves no observer and no traffic behind', async ({ page, open, scenario }) => {
+    test.setTimeout(180_000)
+    await open('/')
+    // A catalogue row is a button named by its title and summary; read off
+    // the home screen, so a new screen joins the sweep without an edit here.
+    const rows = page.getByRole('group').getByRole('button')
+    const names = (await rows.evaluateAll((buttons) => buttons.map((button) => button.textContent ?? '')))
+      .map((name) => name.replace(/\s+/g, ' ').trim())
+      .filter((name) => !name.startsWith('Cache inspector '))
+    expect(names.length).toBe(29)
+
+    for (const name of names) {
+      await page.getByRole('button', { name, exact: true }).click()
+      const back = page.getByRole('button', { name: 'Back', exact: true })
+      await expect(back, name).toBeVisible()
+      // Long enough for a first load to land on most screens; one still out
+      // when the screen goes is the case the sweep is also about.
+      await page.waitForTimeout(750)
+      await back.click()
+      await expect(page.getByRole('button', { name, exact: true }), name).toBeVisible()
+    }
+
+    // Whatever was in flight when its screen went has settled by now.
+    await page.waitForTimeout(3_000)
+    await page.getByRole('button', { name: /^Cache inspector / }).click()
+    const entries = page.getByRole('group', { name: /^entry / })
+    await expect.poll(() => entries.count()).toBeGreaterThan(20)
+    const keys: string[] = []
+    for (const row of await entries.all()) {
+      const key = (await row.getAttribute('aria-label')) ?? '?'
+      keys.push(key)
+      await expect(row.getByText('observers=0', { exact: true }), key).toBeVisible()
+    }
+    console.log(`${keys.length} entries, every one without an observer`)
+
+    // And nothing polls, retries or refetches for an app nobody looks at.
+    await scenario.clearRequests()
+    await page.waitForTimeout(6_000)
+    expect(await scenario.requests()).toEqual([])
+  })
+})
