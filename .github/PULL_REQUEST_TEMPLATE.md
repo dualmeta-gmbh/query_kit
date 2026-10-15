@@ -9,6 +9,7 @@ The gate, and anything beyond it:
 
 - [ ] `dart test` in packages/query_kit
 - [ ] `flutter test` in packages/query_kit_flutter
+- [ ] `flutter test` in packages/query_kit_hooks
 - [ ] `flutter test` in examples/showcase and examples/task_manager
 - [ ] `dart analyze --fatal-infos` and `dart format --set-exit-if-changed`
 

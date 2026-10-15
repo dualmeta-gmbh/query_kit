@@ -6713,3 +6713,37 @@ copy to `adapter.dart`, stay 45 of 45 green. Binding line coverage 99.77 %
 (862 / 864), above its floor.
 
 **Counts after:** binding **308** VM.
+
+### AP2 — the hooks package joins the workspace (#95)
+
+**What.** `packages/query_kit_hooks` is a workspace member, at `0.1.0-dev`,
+with its licences, README, CHANGELOG, analysis and dartdoc options and a
+`.pubignore` for the example AP10 brings. CI runs its suite on the VM,
+compiled to JavaScript and on the Flutter floor, its publish dry-run and its
+`dart doc`; `publish.yml` knows the tag `query_kit_hooks-v*`; dependabot
+watches its one third-party dependency, `flutter_hooks`; the rename tool
+carries it along with the core's name instead of refusing three packages.
+The spike's `pubspec_overrides.yaml` and own lockfile are gone.
+
+**Two departures from the ticket, each measured.**
+
+- *`query_kit_flutter: ^1.1.0` cannot resolve in the workspace* while the
+  binding is 1.0.3: pub refuses a member whose version the constraint
+  excludes. The constraint is `^1.0.3` and goes to `^1.1.0` at release
+  (AP12, `docs/releasing.md`). Nothing in the workspace would notice a
+  forgotten bump; pana's lower-bound check would, against 1.0.3 on pub.dev.
+- *`scripts/release.sh` is unchanged* but for a comment. It is the
+  bootstrap wizard of the two 1.x packages, which share a version; the
+  hooks have their own 0.x line, and their first publish is a procedure in
+  `docs/releasing.md`. `latest-stable.yml` does not exist at `859fbdc`; it
+  gains a hooks leg when this branch meets `main`.
+
+**The floor, measured, not assumed.** The root lockfile holds
+`flutter_hooks` 0.21.3+1, which needs Flutter 3.32 and raises the lockfile's
+`sdks.flutter` to `>=3.32.0`. On Flutter 3.27.4 (Dart 3.6.2), `flutter pub
+get` resolves 0.21.2 anyway, and there the hooks' 45 tests and the binding's
+308 pass. The lockfile otherwise stays as committed: the local SDK's pins of
+`characters`, `matcher` and the test packages are not part of the change.
+
+**Counts after:** hooks **45** VM / **45** browser / **45** floor; binding
+**308** VM / **308** floor.

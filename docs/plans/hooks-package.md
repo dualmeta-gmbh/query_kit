@@ -831,7 +831,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - `dart doc` und die Probeläufe fürs Publish sind grün. pana bleibt bei
     160/160.
 
-### AP2 — Paket-Gerüst und Integration ins Repo
+### AP2 — Paket-Gerüst und Integration ins Repo — **erledigt** (#95)
 
 - **Inhalt:** Das Paket kommt in den Workspace, mit `pubspec`, `LICENSE`,
   `LICENSE-TANSTACK`, `README`, `CHANGELOG`, `analysis_options` und
@@ -845,6 +845,18 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - `dependabot`, die PR-Vorlage, `docs/releasing.md`, `CLAUDE.md`
 - **Akzeptanz:** CI ist grün über alle Jobs mit drei Paketen, und die
   Probeläufe fürs Publish laufen für alle drei.
+- **Abweichungen, gemessen:**
+  - `query_kit_flutter: ^1.1.0` lässt sich im Workspace nicht auflösen,
+    solange die Bindung 1.0.3 ist. Die Einschränkung ist `^1.0.3` und wird
+    in AP12 auf `^1.1.0` gehoben.
+  - `scripts/release.sh` bleibt bis auf einen Kommentar unverändert. Es ist
+    der Erst-Release-Assistent der beiden 1.x-Pakete mit gemeinsamer
+    Version. Das erste Publish der Hooks steht in `docs/releasing.md`.
+  - `latest-stable.yml` gibt es auf diesem Zweig nicht (`859fbdc`). Es
+    bekommt seinen Hooks-Lauf, wenn der Zweig `main` trifft.
+  - Der Floor ist lokal gemessen: Flutter 3.27.4 löst `flutter_hooks`
+    0.21.2 auf, trotz 0.21.3+1 im Lockfile. Hooks 45 und Bindung 308 sind
+    grün. CI selbst läuft erst mit einem Push.
 
 ### AP3 — `useQuery`, `useSelectQuery` und die Portierung von `useQuery.test.tsx`
 
@@ -944,11 +956,12 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     der Bindung 1.1.0 schon auf pub.dev. Danach Transfer an den Publisher
     und die Einstellung für automatisches Publish.
   - Vorher wird der Name auf pub.dev noch einmal geprüft (D2).
+  - Die Einschränkung `query_kit_flutter:` des Hook-Pakets geht von
+    `^1.0.3` auf `^1.1.0`, die erste Version mit `adapter.dart` (AP2).
 
 **Reihenfolge:**
 
-- AP0 und AP1 sind erledigt.
-- Danach AP1 und AP2.
+- AP0, AP1 und AP2 sind erledigt.
 - Danach AP3. Die übrigen Hooks bauen auf seinem Muster auf.
 - AP4 bis AP8 sind voneinander unabhängig.
 - AP9 und AP10, sobald die Hooks stehen.

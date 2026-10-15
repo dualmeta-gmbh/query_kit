@@ -1,6 +1,8 @@
 # Releasing
 
-Two packages go to pub.dev, in a fixed order, from a tag each.
+Two packages go to pub.dev, in a fixed order, from a tag each. A third, the
+hooks add-on `query_kit_hooks`, is not released yet; it has a section of its
+own, [The hooks add-on](#the-hooks-add-on).
 
 **[`scripts/release.sh`](../scripts/release.sh) walks the whole procedure.** It
 is this document as a path rather than as prose: it refuses to start unless the
@@ -140,6 +142,38 @@ The wizard's pre-flight is still worth running before the tags: start
 `./scripts/release.sh`, let stage 1 finish, and stop with Ctrl-C at its "All
 clear … Press Enter" — nothing is published before stage 4, and a new version
 must not go through stage 4, which publishes by hand.
+
+## The hooks add-on
+
+`packages/query_kit_hooks` is a workspace member like the other two and runs
+through every CI gate with them: tests on the VM and compiled to JavaScript,
+`floors`, the analyzer, the formatter, `dart doc` and the publish dry-run.
+What differs is how it is released (map #92, plan D17):
+
+- **Its own version line, 0.x.** It is `0.1.0-dev` until its first release,
+  0.1.0. In 0.x a breaking change is a minor (0.1 → 0.2); the rule that a
+  breaking change is a major holds for it from 1.0.0 on.
+- **It goes out with the binding version that first exports
+  `package:query_kit_flutter/adapter.dart`, 1.1.0, on the same day.** Until
+  then `adapter.dart` stays on `main` unpublished, so a binding release cut
+  from `main` in between would publish it early.
+- **Before tagging**, the hooks' `query_kit_flutter:` constraint goes from
+  `^1.0.3` to `^1.1.0`. In the workspace it resolves to the checkout's
+  binding, so nothing but the published package would notice the old lower
+  bound — pana's lower-bound check would, against 1.0.3 on pub.dev.
+- **The first publish is by hand,** as for any new package: binding 1.1.0
+  through its tag and `publish.yml` first, then, once pub.dev serves it,
+
+  ```bash
+  cd packages/query_kit_hooks && flutter pub publish
+  ```
+
+  then *Transfer to publisher* (dualmeta.io) and automated publishing for
+  the tag pattern `query_kit_hooks-v{{version}}` on its admin page. The tag
+  `query_kit_hooks-v0.1.0` is pushed with `publish.yml` disabled, the
+  contortion [Tags](#tags) describes. `scripts/release.sh` does not cover it.
+- **Later releases** are a `query_kit_hooks-v<version>` tag, as for the
+  other two, after the binding version it needs is on pub.dev.
 
 ## Documentation site
 

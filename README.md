@@ -20,6 +20,7 @@ ported case by case.
 |---|---|
 | [`query_kit`](packages/query_kit) | The pure-Dart core: queries, mutations, infinite queries, observers, the client and its caches. No Flutter dependency. |
 | [`query_kit_flutter`](packages/query_kit_flutter) | The Flutter binding: `QueryClientProvider`, controllers, builder widgets, a `State` mixin and `context.query(...)`. Four equal call styles, no dependency beyond Flutter. Re-exports the core. |
+| [`query_kit_hooks`](packages/query_kit_hooks) | React Query's hooks — `useQuery`, `useMutation` and the rest — on [`flutter_hooks`](https://pub.dev/packages/flutter_hooks), an opt-in add-on over the binding. **In development, not yet on pub.dev.** |
 
 ## Install
 
@@ -90,6 +91,7 @@ otherwise — and then the gate. Security reports go through
 |---|---|
 | [`packages/query_kit/`](packages/query_kit) | The core. Its fidelity audit — every ported upstream case, every omission and every divergence, with its reason — is [PORTING_NOTES.md](packages/query_kit/test/PORTING_NOTES.md). |
 | [`packages/query_kit_flutter/`](packages/query_kit_flutter) | The binding, and its one-file example. |
+| [`packages/query_kit_hooks/`](packages/query_kit_hooks) | The hooks add-on, with its ported hook suites. |
 | [`examples/showcase/`](examples/showcase) | Every feature as its own screen, on a dummy backend built for it, each with widget tests and Playwright end-to-end tests in a real browser. |
 | [`examples/task_manager/`](examples/task_manager) | One whole small app: a to-do manager against a deliberately slow backend with scripted failures. |
 | [`examples/doc_snippets/`](examples/doc_snippets) | Every Dart sample on the site and in the package READMEs, as code the analyzer sees, so a sample that stops compiling fails the build. |
@@ -113,6 +115,10 @@ cd packages/query_kit && dart test
 
 ```bash
 cd packages/query_kit_flutter && flutter test
+```
+
+```bash
+cd packages/query_kit_hooks && flutter test
 ```
 
 ```bash

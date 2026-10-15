@@ -73,6 +73,10 @@ cd packages/query_kit_flutter && flutter test
 ```
 
 ```bash
+cd packages/query_kit_hooks && flutter test
+```
+
+```bash
 cd examples/showcase && flutter test
 ```
 

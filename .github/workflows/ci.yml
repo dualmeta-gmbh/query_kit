@@ -44,6 +44,14 @@ jobs:
       - name: binding tests, compiled to JavaScript
         run: flutter test --platform chrome --exclude-tags vm-only
         working-directory: packages/query_kit_flutter
+      # The hooks add-on, on flutter_hooks: its ported suites, on the VM and
+      # compiled to JavaScript like the binding they stand on.
+      - name: hooks tests
+        run: flutter test
+        working-directory: packages/query_kit_hooks
+      - name: hooks tests, compiled to JavaScript
+        run: flutter test --platform chrome
+        working-directory: packages/query_kit_hooks
       # Each floor is the line coverage the suites reached when it was set,
       # rounded down to a tenth (core 99.83 %, binding 99.77 %, measured on
       # this Flutter version). The eight lines left are defensive branches no
@@ -75,6 +83,9 @@ jobs:
       - name: binding publish dry-run
         run: dart pub publish --dry-run
         working-directory: packages/query_kit_flutter
+      - name: hooks publish dry-run
+        run: dart pub publish --dry-run
+        working-directory: packages/query_kit_hooks
       - name: analyzer
         run: dart analyze --fatal-infos packages examples/task_manager examples/showcase examples/doc_snippets tool
       # `dart doc` reports unresolved doc references and broken links as
@@ -85,6 +96,9 @@ jobs:
       - name: binding docs
         run: dart doc --validate-links
         working-directory: packages/query_kit_flutter
+      - name: hooks docs
+        run: dart doc --validate-links
+        working-directory: packages/query_kit_hooks
       # Internal bookkeeping — review rounds, dates, finding and ticket IDs,
       # the upstream pin — in what a user reads: the site, the READMEs, the
       # top CHANGELOG entry and the dartdoc. The self-test proves the patterns.
@@ -119,6 +133,11 @@ jobs:
       - name: binding tests
         run: flutter test
         working-directory: packages/query_kit_flutter
+      # flutter_hooks 0.21.3 needs Flutter 3.32, so `pub get` here resolves
+      # 0.21.2 whatever the lockfile holds: the oldest the add-on allows.
+      - name: hooks tests
+        run: flutter test
+        working-directory: packages/query_kit_hooks
       - name: demo tests
         run: flutter test
         working-directory: examples/task_manager

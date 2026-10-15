@@ -1,5 +1,6 @@
 // Renames the two published packages — directories, pubspec names, every
-// import and every mention in prose — in one pass.
+// import and every mention in prose — in one pass. An add-on named after the
+// core, `query_kit_hooks`, follows the core's new name in the same pass.
 //
 // The name a package is published under is permanent (pub.dev never frees a
 // name), so the decision was deliberately left until last rather than made
@@ -169,16 +170,25 @@ _Names _currentNames() {
       if (RegExp(r'^\s*-\s*packages/[a-z0-9_]+\s*$').hasMatch(line))
         line.split('/').last.trim(),
   ];
-  if (packages.length != 2) {
-    _fail('expected exactly two `packages/…` entries in the root pubspec, '
-        'found ${packages.length}');
-  }
   final flutter = packages.firstWhere(
     (name) => name.endsWith('_flutter'),
-    orElse: () => _fail('neither package directory ends in `_flutter`'),
+    orElse: () => _fail('no package directory ends in `_flutter`'),
   );
-  return _Names(
-      packages.firstWhere((name) => name != flutter), flutter, workspace);
+  final core = flutter.substring(0, flutter.length - '_flutter'.length);
+  if (!packages.contains(core)) {
+    _fail('no `packages/$core` entry beside `packages/$flutter` in the root '
+        'pubspec');
+  }
+  // An add-on is named after the core (`query_kit_hooks`), so the core's
+  // rename carries it along: the pattern has no word boundary. One that is
+  // not would be left behind under its old name.
+  for (final name in packages) {
+    if (name != core && !name.startsWith('${core}_')) {
+      _fail('`packages/$name` does not start with `${core}_`, so a rename '
+          'would leave it behind');
+    }
+  }
+  return _Names(core, flutter, workspace);
 }
 
 Never _fail(String message) {

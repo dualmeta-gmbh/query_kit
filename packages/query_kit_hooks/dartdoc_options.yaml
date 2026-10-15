@@ -1,0 +1,5 @@
+dartdoc:
+  # The hooks get their categories with their documentation page. Until
+  # then this file only says the package has dartdoc options of its own:
+  # the binding's API it re-exports brings its categories along.
+  showUndocumentedCategories: false

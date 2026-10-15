@@ -1,6 +1,8 @@
-# The published packages have no third-party dependencies, so there is nothing
-# to update there. What does age is the tooling: the actions this workflow
-# runs, the two example backends, the two Playwright suites and the
+# The core and the binding have no third-party dependencies, so there is
+# nothing to update there. The hooks add-on has exactly one, `flutter_hooks`,
+# still before 1.0: a 0.22 falls outside `^0.21.2` and has to be taken by
+# hand, so it is watched here. What else ages is the tooling: the actions this
+# workflow runs, the two example backends, the two Playwright suites and the
 # documentation site.
 version: 2
 updates:
@@ -8,6 +10,12 @@ updates:
     directory: /
     schedule:
       interval: monthly
+  - package-ecosystem: pub
+    directory: /packages/query_kit_hooks
+    schedule:
+      interval: monthly
+    allow:
+      - dependency-name: flutter_hooks
   - package-ecosystem: npm
     directories:
       - /examples/showcase/server
