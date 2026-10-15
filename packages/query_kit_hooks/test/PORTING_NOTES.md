@@ -530,7 +530,7 @@ share is recorded in the core's PORTING_NOTES, "The hooks' deep-dive review".
 | F-1 (P2) | A list of a `String` and an `int` query compiles as `Object`, and the collection creates its entries as `Object` entries. A typed reader of one of those keys then throws `QueryDataTypeError`; where a typed reader came first, the list's build throws | Yes, with Fable's probes, both orders | Documented on `useQueries`, `useCombinedQueries`, `QueriesBuilder` and `QueriesController`, in the hooks guide and on the troubleshooting page. Pinned by "a list of queries of two data types" in `hook_specifics_test.dart`. A debug check needs a member on the core's options, `Object` being a legal data type, so it is the binding's backlog item HB-4, for all four styles at once |
 | F-2 (P3) | `adapter.dart` did not export `BuildWhen`, the type `shouldRebuild` takes | Yes: the export list | Exported |
 | F-3 (P3) | `useInfiniteQuery` copied the controller's six paging flags as its `beside`. A hooks release resolves against any later binding of the same major, so a flag that binding added would be missing from the copy | Yes, by reading: the copy, and the barrel hiding `besideOf` | `RebuildRule.of(controller)`, the rule the binding's own readers use, built from the binding's own functions. `useQuery`, `useInfiniteQuery` and `useMutation` take it through `ControllerHookState.ruleOf`. With the binding's `besideOf` switched off, three hooks cases go red. Fable proposed exporting `observedStateOf` and `besideOf`; one constructor keeps the surface to the rule, as ADR-0004 decided, and an adapter needs to know neither name |
-| F-4 (P3) | The top-type assertion offered only `QueryController.create<Task>` and `QueryBuilder<Task>` as remedies, for a hooks user who wrote neither | Yes: the message, printed | It names the options' type argument first, `QueryObserverOptions<Task>(…)`, which every reader takes |
+| F-4 (P3) | The top-type assertion offered only `QueryController.create<Task>` and `QueryBuilder<Task>` as remedies, for a hooks user who wrote neither | Yes: the message, printed | For a plain query it names the options' type argument first, `QueryObserverOptions<Task>(…)`. For a select whose result alone is a top type it names the select's return type, after the verification pass (V1-1) |
 
 Plan decisions reopened: Astra none. Fable reopened D4 narrowly, for the
 copy of the flags. F-3 answers it with one constructor rather than two more
@@ -547,5 +547,41 @@ red each; Astra's, both new cases red without a subscription.
 Not checked by either: the browser and the floor runs, the example app
 (AP10, not yet built), and release-mode scheduling.
 
-**Counts after the first pass:** hooks **332**, binding **320**. A fresh
-verification pass over these fixes follows.
+**Counts after the first pass:** hooks **332**, binding **320**.
+
+### Second pass (verification of the fixes)
+
+GPT-6.1-Sol (xhigh) read the fix commit `1f1a7d9` against both reviews,
+upstream at the pin and the code before it. It found no runtime defect that
+the fixes introduced:
+
+- A-1, A-2, F-2 and F-3 are closed.
+- F-1 is mitigated by documentation, its check deferred to HB-4.
+- F-4 was incomplete.
+
+Its negative controls agree with the first pass's: the old `read()` makes 2
+cases fail, a missing subscription both new ones, and a switched-off
+`besideOf` exactly 3. It found no import cycle: `query_controller.dart` does
+not import `rebuild_rule.dart`. Both packages' dartdoc has no warnings.
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| V1-1 (P3) | F-4 left the select's case unserved. Typed raw options with a select that returns `dynamic` failed the same assertion, and the message advised typing the options, which does not help. The core's notes also said every hook takes `QueryObserverOptions` | Yes, with Sol's probe: `QueryController<String, dynamic>` and the plain advice | Where the cached type is named and only the selected one is a top type, the message names the select's return type: `withSelect<Selected>(…)`, `QuerySelectOptions<Raw, Selected>(…)`. Pinned in the binding's "the backstop names the cure" case. Both notes are narrowed |
+| V1-2 (P3) | "Every typed reader" was too broad. A read as `Object`, the widened type, works; a read as `String` or `int` throws | Yes: `getQueryData<Object>` returns `'a'` | The guide, the three dartdoc paragraphs, the troubleshooting entry and HB-4 now say "a read as its own type" |
+
+Sparring:
+
+- **F-3:** Sol prefers `RebuildRule.of` to two exported helpers. It keeps
+  the controller's details inside the binding and adds no ownership.
+- **F-1:** Deferring the check is defensible, as an explicit mitigation.
+  HB-4 should check the cached type and not the selected one, since
+  different selects over one cached type are safe. The backlog row says so
+  now.
+
+Sol noted one older limit that is not the fixes': a value that throws only
+inside `shouldRebuild`, after the hooks' own probe read succeeded, escapes
+that probe's catch. It predates AP11 and needs a value that throws on one
+read and not on the next.
+
+**Counts after the second pass:** hooks **332**, binding **320**. A third
+pass reads these fixes.

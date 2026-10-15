@@ -6885,9 +6885,13 @@ what changed in the binding, each finding reproduced first.
   With the binding's `besideOf` switched off, three hooks cases go red, so
   the hooks no longer carry a copy. ADR-0004 has a paragraph on it.
 - **F-4 (P3): the top-type assertion named only the binding's spellings as
-  the remedy.** It now names the options' type argument first,
-  `QueryObserverOptions<Task>(…)`, which every call style and every hook
-  takes.
+  the remedy.** For a plain query it now names the options' type argument
+  first, `QueryObserverOptions<Task>(…)`, which a hooks user writes as well.
+  The verification pass (V1-1) found the select's case unserved: typed raw
+  options with a select that returns `dynamic` got the same advice, which
+  does not help. Where the cached type is named and only the selected one
+  is a top type, the message now names the select's return type instead
+  (`withSelect<Selected>(…)`, `QuerySelectOptions<Raw, Selected>(…)`).
 - **F-1 (P2), in the docs only:** a list of queries of two data types
   infers `Object`, and its entries are created as `Object` entries.
   `QueriesBuilder` and `QueriesController` now say so in their dartdoc. A

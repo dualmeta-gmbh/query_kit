@@ -18,8 +18,8 @@ import 'controller_hook.dart';
 /// Every query in [queries] has the one data type [TQueryData]. A list of
 /// two types still compiles: Dart infers their common supertype, `Object`
 /// for a `String` and an `int`, and the cache entries are created as that,
-/// so any typed read of one of those keys — a `useQuery` of `String`, a
-/// `getQueryData<String>` — then throws `QueryDataTypeError`. For queries of
+/// so a read of one of those keys as its own type — a `useQuery` of
+/// `String`, a `getQueryData<String>` — then throws `QueryDataTypeError`. For queries of
 /// different types, use a `useQuery` each and combine the results with
 /// `(a, b).combine(…)`.
 List<QueryResult<TData>> useQueries<TQueryData, TData>(

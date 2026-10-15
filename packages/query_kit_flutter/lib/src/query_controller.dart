@@ -100,11 +100,18 @@ class QueryController<TQueryData, TData> extends ChangeNotifier
     QueryObserverOptionsBase<TQueryData, TData> options,
   )   : assert(
           _debugDataTypeIsAnchored<TData>(),
-          'QueryController<$TQueryData, $TData>: the data type is a top type '
-          '($TData) — give the options a queryFn whose return type names it, '
-          'or an explicit type argument, on the options '
-          '(QueryObserverOptions<Task>(…)) or where the query is read '
-          '(QueryBuilder<Task>(…), QueryController.create<Task>(…)).',
+          _debugDataTypeIsAnchored<TQueryData>()
+              ? 'QueryController<$TQueryData, $TData>: the selected type is a '
+                  'top type ($TData) — give the select a return type that '
+                  'names it, or an explicit type argument '
+                  '(withSelect<Selected>(…), '
+                  'QuerySelectOptions<$TQueryData, Selected>(…)).'
+              : 'QueryController<$TQueryData, $TData>: the data type is a top '
+                  'type ($TData) — give the options a queryFn whose return '
+                  'type names it, or an explicit type argument, on the '
+                  'options (QueryObserverOptions<Task>(…)) or where the query '
+                  'is read (QueryBuilder<Task>(…), '
+                  'QueryController.create<Task>(…)).',
         ),
         _observer = QueryObserver<TQueryData, TData>(client, options),
         _options = options;

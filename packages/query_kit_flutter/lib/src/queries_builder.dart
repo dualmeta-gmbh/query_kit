@@ -38,9 +38,9 @@ import 'query_client_provider.dart';
 /// * **Homogeneous**: one data type per collection, because a Dart `List`
 ///   has one element type. A list of two types still compiles: Dart infers
 ///   their common supertype, `Object` for a `String` and an `int`, and the
-///   cache entries are created as that, so any typed read of one of those
-///   keys then throws `QueryDataTypeError`. For queries of different types,
-///   read each one and combine their results.
+///   cache entries are created as that, so a read of one of those keys as
+///   its own type, `String` or `int`, then throws `QueryDataTypeError`. For
+///   queries of different types, read each one and combine their results.
 /// * **The list is re-applied whenever the parent rebuilds this widget**, as
 ///   the single-query builders re-apply their options; an unchanged list
 ///   moves nothing.

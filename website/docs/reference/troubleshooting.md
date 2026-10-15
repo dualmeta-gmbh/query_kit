@@ -128,8 +128,8 @@ lenient, as `setQueryData`'s is. Filter narrowly.
 ## `QueryDataTypeError` after a list of queries of two types
 
 **Symptom.** A `QueriesBuilder`, `QueriesController` or `useQueries` over a
-`String` query and an `int` query works. Later a typed read of one of those
-keys, a `getQueryData<String>` or a `QueryBuilder<String>`, throws
+`String` query and an `int` query works. Later a read of one of those keys
+as its own type, a `getQueryData<String>` or a `QueryBuilder<String>`, throws
 `QueryDataTypeError: … holds Object but was used as String`. Or the list
 itself throws `… holds String but was used as Object`, because a typed
 reader created the entry first.

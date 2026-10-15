@@ -1453,6 +1453,23 @@ void main() {
                 contains('QueryController.create<Task>')),
           )),
         );
+        // The cached type named, the selected one not: the cure is the
+        // select's return type, not the options' (hooks review, V1-1).
+        expect(
+          () => QueryController(
+            client,
+            QueryObserverOptions<String>(queryKey: key, queryFn: (_) => 'a')
+                .withSelect((text) => jsonDecode('"$text"')),
+          ),
+          throwsA(isA<AssertionError>().having(
+            (e) => e.message.toString(),
+            'message',
+            allOf(
+                contains('selected type is a top type'),
+                contains('withSelect<Selected>'),
+                isNot(contains('QueryObserverOptions<Task>'))),
+          )),
+        );
         // A plain infinite shape's data is always an `InfiniteData`, never a
         // top type; the infinite backstop is reachable only through a select
         // whose return type is one — `jsonDecode` returns `dynamic`.

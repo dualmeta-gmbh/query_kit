@@ -1156,6 +1156,12 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     Konstruktor hält die Fläche bei der Regel (D4, ADR-0004).
   - F-4: Die Top-Type-Meldung nennt das Typargument an den Optionen.
   - Hooks 332, Bindung 320.
+- **Zweiter Durchgang (Sol, xhigh), über `1f1a7d9`:** kein Laufzeitfehler
+  durch die Fixes. Zwei P3, beide reproduziert und behoben:
+  - V1-1: Bei einem Select, der `dynamic` liefert, nennt die Meldung jetzt
+    den Rückgabetyp des Selects.
+  - V1-2: „Jeder typisierte Leser“ war zu breit. Gemeint ist ein Lesen als
+    eigener Typ; als `Object` gelesen funktioniert es.
 
 ### AP12 — Release: `query_kit_hooks` 0.1.0 und `query_kit_flutter` 1.1.0
 
