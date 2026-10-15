@@ -81,7 +81,9 @@ final task = context.query(
 ```
 
 It is the counterpart of `notifyOnChangeProps`, expressed as a function of two
-results. The same predicate and the same semantics in all twelve places — the
+results. Compare what the widget shows: `dataOrNull` alone also declines the
+move from pending to an error, where both sides have no data, so a widget that
+shows a spinner or the error compares `status` as well. The same predicate and the same semantics in all twelve places — the
 difference is only *whose* rebuild it decides. A builder's
 is its own subtree, because a builder reads exactly one query or one mutation.
 A keyless read's is per read, and its reader is the whole widget or the whole

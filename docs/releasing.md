@@ -231,6 +231,10 @@ true for that, all of it set on 2026-09-23:
   of the archive. After a fresh clone, `flutter pub get` in
   `packages/query_kit_flutter/example` resolves it; CI does that before the
   analyzer.
+- **The hooks package's fence test stays home.** `test/docs_fences_test.dart`
+  reads the site's hooks guide from `website/`, which an archive does not
+  have, so the hooks' `.pubignore` keeps it out. The twins it checks, under
+  `test/doc_twins/`, ship and run like any other test.
 - **Throwaway probe tests** (`packages/*/test/_*_tmp_test.dart`) are
   gitignored, so they neither dirty the tree the wizard checks nor reach an
   archive.

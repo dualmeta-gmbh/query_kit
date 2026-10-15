@@ -1,3 +1,6 @@
 # The example's override onto the checkout is for the repository only: in the
 # archive it would point at a query_kit_flutter that is not there.
 example/pubspec_overrides.yaml
+# The fence test reads the site's hooks guide from the repository's website/,
+# which an unpacked archive does not have. The twins it checks ship and run.
+test/docs_fences_test.dart

@@ -112,6 +112,17 @@ They count in no column above.
 - `review_reproductions_test.dart` — one case per finding of the plan's
   review round (Astra, Fable) that was reproduced as a test, H-01, H-03,
   H-04 and P2-1 among them; the plan's last section is their record.
+- `docs_fences_test.dart` and `doc_twins/` — the docs' samples. Every Dart
+  fence of the site's hooks guide and of the README names a region in
+  `doc_twins/`, and the fence test holds the two equal, as
+  `site_fences_test.dart` does for the rest of the site. It also checks that
+  every exported hook appears in a compiled fence of the guide.
+  `doc_twins/guide_test.dart` runs the guide's testing sample and both sides
+  of the `unawaited(client.query(…))` trap. The fence test reads `website/`,
+  so it is skipped in the browser and kept out of the archive by
+  `.pubignore`; the twins ship and run. Negative control: one token changed
+  in a guide fence, and separately in a README fence, turns it red with "has
+  drifted".
 
 ## `useQuery.test.tsx`
 
