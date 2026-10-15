@@ -929,7 +929,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Ein Test belegt die Mutations-Zeilen aus D13: Die Per-Call-Callbacks
     fallen weg, und der Ersatz-Hook beginnt `idle`.
 
-### AP6 — `useQueries` und `useCombinedQueries`
+### AP6 — `useQueries` und `useCombinedQueries` — **erledigt** (#99)
 
 - **Inhalt:**
   - Die 24 Fälle.
@@ -941,6 +941,21 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     keinen Build aus.
   - Eine Änderung nur dessen, worauf `retry` wirkt, löst einen aus (H-01,
     aus dem Spike übernommen).
+- **Ergebnis, gemessen:**
+  - **24 Fälle:** 4 portiert, 13 angepasst (D8: 94; D10: 337, 381, 454,
+    490, 630, 674, 753, 871, 926, 993; D14: 589; 434 verschärft), 7
+    ausgelassen. Kein Defekt aus der Portierung, kein Fall übersprungen.
+  - Beide Akzeptanzkriterien als Tests in `hook_specifics_test.dart`.
+  - Gegenprobe: vier Fehler in `use_queries.dart`, je 2 bis 3 Tests rot.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** drei Befunde, alle reproduziert.
+  - Ein `buildWhen`, das eine Wertänderung ablehnt, hielt eine gleichzeitige
+    Änderung dessen zurück, worauf `retry` wirkt. Das ist ein Fehler der
+    Regel in `RebuildRule`, nicht des Hooks; AP4s Review fand ihn auch für
+    die Paging-Flags. Eigener Commit in der Bindung.
+  - Ein Combiner, der auf zugestellten Daten wirft, warf im Listener; das
+    Widget blieb `pending`. Jetzt baut der Hook neu, und der Build wirft
+    (D13).
+  - Der `PORTING_NOTES`-Abschnitt fehlte; er steht jetzt dort.
 
 ### AP7 — `useIsFetching`, `useIsMutating`, `useMutationState`, `useQueryClient`
 

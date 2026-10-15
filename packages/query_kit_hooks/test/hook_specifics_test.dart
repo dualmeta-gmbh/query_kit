@@ -448,4 +448,236 @@ void main() {
     ]);
     expect(builds, 6);
   });
+
+  // AP6's acceptance (plan, D10): `useCombinedQueries` rebuilds when the
+  // combination moves, or what its `retry` and `refetch` act on, and for
+  // nothing else. H-01 itself is in `review_reproductions_test.dart`.
+  group('AP6: useQueries and useCombinedQueries', () {
+    // The combiner reads only the first source. The second's new data
+    // reaches both hooks — `useQueries` builds for it, and the combiner runs
+    // on it — but the combination is equal, so `useCombinedQueries` does not
+    // build. A change to the first source does.
+    hookTest('a source change that leaves the combination equal adds no build',
+        (tester, client) async {
+      final keyA = queryKey();
+      final keyB = queryKey();
+      var combinedBuilds = 0;
+      var listBuilds = 0;
+      var combinerRuns = 0;
+      List<QueryObserverOptions<String>> queries() => [
+            QueryObserverOptions<String>(
+              queryKey: keyA,
+              queryFn: (_) => sleep(5).then((_) => 'a'),
+            ),
+            QueryObserverOptions<String>(
+              queryKey: keyB,
+              queryFn: (_) => sleep(5).then((_) => 'b'),
+            ),
+          ];
+
+      await tester.pumpApp(
+        client,
+        Column(children: [
+          HookBuilder(builder: (context) {
+            combinedBuilds++;
+            final combined = useCombinedQueries(
+              queries(),
+              (values) {
+                combinerRuns++;
+                return values.first;
+              },
+              keys: const [],
+            );
+            return Text('combined: ${combined.dataOrNull}');
+          }),
+          HookBuilder(builder: (context) {
+            listBuilds++;
+            final results = useQueries(queries());
+            return Text('list: ${results.map((r) => r.dataOrNull).join(',')}');
+          }),
+        ]),
+      );
+      await advance(tester, 6);
+      expect(find.text('combined: a'), findsOneWidget);
+      expect(find.text('list: a,b'), findsOneWidget);
+      final combinedBefore = combinedBuilds;
+      final listBefore = listBuilds;
+      final runsBefore = combinerRuns;
+
+      client.setQueryData<String>(keyB, 'b2');
+      await advance(tester, 0);
+
+      expect(find.text('list: a,b2'), findsOneWidget);
+      expect(listBuilds, listBefore + 1);
+      expect(combinerRuns, runsBefore + 1);
+      expect(combinedBuilds, combinedBefore);
+
+      client.setQueryData<String>(keyA, 'a2');
+      await advance(tester, 0);
+
+      expect(find.text('combined: a2'), findsOneWidget);
+      expect(combinedBuilds, combinedBefore + 1);
+    });
+
+    // A second angle on H-01: the combination is data, and both sources'
+    // background refetches failed. `CombinedData` compares only the first
+    // refetch error, so repairing the second source leaves it equal, while
+    // `retry` now acts on the first source alone.
+    hookTest('a repaired refetch error behind equal data rebuilds once',
+        (tester, client) async {
+      final keyA = queryKey();
+      final keyB = queryKey();
+      var fetchesA = 0;
+      var fetchesB = 0;
+      var builds = 0;
+      final built = <CombinedResult<String>>[];
+      client
+        ..setQueryData<String>(keyA, 'a')
+        ..setQueryData<String>(keyB, 'b');
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          builds++;
+          final combined = useCombinedQueries(
+            [
+              QueryObserverOptions<String>(
+                queryKey: keyA,
+                queryFn: (_) {
+                  fetchesA++;
+                  return sleep(5).then((_) => throw StateError('a'));
+                },
+                retry: RetryPolicy.never,
+              ),
+              QueryObserverOptions<String>(
+                queryKey: keyB,
+                queryFn: (_) {
+                  fetchesB++;
+                  return sleep(5).then((_) => throw StateError('b'));
+                },
+                retry: RetryPolicy.never,
+              ),
+            ],
+            (values) => values.join(','),
+            keys: const [],
+          );
+          built.add(combined);
+          return TextButton(
+            onPressed: combined.retry,
+            child: const Text('retry'),
+          );
+        }),
+      );
+      await advance(tester, 6);
+      final before = built.last;
+      expect(before.dataOrNull, 'a,b');
+      expect(
+        (before as CombinedData<String>).refetchError,
+        isA<StateError>().having((e) => e.message, 'message', 'a'),
+      );
+      expect((fetchesA, fetchesB), (1, 1));
+      final buildsBefore = builds;
+
+      client.setQueryData<String>(keyB, 'b');
+      await advance(tester, 0);
+
+      // The value did not move ...
+      expect(built.last, before);
+      // ... but what `retry` acts on did, so the hook rebuilt.
+      expect(builds, buildsBefore + 1);
+
+      await click(tester, 'retry');
+      await advance(tester, 6);
+      expect((fetchesA, fetchesB), (2, 1),
+          reason: 'retry refetched the repaired source');
+    });
+
+    // `buildWhen` compares values; when only the actions moved there is
+    // nothing for it to compare, so the hook rebuilds without asking it —
+    // here a `buildWhen` that would have said no.
+    hookTest('a move in the actions alone does not ask buildWhen',
+        (tester, client) async {
+      final keyA = queryKey();
+      final keyB = queryKey();
+      var builds = 0;
+      final asked = <(CombinedResult<String>, CombinedResult<String>)>[];
+      final built = <CombinedResult<String>>[];
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          builds++;
+          final combined = useCombinedQueries(
+            [
+              QueryObserverOptions<String>(
+                queryKey: keyA,
+                queryFn: (_) => sleep(5).then((_) => throw StateError('a')),
+                retry: RetryPolicy.never,
+              ),
+              QueryObserverOptions<String>(
+                queryKey: keyB,
+                queryFn: (_) => sleep(5).then((_) => throw StateError('b')),
+                retry: RetryPolicy.never,
+              ),
+            ],
+            (values) => values.join(','),
+            keys: const [],
+            buildWhen: (previous, current) {
+              asked.add((previous, current));
+              return previous.runtimeType != current.runtimeType;
+            },
+          );
+          built.add(combined);
+          return const SizedBox();
+        }),
+      );
+      await advance(tester, 6);
+      final before = built.last;
+      expect(before, isA<CombinedError<String>>());
+      expect(before.isFetching, isFalse);
+      final buildsBefore = builds;
+      final askedBefore = asked.length;
+
+      client.setQueryData<String>(keyB, 'repaired');
+      await advance(tester, 0);
+
+      expect(built.last, before);
+      expect(builds, buildsBefore + 1);
+      expect(asked, hasLength(askedBefore));
+    });
+
+    // Second review, S-2: the combiner runs in the listener too, to compare.
+    // A throw there reached `notifyListeners`, which reported it and built
+    // nothing, so the widget stayed pending and the hook subscribed.
+    hookTest('a combiner that throws on delivered data fails the build',
+        (tester, client) async {
+      final key = queryKey();
+      final failure = StateError('combine failed');
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (_) {
+          final result = useCombinedQueries<String, String, String>(
+            [
+              QueryObserverOptions<String>(
+                queryKey: key,
+                queryFn: (_) => sleep(5).then((_) => 'data'),
+              ),
+            ],
+            (_) => throw failure,
+            keys: const [],
+          );
+          return Text(result.isPending ? 'pending' : 'data');
+        }),
+      );
+      expect(find.text('pending'), findsOneWidget);
+
+      await advance(tester, 6);
+      expect(tester.takeException(), same(failure));
+      await advance(tester, 0);
+
+      // The build threw, so the hook went with it (plan, D13).
+      expect(find.text('pending'), findsNothing);
+      expect(observersOf(client, key), 0);
+    });
+  });
 }

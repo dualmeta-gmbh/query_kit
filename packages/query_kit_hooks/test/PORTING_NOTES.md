@@ -88,7 +88,7 @@ what every call style does. A case changed only in spelling is **ported**.
 | `useQuery.test.tsx`, lines 3601–7096 | `use_query_part2_test.dart` | 63 / 77 | done (AP3) |
 | `useInfiniteQuery.test.tsx` | `use_infinite_query_test.dart` | 2 / 28 | spike selection; AP4 |
 | `useMutation.test.tsx` | `use_mutation_test.dart` | 3 / 61 | spike selection; AP5 |
-| `useQueries.test.tsx` | `use_queries_test.dart` | 3 / 24 | spike selection; AP6 |
+| `useQueries.test.tsx` | `use_queries_test.dart` | 17 / 24 | done (AP6) |
 | `useIsFetching.test.tsx` | `use_is_fetching_test.dart` | 1 / 5 | spike selection; AP7 |
 | `useMutationState.test.tsx` | `use_mutation_state_test.dart` | 1 / 5 | spike selection; AP7 |
 
@@ -183,3 +183,54 @@ GPT-6.1-Sol (reasoning effort xhigh) read the two AP3 commits against upstream, 
 | S-3 (P3) | `controller_hook.dart` carried the plan's decision ids in `///`, and the jargon scan did not know them | Yes | Moved to `//` |
 
 Sol's sparring agreed with the recorder, the split, the omissions other than S-2 and the constant-callback spelling. It held that `advance`'s leading frame maps the driver for 159 but proves no general equivalence of frame cadence, which is all the notes claim.
+
+## `useQueries.test.tsx`
+
+**24 upstream cases: 4 ported, 13 adapted, 7 omitted (AP6, #99).** Upstream's `combine` option is `useCombinedQueries` (D10): a `CombinedResult` that stays pending until every source has data, a combiner over the values, and `keys:` where upstream wraps the combiner in `useCallback`. Pages that pass their own client run without a provider, as upstream's `render(<Page />)` does, which takes both hooks down the provider-less delivery path. No case carries a skip, and the port found no defect in the hooks, the binding or the core.
+
+### Adapted (13)
+
+| Line | Case | What changed, and why |
+|---|---|---|
+| 94 | should track results | **D8, a build count of 3 becomes 4.** `useQueries` takes no `buildWhen`, as `QueriesBuilder` takes none, so upstream's tracked properties have no stand-in, and the refetch's fetching state gets a build of its own. That extra build is asserted as what it is (fetching, data 1); upstream's `results[2]` is `results[3]` |
+| 337 | should combine queries | D10: the `combine` becomes `useCombinedQueries`, the combiner returning a record `(combined, res)`. No assertion changed |
+| 381 | should not return new instances when called without queries | D10: `useCombinedQueries` over an empty list. The effect is keyed on the `CombinedResult`, which compares by value where upstream keys on the identity of a structurally shared object. No assertion changed |
+| 434 | should not have infinite render loops with empty queries (#6645) | **Strengthened, by D8's frame.** React's `render` flushes a render loop before it returns; a Flutter loop shows only in later frames. So the count of 1 is asserted again after `advance(0)`, and upstream's assertion stays where it was |
+| 454 | should only call combine with query results | D10: the combiner gets values, so `values[0]` and `values[1]` stand in for upstream's destructured results. No assertion changed |
+| 490 | should track property access through combine function | **D10, partial (gap table).** Upstream's first three renders (empty, partial, complete) are two here, pending then complete, so `results.length` 3 becomes 2 and its three `toStrictEqual` become `CombinedPending` and the data. The tracked properties are a `buildWhen` on `dataOrNull`. From there on everything is upstream's: `[4, 5, 6]` contains the count (measured 4), the last result holds the new data, and a same-data refetch adds no build |
+| 589 | should synchronously track properties of all observer even if a property (isLoading) is only accessed on one observer (#7000) | D14, a raw `combine`: upstream's reads `isLoading` on the raw results, which a `CombinedResult` does not carry. Its body runs in build over `useQueries`. Through `useCombinedQueries`, source 2's failure would make the result an error, and "loaded" would show for that reason instead of the tracked `isLoading`. No assertion changed |
+| 630 | should not have stale closures with combine (#6648) | D10: the combiner's capture `count` goes into `keys: [count]`, where React re-runs an inline combine on every render. No assertion changed |
+| 674 | should optimize combine if it is a stable reference | **D10: combiner call counts 3/3/4/7 become 1/1/1/3.** The combiner skips pending sources, a same-value refetch adds no call (upstream's invariant), a rebuild adds none (`keys: const []`; upstream's extra call on rerender does not happen), and each source that resolves with a new value adds one |
+| 753 | should re-run combine if the functional reference changes | **D10: counts 3 → 4 become 1 → 2.** `useCallback(fn, [state])` is `keys: [state]` |
+| 871 | should re-render once combine returns a different reference | D10: upstream's combiner returns `'pending'` while a source is pending; here that is `CombinedPending`, and the combiner runs once every source has data. No assertion changed (2 renders) |
+| 926 | should track properties correctly with combine | D10: `'pending'` from the combiner is `CombinedPending`. No assertion changed |
+| 993 | should not re-run stable combine on unrelated re-render | **D10: counts 3/3/3 become 1/1/1.** The combiner skips pending sources; upstream's invariant, no call for an unrelated rebuild, holds |
+
+The ported four: 25 keeps upstream's three builds over the stepped `advance(201)`; 309 passes `client:` with no provider; 1070 keeps its list in `useState`; 1142's identity `combine` is plain `useQueries`, so dropping it is spelling, and the length is asserted on every build.
+
+### Omitted (7)
+
+| Lines | Category | Why |
+|---|---|---|
+| 66 | `subscribed` (D14) | Binding backlog HB-1 |
+| 142, 208, 276 | `throwOnError` and error boundaries (D14) | Errors are data in the result. 276 also throws a falsy error, which Dart cannot do |
+| 817 | a raw `combine` (D14, #82) | The combiner returns `'foo'` on the first render. A `CombinedResult` is pending first, so the case would need two builds where upstream asserts one |
+| 1195, 1251 | `isRestoring` (D14) | No persister |
+
+### What the port measured
+
+- **The inventory was too cautious again.** 25 and 1070, marked A, are plain ports. Its predicted counts for 674 (1/1/1/2) are wrong: the second refetch brings new values for both sources, at 10 and 20 ms, which is two combiner runs, so 1/1/1/3.
+- **The acceptance criteria** live in `hook_specifics_test.dart`, group "AP6": a source change that leaves the combination equal adds no build (and one the combiner reads adds exactly one); a change only in what `retry` acts on adds one build, both as H-01 in `review_reproductions_test.dart` and as a repaired refetch error behind equal data; and that change does not ask `buildWhen`.
+- **The suite has teeth.** Four faults put into `use_queries.dart`, over the port, the AP6 group and `review_reproductions_test.dart` (37 tests): the combined gate on the value alone turns 3 red, no `setQueries` on later builds 2, the combiner's `keys` ignored 2, the gate ignored 3. Under the last, no plain-`useQueries` case goes red: `QueriesController`'s own `NotifyGate` already drops a notification that carries nothing.
+
+### Second review
+
+GPT-6.1-Sol (xhigh) compared all 17 Dart cases with upstream, found no unsupported weakening, and agreed with the accounting. Three findings, each reproduced:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S-1 (P2) | A `buildWhen` that declines a value change made together with a change in what `retry` acts on keeps the stale `retry`, which then refetched a repaired query. The porting agent had found the same and left it as the specified rule | Yes: fetches (3, 2) where (3, 1) is right | The rule's, not the hook's: `RebuildRule` asks `buildWhen` whenever the value moved, so a predicate that never sees the half beside the value could still veto it. The AP4 review found the same for an infinite query's paging flags, and the binding's own builders share it. Worked in its own commit, in the binding |
+| S-2 (P2) | A combiner that throws on delivered data threw in the listener, where `notifyListeners` reported it and built nothing: the widget stayed pending, the hook subscribed | Yes | `ControllerHookState` builds when reading the value throws, so the build throws it again where Flutter reports a build's errors and D13 disposes the hook, as upstream's render would throw. A case in the AP6 group |
+| S-3 (P2) | This file had no AP6 section | — | This section; the porting agent's notes were outside the repository by design |
+
+Sol's sparring agreed with 589, the provider-less pages, `keys:` for `useCallback`, 490's partial port and the extra H-01 angles. It disagreed on 94: a list-level `buildWhen` could compare data without knowing which query moved, so the build count is a missing capability rather than the frame. Kept: `QueriesBuilder` takes no `buildWhen` either, and a list predicate would be new API in both packages; it is a candidate for the binding's backlog. On 434 it asked that the strengthening cite the decision whose gap it closes, which the row above now does.

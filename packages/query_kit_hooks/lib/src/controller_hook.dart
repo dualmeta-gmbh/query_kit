@@ -74,10 +74,25 @@ abstract base class ControllerHookState<R, T, C extends ChangeNotifier,
     // disposed builds nothing, even while the element stays mounted (plan,
     // D5 rule 5).
     final rule = _rule;
-    if (rule == null || !rule.shouldRebuild(hook.buildWhen)) {
+    final controller = _controller;
+    if (rule == null || controller == null) {
       return;
     }
-    if (context.mounted) {
+    try {
+      valueOf(controller);
+    } on Object {
+      // The value itself throws: a combiner that fails, say. Thrown here, it
+      // would reach `notifyListeners`, which reports it and builds nothing,
+      // so the widget would go on showing what it built. Build instead: the
+      // build's read throws it again, where Flutter reports a build's errors
+      // and a throw in build disposes this hook (plan, D13), as upstream's
+      // render would throw it.
+      if (context.mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    if (rule.shouldRebuild(hook.buildWhen) && context.mounted) {
       setState(() {});
     }
   }

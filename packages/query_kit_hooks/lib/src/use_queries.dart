@@ -9,21 +9,36 @@ import 'controller_hook.dart';
 /// Observes every query in [queries] and returns their results, in order —
 /// `QueriesBuilder` as a hook. No `buildWhen`, as there: a predicate over
 /// the whole list cannot say which query moved.
+///
+/// Rebuilds when a result changes, or when a result's `refetch` now acts on
+/// another query. A different list on a later build — longer, shorter or
+/// reordered — updates the same hook: each key that stays keeps its
+/// observer, so reordering starts no request.
 List<QueryResult<TData>> useQueries<TQueryData, TData>(
   List<QueryObserverOptionsBase<TQueryData, TData>> queries, {
   QueryClient? client,
 }) =>
     use(_QueriesHook<TQueryData, TData>(queries, client: client));
 
+// `keys` is required: review P3-9 (plan, D10).
+
 /// Observes every query in [queries] and returns what they amount to
-/// together, by `combine`'s rules (`CombinedResult`) — and rebuilds only
-/// when that changes, or when what its `retry`/`refetch` would act on does.
+/// together, by the rules of [CombinedResult]: pending until every query has
+/// data, an error when one failed with nothing to show, otherwise
+/// [combiner]'s result over the values in order.
+///
+/// Rebuilds only when that result changes, or when what its `retry` and
+/// `refetch` act on does — a query repaired behind an unchanged error, say.
+/// [buildWhen] is asked about the first and not the second: when only the
+/// actions moved, there is no new value to compare, and the old actions
+/// would act on the wrong queries. When [buildWhen] declines a change, the
+/// widget keeps the result it built, and that result's actions with it.
 ///
 /// [combiner] must be a function of the values and of [keys] alone, as with
-/// a `CombineMemo`: it runs again only when a value or a key changed, not on
+/// a [CombineMemo]: it runs again only when a value or a key changed, not on
 /// every build as an inline `combine` does in React. So [keys] is required —
 /// `const []` for a combiner that captures nothing from the build, the
-/// captured values otherwise (review P3-9), as `useMemoized` spells it.
+/// captured values otherwise, as `useMemoized` spells it.
 CombinedResult<R> useCombinedQueries<TQueryData, TData, R>(
   List<QueryObserverOptionsBase<TQueryData, TData>> queries,
   R Function(List<TData> values) combiner, {
