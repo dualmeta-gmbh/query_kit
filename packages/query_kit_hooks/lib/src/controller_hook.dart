@@ -67,6 +67,9 @@ abstract base class ControllerHookState<R, T, C extends ChangeNotifier,
   }
 
   void _onChanged() {
+    // Null once `_release` ran: a delivery still on its way when the hook was
+    // disposed builds nothing, even while the element stays mounted (plan,
+    // D5 rule 5).
     final rule = _rule;
     if (rule == null || !rule.shouldRebuild(hook.buildWhen)) {
       return;

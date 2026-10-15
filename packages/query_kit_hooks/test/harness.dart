@@ -103,18 +103,54 @@ int observersOf(QueryClient client, QueryKey key) =>
 /// Upstream's `sleep(ms)`.
 Future<void> sleep(int ms) => Future<void>.delayed(Duration(milliseconds: ms));
 
-/// Upstream's `vi.advanceTimersByTimeAsync(ms)`, stepped: one frame per
-/// millisecond of fake time, so every timer that fires gets a frame of its
-/// own — React renders after each macrotask; `tester.pump(d)` would elapse
-/// all of [ms] first and build once (plan, D8).
+/// Upstream's `vi.advanceTimersByTimeAsync(ms)`, stepped (plan, D8): React
+/// renders after each macrotask, while `tester.pump(d)` would elapse all of
+/// [ms] first and build once.
+///
+/// - A frame before any time passes, for what microtasks already raised, as
+///   `act` renders it before the first timer. Without it, a failure delivered
+///   in a microtask and a 1 ms retry's failure share one frame (case 159).
+/// - Then one frame per millisecond, so every timer that fires gets a frame
+///   of its own.
 Future<void> advance(WidgetTester tester, int ms) async {
-  if (ms == 0) {
-    await tester.pump(Duration.zero);
-    return;
-  }
+  await tester.pump(Duration.zero);
   for (var i = 0; i < ms; i++) {
     await tester.pump(const Duration(milliseconds: 1));
   }
+}
+
+/// `act(() => window.dispatchEvent(new Event('visibilitychange')))`: a focus
+/// event, and the frame `act` renders. The refetch it starts runs after an
+/// await in the client's focus handler, so the frame is needed.
+Future<void> focusWindow(WidgetTester tester, QueryClient client) async {
+  client.focusManager.onFocus();
+  await tester.pump();
+}
+
+/// Upstream's `queryClient.prefetchQuery(…)`, or `query(…).catch(noop)`.
+Future<void> prefetch<T>(QueryClient client, QueryOptions<T> options) =>
+    client.query(options).then<void>((_) {}, onError: (Object _) {});
+
+/// Upstream's `setState` inside a `useEffect`. `flutter_hooks` runs an
+/// effect inside `build`, where a state change to the element being built is
+/// dropped, so it lands after the frame instead, and costs a pump.
+void afterFrame(VoidCallback callback) =>
+    WidgetsBinding.instance.addPostFrameCallback((_) => callback());
+
+/// Upstream's `vi.spyOn(window, 'setTimeout')` around [body]: the duration
+/// of every timer [body] creates, in order.
+Future<List<Duration>> timersCreatedBy(Future<void> Function() body) async {
+  final created = <Duration>[];
+  await runZoned(
+    body,
+    zoneSpecification: ZoneSpecification(
+      createTimer: (self, parent, zone, duration, f) {
+        created.add(duration);
+        return parent.createTimer(zone, duration, f);
+      },
+    ),
+  );
+  return created;
 }
 
 /// A tap, and the frame it asks for — `fireEvent.click`, which React

@@ -444,6 +444,15 @@ begründete Auslassung.
     scheitern 2 von 21 useQuery-Fällen (1932, 4100). Gestaffelt scheitert
     keiner, und keine Zählung musste sich ändern. Die einzige geänderte
     Zählung ist 490, durch D10 gewollt.
+  - **Nachgetragen in AP3:** `advance` baut zusätzlich einen Frame, bevor
+    Zeit vergeht. `act` rendert, was Microtasks schon angestoßen haben,
+    vor dem ersten Timer. Ohne diesen Frame teilten sich in Fall 159 eine
+    per Microtask zugestellte Ausfallmeldung und der Ausfall eines
+    1-ms-Retrys einen Frame. Mit ihm hält 159 die drei Builds von upstream,
+    und keine andere Zählung im Paket ändert sich. Über alle 155 Fälle
+    bleibt eine einzige geänderte Zählung: 4291. Dort landen ein
+    nachgereichtes `setState` aus einem Effekt und synchrone Daten im
+    selben Frame.
   - Weicht eine Zählung trotz Staffelung ab, wird die Assertion angepasst
     und in den `PORTING_NOTES` begründet. Das Hook-Verhalten wird dafür
     nicht verbogen.
@@ -858,7 +867,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     0.21.2 auf, trotz 0.21.3+1 im Lockfile. Hooks 45 und Bindung 308 sind
     grün. CI selbst läuft erst mit einem Push.
 
-### AP3 — `useQuery`, `useSelectQuery` und die Portierung von `useQuery.test.tsx`
+### AP3 — `useQuery`, `useSelectQuery` und die Portierung von `useQuery.test.tsx` — **erledigt**
 
 - **Inhalt:** Die Hooks auf `RebuildRule` aus `adapter.dart` (D4). Die
   Suite wird in zwei Dateien portiert, entlang der Teilung der Inventur bei
@@ -869,6 +878,32 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     Hooks und nach dem letzten Hook, mit einem Abruf, der das Signal
     benutzt.
   - Die Spike-Fälle laufen gegen die endgültigen Hooks.
+- **Ergebnis, gemessen:**
+  - **155 Fälle:** 122 portiert, 11 angepasst, 22 ausgelassen. Kein
+    Defekt in Hooks, Bindung oder Kern, und kein Fall übersprungen.
+  - Angepasst sind:
+    - sechs `notifyOnChangeProps`-Fälle, die zu `buildWhen` werden, ohne
+      geänderte Assertion
+    - 4291 (D8)
+    - 4912, 6495 und 7004 (D14)
+    - 4189, verschärft, weil upstreams Assertion nichts prüft
+  - Ausgelassen sind 22 Fälle, alle nach D14 oder der Lückentabelle.
+    Einzeln stehen sie in den `PORTING_NOTES` des Pakets.
+  - Die Inventur war vorsichtiger als nötig: 38 ihrer 43 A-Fälle sind hier
+    unverändert portiert.
+  - Zwei ihrer Notizen waren falsch:
+    - Einen `setTimeout`-Spion gibt es doch, als Zone-`createTimer`.
+    - In 5546 bricht upstream ab, ob das Signal gelesen wurde oder nicht.
+  - Der Harness nutzt `HookBuilder` und einen `Recorder` (Builds und
+    zugestellte Ergebnisse getrennt).
+  - Der Takt ist um einen führenden Frame korrigiert (D8, nachgetragen).
+  - Gegenprobe mit eingebauten Fehlern im Hook:
+    - Rebuild-Regel ignoriert: 18 von 133 Fällen rot.
+    - Kein `setOptions` bei späteren Builds: 26 rot.
+    - Controller nicht entsorgt: in den Ports 0 rot, in
+      `hook_specifics_test.dart` 1 rot. Die Bindung meldet beim letzten
+      Listener ohnehin ab.
+  - Das Paket hat jetzt 160 Tests.
 
 ### AP4 — `useInfiniteQuery`
 
@@ -961,8 +996,8 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
 
 **Reihenfolge:**
 
-- AP0, AP1 und AP2 sind erledigt.
-- Danach AP3. Die übrigen Hooks bauen auf seinem Muster auf.
+- AP0, AP1, AP2 und AP3 sind erledigt.
+- Die übrigen Hooks bauen auf dem Muster von AP3 auf, auch auf seinem Harness.
 - AP4 bis AP8 sind voneinander unabhängig.
 - AP9 und AP10, sobald die Hooks stehen.
 - Dann AP11, dann AP12.
