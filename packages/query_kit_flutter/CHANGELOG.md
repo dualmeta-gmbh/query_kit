@@ -9,7 +9,14 @@
   listens to nothing. Apps do not need it, and the main library is
   unchanged.
 - The four call styles now make that decision through `RebuildRule`. Their
-  behaviour does not change.
+  behaviour does not change, but for the fix below.
+- Fixed: a `buildWhen` on an infinite query that declined a change of the
+  result also held back a change of the paging flags made with it. A refetch
+  that kept the data and found no next page left "Load more" on screen while
+  `hasNextPage` was `false`. A move of the paging flags now rebuilds without
+  asking `buildWhen`, whether the result moved with it or not, in
+  `InfiniteQueryBuilder`, `context.infiniteQuery` and `watchInfiniteQuery`.
+  `RebuildRule` takes that part as `beside`.
 
 ## 1.0.3
 

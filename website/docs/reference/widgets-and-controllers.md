@@ -175,7 +175,7 @@ the call site; inference reads all three off the options.
 |---|---|---|---|
 | `options` | [`InfiniteQueryObserverOptionsBase<TPageData, TPageParam, TData>`](https://pub.dev/documentation/query_kit/latest/query_kit/InfiniteQueryObserverOptionsBase-class.html) (`InfiniteQueryObserverOptions` or `InfiniteQuerySelectOptions`) | required | Key, page function and paging functions. Re-applied whenever the parent rebuilds this widget. |
 | `builder` | `Widget Function(BuildContext context, InfiniteQueryController<TPageData, TPageParam, TData> query)` | required | Given the controller, not a bare result: the pages are in `query.value`, paging is `query.fetchNextPage` and its siblings. |
-| `buildWhen` | `BuildWhen<QueryResult<TData>>?` | `null` | Compares the controller's results. A change of the paging flags alone rebuilds regardless. |
+| `buildWhen` | `BuildWhen<QueryResult<TData>>?` | `null` | Compares the controller's results. A change of the paging flags rebuilds regardless, with the result or without it. |
 | `client` | `QueryClient?` | `null` | As for `QueryBuilder`. TanStack: the hook's `queryClient` argument. |
 | `key` | `Key?` | `null` | The widget's key. |
 

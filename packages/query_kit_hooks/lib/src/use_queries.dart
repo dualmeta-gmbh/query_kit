@@ -29,10 +29,11 @@ List<QueryResult<TData>> useQueries<TQueryData, TData>(
 ///
 /// Rebuilds only when that result changes, or when what its `retry` and
 /// `refetch` act on does — a query repaired behind an unchanged error, say.
-/// [buildWhen] is asked about the first and not the second: when only the
-/// actions moved, there is no new value to compare, and the old actions
-/// would act on the wrong queries. When [buildWhen] declines a change, the
-/// widget keeps the result it built, and that result's actions with it.
+/// [buildWhen] is asked about the first and not the second: when the
+/// actions moved, with the result or without it, the widget rebuilds
+/// unasked, because the old actions would act on the wrong queries. When
+/// [buildWhen] declines a change of the result alone, the widget keeps the
+/// result it built.
 ///
 /// [combiner] must be a function of the values and of [keys] alone, as with
 /// a [CombineMemo]: it runs again only when a value or a key changed, not on
@@ -160,16 +161,18 @@ final class _CombinedQueriesHookState<TQueryData, TData, R>
       controller.value
           .combine(hook.combiner, memo: _memo, keys: hook.combineKeys);
 
-  /// The combination, and beside it what `retry` and `refetch` act on: which
-  /// sources are in error, and each source's refetch target.
+  /// The combination, and beside it what `retry` and `refetch` act on.
   @override
-  Object? observedStateOf(QueriesController<TQueryData, TData> controller) => (
-        valueOf(controller),
-        _Sources([
-          for (final source in controller.value)
-            (source.isError, source.refetch),
-        ]),
-      );
+  Object? observedStateOf(QueriesController<TQueryData, TData> controller) =>
+      (valueOf(controller), besideOf(controller));
+
+  /// Which sources are in error, and each source's refetch target: what
+  /// `retry` and `refetch` act on, and `buildWhen` never sees.
+  @override
+  Object? besideOf(QueriesController<TQueryData, TData> controller) =>
+      _Sources([
+        for (final source in controller.value) (source.isError, source.refetch),
+      ]);
 
   @override
   CombinedResult<R> result(

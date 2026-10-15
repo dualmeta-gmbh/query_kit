@@ -65,14 +65,32 @@ final class RebuildRule<T> {
   /// direction leaves the result untouched — so its observed state is
   /// `InfiniteQueryController.observedState`, the result and the flags
   /// together.
+  ///
+  /// [beside] is the part of [observedState] that is not in [value], when
+  /// there is one: for an infinite query, the paging flags alone. A reader
+  /// shows it, but `buildWhen` compares values and never sees it, so when it
+  /// moves the reader rebuilds whatever `buildWhen` says of the value. Leave
+  /// it out where the observed state is the value, or the value under an
+  /// equality of its own.
+  ///
+  /// ```dart
+  /// final rule = RebuildRule<QueryResult<Post>>(
+  ///   value: () => feed.value,
+  ///   observedState: () => (feed.value, feed.hasNextPage),
+  ///   beside: () => feed.hasNextPage,
+  /// );
+  /// ```
   RebuildRule({
     required T Function() value,
     required Object? Function() observedState,
+    Object? Function()? beside,
   })  : _value = value,
-        _observedState = observedState;
+        _observedState = observedState,
+        _beside = beside;
 
   final T Function() _value;
   final Object? Function() _observedState;
+  final Object? Function()? _beside;
 
   /// The value the last build read, valid while [_recorded].
   late T _built;
@@ -84,10 +102,14 @@ final class RebuildRule<T> {
   /// What the observed state was when [_built] was recorded.
   Object? _builtState;
 
+  /// What [_beside] was when [_built] was recorded.
+  Object? _builtBeside;
+
   /// Reads the current value and records it as this build's, together with
-  /// the observed state beside it.
+  /// the observed state and what is beside the value.
   T read() {
     _builtState = _observedState();
+    _builtBeside = _beside?.call();
     _recorded = true;
     return _built = _value();
   }
@@ -101,8 +123,11 @@ final class RebuildRule<T> {
   ///   subscribe started the fetch, and the observer's notification about
   ///   that very fetch arrives after the frame — a rebuild with nothing new
   ///   in it. Results carry value equality, so "nothing new" is `==`.
-  /// * Only the half beside the value moved: yes. There is nothing for
-  ///   [buildWhen] to compare, and the reader is showing the stale half.
+  /// * What is beside the value moved, with the value or without it: yes,
+  ///   before [buildWhen] is asked. It cannot judge what it is not shown,
+  ///   and a "no" would leave the reader showing the stale half — "Load
+  ///   more" with no next page. Without a `beside`, the same holds when the
+  ///   observed state moved and the value is equal.
   /// * Otherwise, as [buildWhen] says; with none, yes.
   bool shouldRebuild(BuildWhen<T>? buildWhen) {
     if (!_recorded) {
@@ -110,6 +135,10 @@ final class RebuildRule<T> {
     }
     if (_observedState() == _builtState) {
       return false;
+    }
+    final beside = _beside;
+    if (beside != null && beside() != _builtBeside) {
+      return true;
     }
     final current = _value();
     if (current == _built) {

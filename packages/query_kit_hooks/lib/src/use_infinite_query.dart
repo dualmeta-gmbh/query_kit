@@ -40,10 +40,10 @@ import 'controller_hook.dart';
 /// checks `context.mounted` first.
 ///
 /// [buildWhen] compares results, as it does for `context.infiniteQuery` and
-/// `InfiniteQueryBuilder`. A fetch that moves only the paging flags — one
-/// that switches direction leaves the result equal — rebuilds without
-/// asking it: there is nothing in a result for it to compare, and the
-/// widget would go on showing the old flags.
+/// `InfiniteQueryBuilder`. A fetch that moves the paging flags rebuilds
+/// without asking it, whether the result moved too or not: it never sees
+/// the flags, and a "no" would leave the widget showing the old ones —
+/// "Load more" with no next page.
 ///
 /// [client] is used instead of the nearest `QueryClientProvider`'s.
 InfiniteQueryController<TPageData, TPageParam, TData>
@@ -94,6 +94,18 @@ final class _InfiniteQueryHookState<TPageData, TPageParam, TData>
   Object? observedStateOf(
           InfiniteQueryController<TPageData, TPageParam, TData> controller) =>
       controller.observedState;
+
+  @override
+  Object? besideOf(
+          InfiniteQueryController<TPageData, TPageParam, TData> controller) =>
+      (
+        controller.isFetchingNextPage,
+        controller.isFetchingPreviousPage,
+        controller.isFetchNextPageError,
+        controller.isFetchPreviousPageError,
+        controller.hasNextPage,
+        controller.hasPreviousPage,
+      );
 
   @override
   InfiniteQueryController<TPageData, TPageParam, TData> result(

@@ -38,6 +38,12 @@ Object? observedStateOf(ValueListenable<Object?> controller) =>
         ? (controller as ObservedState).observedState
         : controller.value;
 
+/// What [observedStateOf] holds beside [controller]'s value, which a reader
+/// shows and a `buildWhen` over values never sees: an infinite query's
+/// paging flags. `null` for every other controller.
+Object? besideOf(ValueListenable<Object?> controller) =>
+    controller is InfiniteQueryController ? controller._paging : null;
+
 /// One query, as a [ValueListenable] of its [QueryResult].
 ///
 /// One of the four equal ways to read a query; the others are
@@ -322,8 +328,10 @@ class InfiniteQueryController<TPageData, TPageParam, TData>
   /// opposite directions leave the result equal, so without the flags the
   /// reading styles would filter the change out.
   @override
-  Object? get observedState => (
-        value,
+  Object? get observedState => (value, _paging);
+
+  /// The paging flags: [observedState] beside the result.
+  Object? get _paging => (
         infiniteObserver.isFetchingNextPage,
         infiniteObserver.isFetchingPreviousPage,
         infiniteObserver.isFetchNextPageError,

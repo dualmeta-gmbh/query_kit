@@ -285,6 +285,13 @@ begründete Auslassung.
   - `ObservedState` und `observedStateOf` braucht kein Hook.
   - Die Fläche von `adapter.dart` ist damit genau eine Klasse:
     `RebuildRule<T>` mit `read()` und `shouldRebuild(buildWhen)`.
+- **Nachtrag (zweite Reviews von AP4 und AP6):** `RebuildRule` nimmt
+  optional eine dritte Closure, `beside`: den Teil des beobachteten
+  Zustands neben dem Wert, beim Infinite-Hook die Paging-Flags, bei
+  `useCombinedQueries` das, worauf `retry` und `refetch` wirken. Bewegt er
+  sich, wird ohne `buildWhen` neu gebaut, auch wenn der Wert sich mit
+  bewegt hat. Vorher hielt ein ablehnendes `buildWhen` ihn mit zurück, in
+  den Hooks wie in den Infinite-Lesern der Bindung.
 - **Warum:**
   - Die Rebuild-Regel ist der Teil der Bindung, an dem die meisten
     Review-Befunde hingen (C49, V-B-1 bis V5). Zwei Kopien laufen
@@ -933,7 +940,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Ein `buildWhen`, das eine Änderung des Ergebnisses ablehnt, hält eine
     gleichzeitige Änderung der Flags zurück: „Load more“ bleibt stehen,
     obwohl `hasNextPage` falsch ist. Derselbe Fehler der Regel wie bei
-    AP6; eigener Commit in der Bindung.
+    AP6; behoben in der Bindung mit `RebuildRule.beside` (Nachtrag zu D4).
   - Der `PORTING_NOTES`-Abschnitt fehlte; er steht jetzt dort.
   - Aus dem Sparring: Die Dartdoc sagt jetzt, dass ein gehaltenes
     `fetchNextPage` nach einem Key-Wechsel den neuen Key lädt und nach dem
@@ -989,7 +996,8 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Ein `buildWhen`, das eine Wertänderung ablehnt, hielt eine gleichzeitige
     Änderung dessen zurück, worauf `retry` wirkt. Das ist ein Fehler der
     Regel in `RebuildRule`, nicht des Hooks; AP4s Review fand ihn auch für
-    die Paging-Flags. Eigener Commit in der Bindung.
+    die Paging-Flags. Behoben in der Bindung mit `RebuildRule.beside`
+    (Nachtrag zu D4).
   - Ein Combiner, der auf zugestellten Daten wirft, warf im Listener; das
     Widget blieb `pending`. Jetzt baut der Hook neu, und der Build wirft
     (D13).

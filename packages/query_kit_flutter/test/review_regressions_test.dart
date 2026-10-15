@@ -1616,7 +1616,7 @@ void main() {
     // without naming the interface. Read from the source: Flutter has no
     // `dart:mirrors`, and the positive half — every name a consumer may
     // write — is this file's import compiling.
-    test('ObservedState and observedStateOf are not exported', () {
+    test('ObservedState, observedStateOf and besideOf are not exported', () {
       final barrel = File('lib/query_kit_flutter.dart').readAsStringSync();
       Set<String> hidden(String file) {
         final export =
@@ -1629,7 +1629,8 @@ void main() {
             : list.split(',').map((name) => name.trim()).toSet();
       }
 
-      expect(hidden('query_controller'), {'ObservedState', 'observedStateOf'});
+      expect(hidden('query_controller'),
+          {'ObservedState', 'besideOf', 'observedStateOf'});
       expect(hidden('query_context'), {'QueryScope', 'QueryScopeElement'});
       // Reads the barrel through dart:io: excluded from the browser run.
     }, tags: 'vm-only');
@@ -4347,4 +4348,111 @@ void _releaseReview20260923() {
       expect(tester.takeException(), isA<FlutterError>());
     });
   });
+  // Map #92's second reviews (hooks AP4 and AP6, S-1): `RebuildRule` asked
+  // `buildWhen` whenever the result moved, so a predicate over results could
+  // decline a change of the paging flags made in the same notification. A
+  // refetch that keeps the selected data and finds no next page left "Load
+  // more" on screen while the controller said `hasNextPage == false`. The
+  // flags are now `beside` the result, and their move rebuilds unasked.
+  group('map #92: a declined result does not hold back the paging flags', () {
+    for (final (style, reader) in <(String, _FlagsReader)>[
+      (
+        'InfiniteQueryBuilder',
+        (options, buildWhen, onBuild) => InfiniteQueryBuilder(
+              options: options,
+              buildWhen: buildWhen,
+              builder: (_, feed) => onBuild(feed),
+            ),
+      ),
+      ('context.infiniteQuery', _FlagsContextReader.new),
+      ('QueryMixin.watchInfiniteQuery', _FlagsMixinReader.new),
+    ]) {
+      queryWidgetTest('$style shows hasNextPage moving with a declined result',
+          (tester, client) async {
+        late InfiniteQueryController<_FlagsPage, int, String> feed;
+        var builds = 0;
+        var asked = 0;
+
+        await tester.pumpWidget(app(
+          client,
+          reader(
+            InfiniteQuerySelectOptions<_FlagsPage, int, String>(
+              queryKey: QueryKey(<Object?>['map92', style]),
+              pageFn: (_) async => (text: 'same', next: null),
+              initialPageParam: 0,
+              initialData: InitialData.value(InfiniteData(
+                pages: [(text: 'same', next: 1)],
+                pageParams: [0],
+              )),
+              staleTime: StaleTime.infinite,
+              select: (data) => data.pages.first.text,
+              getNextPageParam: (page, _, __, ___) => page.next,
+            ),
+            (previous, current) {
+              asked++;
+              return previous.dataOrNull != current.dataOrNull;
+            },
+            (controller) {
+              feed = controller;
+              builds++;
+              return Text(controller.hasNextPage ? 'Load more' : 'End');
+            },
+          ),
+        ));
+        expect(find.text('Load more'), findsOneWidget);
+
+        await feed.refetch();
+        await tester.pump();
+
+        expect(feed.value.dataOrNull, 'same');
+        expect(feed.hasNextPage, isFalse);
+        expect(find.text('End'), findsOneWidget);
+        // The refetch's start moved the result alone, and was declined; its
+        // end moved the flags with it, and was not asked about.
+        expect(builds, 2);
+        expect(asked, 1);
+      }, createClient: newClient);
+    }
+  });
+}
+
+typedef _FlagsPage = ({String text, int? next});
+
+/// One infinite reading style with a `buildWhen`, its builds handed to
+/// [onBuild].
+typedef _FlagsReader = Widget Function(
+  InfiniteQuerySelectOptions<_FlagsPage, int, String> options,
+  BuildWhen<QueryResult<String>> buildWhen,
+  Widget Function(InfiniteQueryController<_FlagsPage, int, String>) onBuild,
+);
+
+class _FlagsContextReader extends StatelessWidget {
+  const _FlagsContextReader(this.options, this.buildWhen, this.onBuild);
+
+  final InfiniteQuerySelectOptions<_FlagsPage, int, String> options;
+  final BuildWhen<QueryResult<String>> buildWhen;
+  final Widget Function(InfiniteQueryController<_FlagsPage, int, String>)
+      onBuild;
+
+  @override
+  Widget build(BuildContext context) =>
+      onBuild(context.infiniteQuery(options, buildWhen: buildWhen));
+}
+
+class _FlagsMixinReader extends StatefulWidget {
+  const _FlagsMixinReader(this.options, this.buildWhen, this.onBuild);
+
+  final InfiniteQuerySelectOptions<_FlagsPage, int, String> options;
+  final BuildWhen<QueryResult<String>> buildWhen;
+  final Widget Function(InfiniteQueryController<_FlagsPage, int, String>)
+      onBuild;
+
+  @override
+  State<_FlagsMixinReader> createState() => _FlagsMixinReaderState();
+}
+
+class _FlagsMixinReaderState extends State<_FlagsMixinReader> with QueryMixin {
+  @override
+  Widget build(BuildContext context) => widget
+      .onBuild(watchInfiniteQuery(widget.options, buildWhen: widget.buildWhen));
 }

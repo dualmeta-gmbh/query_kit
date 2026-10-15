@@ -28,9 +28,11 @@ map with many markers.
 - Press *Drop a post*. It writes a shorter list straight into the cache, so
   the data changed and all eight query rows go up by one, filtered ones
   included; they read `posts=29` or `count=29`.
-- Press *Load next* in the infinite card. The plain rows go up by two, the
-  filtered rows by one: the fetch starting changes only `fetchStatus`, the
-  new page is a real change.
+- Press *Load next* in the infinite card. Every row goes up by two,
+  filtered or not: the fetch starting moves `isFetchingNextPage`, a paging
+  flag that a predicate over results never sees, so it rebuilds without
+  asking; the new page is a real change. *Refetch the pages* moves no
+  paging flag, and there the filtered rows stay where they were.
 - Press *Run the mutation*. The plain mutation rows go up by two (pending,
   then success) and the filtered ones by one, since the pending result
   carries no data.

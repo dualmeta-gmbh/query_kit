@@ -6747,3 +6747,66 @@ get` resolves 0.21.2 anyway, and there the hooks' 45 tests and the binding's
 
 **Counts after:** hooks **45** VM / **45** browser / **45** floor; binding
 **308** VM / **308** floor.
+
+### `RebuildRule.beside` — a declined result held back the paging flags (AP4 and AP6, second reviews)
+
+**What was wrong.** `RebuildRule` asked `buildWhen` whenever the value moved,
+and its "rebuild unasked" branch covered only a move of the half beside the
+value *alone*. So a predicate over results could decline a notification that
+moved the result and the paging flags together, and the flags went with it.
+Reproduced through all three infinite call styles: an `InfiniteQueryBuilder`,
+`context.infiniteQuery` and `watchInfiniteQuery` over a select, with
+`buildWhen: (p, c) => p.dataOrNull != c.dataOrNull`, and a refetch that keeps
+the selected text but finds no next page. The controller says `hasNextPage ==
+false`; the screen kept "Load more", one build, the predicate asked twice. The
+hooks' `useCombinedQueries` had the same flaw for what `retry` acts on: a
+declined fetch of one source held back the repair of another, and `retry`
+refetched the repaired one.
+
+**Options.**
+- Narrow the documentation to "a move of the flags *alone*" and leave the rule.
+  That is a trap: a refetch moves the result's `dataUpdatedAt` whenever it
+  moves `hasNextPage`.
+- Let `buildWhen` see the flags, a predicate over `(result, flags)`. That is a
+  new public type, and a predicate written for one style no longer fits the
+  others.
+- **Chosen: tell the rule which part is beside the value.** `RebuildRule`
+  takes an optional third closure, `beside`. When it moved, the reader
+  rebuilds before `buildWhen` is asked, whether the value moved with it or
+  not. `ReadEntry` passes the hidden `besideOf(controller)`: an infinite
+  query's six paging flags, `null` for every other controller. A rule
+  without `beside` keeps its old fallback, which still rebuilds when the
+  observed state moved and the value is equal.
+
+**Evidence.**
+- `adapter_test.dart` gains six cases:
+  - `beside` moved with the value;
+  - `beside` moved alone;
+  - `beside` where it was;
+  - `beside` moved and back;
+  - no `beside` with both halves moved;
+  - a read recording `beside` anew.
+- `review_regressions_test.dart` gains "map #92: a declined result does not
+  hold back the paging flags", one case per infinite call style. All three
+  go red with `beside` taken out of `ReadEntry`.
+- `besideOf` joins `ObservedState` and `observedStateOf` behind the barrel's
+  `hide`, and C23.7's test checks it.
+- No existing binding test changed. "buildWhen on every builder" still holds:
+  a refetch moves no flag there, so its predicate still decides.
+- **The showcase taught the defect.** Its `build-when` screen said `Load
+  next` was one build for a filtered infinite reader and two for a plain
+  one, because the page fetch starting "moves only `fetchStatus`". It moves
+  `isFetchingNextPage` too, and the filtered reader swallowed it. A reader
+  showing a spinner from that flag would never have shown it. Now `Load
+  next` is two builds for both halves. The screen's text, its widget test,
+  its Playwright spec and the site's example page say so. `Refetch the
+  pages` moves no flag, and there the predicate still answers. The cost is
+  one build per page fetch for a filtered reader that shows no flag; the
+  binding cannot tell which readers show one.
+- The hooks pass `beside` from `ControllerHookState.besideOf`: the flags for
+  `useInfiniteQuery`, and for `useCombinedQueries` which sources are in error
+  and their refetch targets. Their `PORTING_NOTES` record the two hook
+  regressions.
+
+**Counts after:** binding **317** VM; hooks **315** VM; showcase **256**
+widget tests, the same count, one of them changed.

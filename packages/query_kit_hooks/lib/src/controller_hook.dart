@@ -42,9 +42,16 @@ abstract base class ControllerHookState<R, T, C extends ChangeNotifier,
   @protected
   T valueOf(C controller);
 
-  /// What the controller observes beside its value; the value by default.
+  /// Everything a reader can see of the controller, as one value with value
+  /// equality; the value by default.
   @protected
   Object? observedStateOf(C controller) => valueOf(controller);
+
+  /// The part of [observedStateOf] that is not in the value, which
+  /// `buildWhen` never sees and so cannot decline: an infinite query's
+  /// paging flags. `null`, nothing, by default.
+  @protected
+  Object? besideOf(C controller) => null;
 
   /// What the hook returns, given the controller and the value just read.
   @protected
@@ -61,6 +68,7 @@ abstract base class ControllerHookState<R, T, C extends ChangeNotifier,
       _rule = RebuildRule<T>(
         value: () => valueOf(created),
         observedState: () => observedStateOf(created),
+        beside: () => besideOf(created),
       );
       created.addListener(_onChanged);
     } else {

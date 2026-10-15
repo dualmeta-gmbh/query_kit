@@ -123,6 +123,7 @@ export 'src/queries_controller.dart';
 export 'src/query_builder.dart';
 export 'src/query_client_provider.dart';
 export 'src/query_context.dart' hide QueryScope, QueryScopeElement;
-export 'src/query_controller.dart' hide ObservedState, observedStateOf;
+export 'src/query_controller.dart'
+    hide ObservedState, besideOf, observedStateOf;
 export 'src/query_listener.dart';
 export 'src/query_mixin.dart';

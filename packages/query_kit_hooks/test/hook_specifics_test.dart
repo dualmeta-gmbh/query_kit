@@ -1794,7 +1794,10 @@ void main() {
         // The direction switched, the result did not: no question asked.
         '[0] next=false prev=true',
         '[-1, 0] next=false prev=false',
-        'asked 3',
+        // Every delivery here moves a flag — the first page brings
+        // `hasNextPage`, each fetch its own — so none asks, whether the
+        // result moved with it or not.
+        'asked 0',
       ]);
     });
 
@@ -1827,6 +1830,116 @@ void main() {
       expect(hooked, hasLength(6));
       expect(built, hooked);
       expect(read, hooked);
+    });
+  });
+  // What `buildWhen` never sees rebuilds unasked, whether the value moved
+  // with it or not: the paging flags beside an infinite query's result, and
+  // what a combination's `retry` and `refetch` act on. A predicate that
+  // declined the value used to hold them back with it.
+  group('a declined value does not hold back what is beside it', () {
+    hookTest('useInfiniteQuery: hasNextPage moves with a declined result',
+        (tester, client) async {
+      late InfiniteQueryController<({String text, int? next}), int, String>
+          feed;
+      var builds = 0;
+      var asked = 0;
+      final options =
+          InfiniteQuerySelectOptions<({String text, int? next}), int, String>(
+        queryKey: queryKey(),
+        // The refetch finds the same text, and no page after it.
+        pageFn: (_) => sleep(10).then((_) => (text: 'same', next: null)),
+        initialPageParam: 0,
+        initialData: InitialData.value(
+          InfiniteData(pages: [(text: 'same', next: 1)], pageParams: [0]),
+        ),
+        staleTime: StaleTime.infinite,
+        select: (data) => data.pages.first.text,
+        getNextPageParam: (page, _, __, ___) => page.next,
+      );
+
+      await tester.pumpApp(client, HookBuilder(builder: (context) {
+        builds++;
+        feed = useInfiniteQuery(options, buildWhen: (previous, current) {
+          asked++;
+          return previous.dataOrNull != current.dataOrNull;
+        });
+        return Text(feed.hasNextPage ? 'Load more' : 'End');
+      }));
+      expect(find.text('Load more'), findsOneWidget);
+
+      feed.refetch().ignore();
+      await advance(tester, 11);
+
+      expect(feed.value.dataOrNull, 'same');
+      expect(feed.hasNextPage, isFalse);
+      expect(find.text('End'), findsOneWidget);
+      // The refetch's start moved the result alone and was declined; its end
+      // moved `hasNextPage` with it and was not asked about.
+      expect(builds, 2);
+      expect(asked, 1);
+    });
+
+    hookTest('useCombinedQueries: retry acts on the queries still in error',
+        (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+      var fetchesA = 0;
+      var fetchesB = 0;
+      client
+        ..setQueryData<String>(a, 'a')
+        ..setQueryData<String>(b, 'b');
+      late CombinedResult<String> built;
+
+      await tester.pumpApp(client, HookBuilder(builder: (_) {
+        built = useCombinedQueries(
+          [
+            QueryObserverOptions<String>(
+              queryKey: a,
+              queryFn: (_) {
+                fetchesA++;
+                return sleep(5).then((_) => throw StateError('a'));
+              },
+              retry: RetryPolicy.never,
+            ),
+            QueryObserverOptions<String>(
+              queryKey: b,
+              queryFn: (_) {
+                fetchesB++;
+                return sleep(5).then((_) => throw StateError('b'));
+              },
+              retry: RetryPolicy.never,
+            ),
+          ],
+          (values) => values.join(','),
+          keys: const [],
+          // The data, and which kind of refetch error is shown; not the
+          // fetching flags.
+          buildWhen: (previous, current) =>
+              previous.dataOrNull != current.dataOrNull ||
+              (previous as CombinedData<String>).refetchError?.runtimeType !=
+                  (current as CombinedData<String>).refetchError?.runtimeType,
+        );
+        return TextButton(onPressed: built.retry, child: const Text('retry'));
+      }));
+      await advance(tester, 6);
+      expect((built as CombinedData<String>).refetchError,
+          isA<StateError>().having((e) => e.message, 'message', 'a'));
+      expect((fetchesA, fetchesB), (1, 1));
+
+      // In one notification, A starts fetching (declined: the same data,
+      // the same kind of error) while B is repaired behind it (what `retry`
+      // acts on moved).
+      client
+        ..refetchQueries(filters: QueryFilters(queryKey: a)).ignore()
+        ..setQueryData<String>(b, 'b');
+      await advance(tester, 6);
+      expect((fetchesA, fetchesB), (2, 1));
+      expect(client.getQueryState<String>(b)!.error, isNull);
+
+      await click(tester, 'retry');
+      await advance(tester, 6);
+      // A held-back `retry` refetched the repaired B too: (3, 2).
+      expect((fetchesA, fetchesB), (3, 1));
     });
   });
 }

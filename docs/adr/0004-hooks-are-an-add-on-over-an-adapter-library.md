@@ -17,17 +17,27 @@ that measured both is `docs/research/hooks-spike.md`.
 ## The seam: `RebuildRule`, alone, in `package:query_kit_flutter/adapter.dart`
 
 Every call style rebuilds a reader only for a notification carrying something
-it is not already showing, and asks `buildWhen` only when the value moved.
+it is not already showing, and asks `buildWhen` only when the value moved and
+nothing the predicate cannot see moved with it.
 That decision is where most of the binding's review findings hung (C49,
 V-B-1 to V5). A hook owes its reader the same guarantee, so it must make the
 same decision.
 
 The binding exports it as one class that owns nothing: `RebuildRule<T>`
-takes two closures — the controller's value and the state observed beside it
-— and answers `read()` and `shouldRebuild(buildWhen)`. The binding's
-internal `ReadEntry` keeps the subscription and the controller's ownership,
-and delegates the decision to that class. There is one rule, not a copy per
-package.
+takes closures over the controller's value, over everything a reader can see
+of it, and, optionally, over the part of that beside the value — an infinite
+query's paging flags — and answers `read()` and `shouldRebuild(buildWhen)`.
+The binding's internal `ReadEntry` keeps the subscription and the
+controller's ownership, and delegates the decision to that class. There is
+one rule, not a copy per package.
+
+The third closure, `beside`, came after this record was first accepted. The
+hooks' second reviews found that a `buildWhen` declining a change of the value
+also held back a change beside it made in the same notification: "Load more"
+stayed on screen with no next page, and a combination's `retry` refetched a
+query already repaired. The binding's own infinite readers had the same flaw.
+A move beside the value now rebuilds unasked, in every call style and every
+hook, because one class decides it.
 
 It lives in a library of its own, `adapter.dart`, not in the barrel. An app
 never needs it; an adapter package does, and its dartdoc says so.

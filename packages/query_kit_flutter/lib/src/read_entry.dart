@@ -45,10 +45,12 @@ class ReadEntry<T> {
 
   /// The decision, over the controller's value and [observedStateOf] it: the
   /// result for every controller but an infinite query's, which keeps its
-  /// paging flags beside the result.
+  /// paging flags beside the result — [besideOf] it, so a `buildWhen` that
+  /// declines the result cannot hold them back.
   late final RebuildRule<T> _rule = RebuildRule(
     value: () => controller.value,
     observedState: () => observedStateOf(controller),
+    beside: () => besideOf(controller),
   );
 
   /// The predicate the last build handed over, asked once the value is known

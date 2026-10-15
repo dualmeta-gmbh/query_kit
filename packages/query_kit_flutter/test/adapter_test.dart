@@ -18,6 +18,13 @@ class _Source {
         value: () => value,
         observedState: () => (value, flag),
       );
+
+  /// The same, saying which half is beside the value.
+  RebuildRule<int> ruleWithBeside() => RebuildRule(
+        value: () => value,
+        observedState: () => (value, flag),
+        beside: () => flag,
+      );
 }
 
 void main() {
@@ -136,5 +143,85 @@ void main() {
 
     expect(rule.read(), 1);
     expect(rule.shouldRebuild(null), isFalse);
+  });
+
+  test('beside moved with the value: rebuilds, buildWhen unasked', () {
+    final source = _Source();
+    final rule = source.ruleWithBeside()..read();
+    var asked = false;
+
+    source
+      ..value = 1
+      ..flag = true;
+
+    expect(
+      rule.shouldRebuild((_, __) {
+        asked = true;
+        return false;
+      }),
+      isTrue,
+    );
+    expect(asked, isFalse);
+  });
+
+  test('beside moved alone: rebuilds, buildWhen unasked', () {
+    final source = _Source();
+    final rule = source.ruleWithBeside()..read();
+    var asked = false;
+
+    source.flag = true;
+
+    expect(
+      rule.shouldRebuild((_, __) {
+        asked = true;
+        return false;
+      }),
+      isTrue,
+    );
+    expect(asked, isFalse);
+  });
+
+  test('beside where it was: a moved value is buildWhen\'s', () {
+    final source = _Source();
+    final rule = source.ruleWithBeside()..read();
+
+    source.value = 1;
+
+    expect(rule.shouldRebuild((_, __) => false), isFalse);
+    expect(rule.shouldRebuild((_, __) => true), isTrue);
+  });
+
+  test('beside moved and back is equal again', () {
+    final source = _Source();
+    final rule = source.ruleWithBeside()..read();
+
+    source
+      ..flag = true
+      ..flag = false;
+
+    expect(rule.shouldRebuild((_, __) => true), isFalse);
+  });
+
+  test('without beside, buildWhen decides when both halves moved', () {
+    final source = _Source();
+    final rule = source.rule()..read();
+
+    source
+      ..value = 1
+      ..flag = true;
+
+    expect(rule.shouldRebuild((_, __) => false), isFalse);
+  });
+
+  test('a read records beside anew', () {
+    final source = _Source();
+    final rule = source.ruleWithBeside()..read();
+
+    source.flag = true;
+    expect(rule.shouldRebuild((_, __) => false), isTrue);
+
+    rule.read();
+    source.value = 1;
+    expect(rule.shouldRebuild((_, __) => false), isFalse);
   });
 }

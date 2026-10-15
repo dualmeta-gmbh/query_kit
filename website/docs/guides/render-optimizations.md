@@ -100,9 +100,10 @@ it was built.
 
 An equal result is skipped before the predicate is even asked, so `buildWhen`
 only ever sees a real change. The one exception is an infinite query, whose
-paging flags live beside the result: a fetch that moves only those rebuilds
-regardless, because there is nothing there for a predicate over results to
-compare and the reader is showing the stale half.
+paging flags live beside the result: a fetch that moves them rebuilds
+regardless, whether the result moved with them or not. A predicate over
+results never sees the flags, and a "no" would leave "Load more" on screen
+with no next page to load.
 
 ### On a mutation
 
