@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:query_kit_flutter/adapter.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
 import 'controller_hook.dart';
@@ -59,8 +60,9 @@ final class _QueryHookState<TQueryData, TData> extends ControllerHookState<
       controller.value;
 
   @override
-  Object? observedStateOf(QueryController<TQueryData, TData> controller) =>
-      controller.observedState;
+  RebuildRule<QueryResult<TData>> ruleOf(
+          QueryController<TQueryData, TData> controller) =>
+      RebuildRule.of(controller);
 
   @override
   QueryResult<TData> result(

@@ -6,8 +6,10 @@
   `RebuildRule`: the decision every call style makes about whether a
   notification is worth a rebuild, for packages that read queries in a shape
   of their own, such as `query_kit_hooks`. It owns no controller and
-  listens to nothing. Apps do not need it, and the main library is
-  unchanged.
+  listens to nothing. `RebuildRule.of(controller)` is the rule the call
+  styles use for one of the binding's controllers, and `BuildWhen`, the
+  predicate it asks, is exported with it. Apps do not need the library, and
+  the main library is unchanged.
 - The four call styles now make that decision through `RebuildRule`. Their
   behaviour does not change, but for the fix below.
 - Fixed: a `buildWhen` on an infinite query that declined a change of the

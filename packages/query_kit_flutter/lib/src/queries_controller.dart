@@ -38,6 +38,12 @@ import 'notify_gate.dart';
 /// Listeners are told only when a result changed, compared element by
 /// element.
 ///
+/// Every query in the list has the one data type `TQueryData`. A list of two
+/// types still compiles: Dart infers their common supertype, `Object` for a
+/// `String` and an `int`, and the cache entries are created as that, so any
+/// typed read of one of those keys then throws `QueryDataTypeError`. For
+/// queries of different types, read each one and combine their results.
+///
 /// {@category Collections}
 class QueriesController<TQueryData, TData> extends ChangeNotifier
     implements ValueListenable<List<QueryResult<TData>>> {

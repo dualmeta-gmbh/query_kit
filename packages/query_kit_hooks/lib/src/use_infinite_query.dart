@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:query_kit_flutter/adapter.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
 import 'controller_hook.dart';
@@ -90,22 +91,12 @@ final class _InfiniteQueryHookState<TPageData, TPageParam, TData>
           InfiniteQueryController<TPageData, TPageParam, TData> controller) =>
       controller.value;
 
+  /// The binding's rule, whose `beside` is the paging flags: a move of one
+  /// rebuilds whatever `buildWhen` says of the result.
   @override
-  Object? observedStateOf(
+  RebuildRule<QueryResult<TData>> ruleOf(
           InfiniteQueryController<TPageData, TPageParam, TData> controller) =>
-      controller.observedState;
-
-  @override
-  Object? besideOf(
-          InfiniteQueryController<TPageData, TPageParam, TData> controller) =>
-      (
-        controller.isFetchingNextPage,
-        controller.isFetchingPreviousPage,
-        controller.isFetchNextPageError,
-        controller.isFetchPreviousPageError,
-        controller.hasNextPage,
-        controller.hasPreviousPage,
-      );
+      RebuildRule.of(controller);
 
   @override
   InfiniteQueryController<TPageData, TPageParam, TData> result(

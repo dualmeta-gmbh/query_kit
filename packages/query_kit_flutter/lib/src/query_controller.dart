@@ -102,8 +102,9 @@ class QueryController<TQueryData, TData> extends ChangeNotifier
           _debugDataTypeIsAnchored<TData>(),
           'QueryController<$TQueryData, $TData>: the data type is a top type '
           '($TData) — give the options a queryFn whose return type names it, '
-          'or an explicit type argument (QueryController.create<Task>(…), '
-          'QueryBuilder<Task>(…)).',
+          'or an explicit type argument, on the options '
+          '(QueryObserverOptions<Task>(…)) or where the query is read '
+          '(QueryBuilder<Task>(…), QueryController.create<Task>(…)).',
         ),
         _observer = QueryObserver<TQueryData, TData>(client, options),
         _options = options;

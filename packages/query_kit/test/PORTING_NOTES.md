@@ -6857,3 +6857,41 @@ From the sparring:
   That is left to the maintainer.
 
 **Counts after the review:** hooks **316** VM.
+
+### The hooks' deep-dive review — what it changed in the binding (AP11)
+
+Two independent reviews of the whole hooks package read `adapter.dart` as the
+contract binding 1.1.0 will publish: GPT-6-Astra via the Codex CLI at xhigh,
+and Fable 5.1. The hooks package's PORTING_NOTES has the full record; here is
+what changed in the binding, each finding reproduced first.
+
+- **A-1 (P2): a `value` that threw left `RebuildRule.read()` half
+  recorded.** The observed state and `beside` were stored before the value
+  was read. After a failed first read, `shouldRebuild` threw a
+  `LateInitializationError`. After a failed later read, it answered `false`
+  for a value no build had shown. The binding's own readers never met it,
+  because a controller's `value` does not throw, but an adapter's closures
+  may. `read()` now reads all three before it records any. Two cases in
+  `adapter_test.dart`, both red without the fix.
+- **F-2 (P3): `adapter.dart` did not export `BuildWhen`,** the type
+  `shouldRebuild` takes. It does now. An adapter_test case spells it with
+  `adapter.dart` as the only import of the binding.
+- **F-3 (P3): the hooks copied the infinite controller's paging flags as
+  their `beside`.** A hooks release resolves against any binding of the same
+  major, so a flag a later binding added would be missing from the copy.
+  `RebuildRule.of(controller)` is the rule the call styles use for a
+  controller, built from the binding's own `observedStateOf` and `besideOf`.
+  `ReadEntry` now uses it, and so do the hooks over a single controller.
+  With the binding's `besideOf` switched off, three hooks cases go red, so
+  the hooks no longer carry a copy. ADR-0004 has a paragraph on it.
+- **F-4 (P3): the top-type assertion named only the binding's spellings as
+  the remedy.** It now names the options' type argument first,
+  `QueryObserverOptions<Task>(…)`, which every call style and every hook
+  takes.
+- **F-1 (P2), in the docs only:** a list of queries of two data types
+  infers `Object`, and its entries are created as `Object` entries.
+  `QueriesBuilder` and `QueriesController` now say so in their dartdoc. A
+  debug check needs a member on the core's options, so it is the backlog's
+  HB-4.
+
+**Counts after the fixes:** binding **320**.

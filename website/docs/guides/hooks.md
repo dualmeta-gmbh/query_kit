@@ -202,6 +202,13 @@ changes, or when a result's `refetch` now acts on another query. A different
 list on a later build updates the same hook: a key that stays keeps its
 observer, so reordering starts no request.
 
+One data type is a rule, not a default. A list of a `String` query and an
+`int` query still compiles, as `Object`, and creates both cache entries as
+`Object`, so every typed reader of those keys then throws
+`QueryDataTypeError`. Where React Query types each query of the list on its
+own, read queries of different types with a `useQuery` each, and combine the
+results with `(a, b).combine(…)`.
+
 ```dart snippet="prose-only: its twin is in query_kit_hooks, which no example may depend on" twin="guides/hooks.md#use-combined-queries"
 final matching = useCombinedQueries(
   [for (final id in ids) taskQuery(id)],

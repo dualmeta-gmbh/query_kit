@@ -2667,6 +2667,68 @@ void main() {
     expect(find.text('Error test'), findsOneWidget);
   });
 
+  // useQuery.test.tsx:2814 — `throwOnError: true` is dropped (plan, D14):
+  // errors are data in the result. The query succeeds, so upstream's
+  // boundary never runs, and what is left is the case's point: a build that
+  // reads nothing of the result still gets the data.
+  hookTest(
+      'should update with data if we observe no properties and throwOnError',
+      (tester, client) async {
+    final key = queryKey();
+    QueryResult<String>? result;
+
+    await tester.pumpApp(
+      client,
+      HookBuilder(builder: (context) {
+        final query = useQuery(QueryObserverOptions<String>(
+          queryKey: key,
+          queryFn: (_) => Future.value('data'),
+        ));
+
+        useEffect(() {
+          result = query;
+          return null;
+        });
+
+        return const SizedBox();
+      }),
+    );
+
+    await advance(tester, 0);
+    expect(client.isFetching(), 0);
+
+    expect(result?.dataOrNull, 'data');
+  });
+
+  // useQuery.test.tsx:2841 — `throwOnError: (err) => err.message !==
+  // 'Local Error'` is dropped (plan, D14). For this case's error it answers
+  // `false`, so upstream's boundary never runs: 6923's mapping.
+  hookTest(
+      'should set status to error instead of throwing when error should not '
+      'be thrown', (tester, client) async {
+    final key = queryKey();
+
+    await tester.pumpApp(
+      client,
+      HookBuilder(builder: (context) {
+        final result = useQuery(QueryObserverOptions<String>(
+          queryKey: key,
+          queryFn: (_) => Future<String>.error(StateError('Local Error')),
+          retry: RetryPolicy.never,
+        ));
+
+        return Column(children: [
+          Text(result.status.name),
+          Text(_message(result.errorOrNull) ?? ''),
+        ]);
+      }),
+    );
+
+    await advance(tester, 0);
+    expect(find.text('error'), findsOneWidget);
+    expect(find.text('Local Error'), findsOneWidget);
+  });
+
   // useQuery.test.tsx:2917
   hookTest(
       'should continue retries when observers unmount and remount while '

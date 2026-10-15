@@ -1978,4 +1978,57 @@ void main() {
       expect((afterStart, builds, asked), (2, 3, 0));
     });
   });
+
+  // What `useQueries` documents for a list of two data types, the trap the
+  // deep-dive review found (F-1): the list compiles as `Object`, and its
+  // entries are `Object` entries. A debug check is the binding's backlog
+  // item HB-4; until it lands, these two say what a user meets.
+  group('a list of queries of two data types', () {
+    List<QueryObserverOptions<Object>> mixed(QueryKey a, QueryKey b) => [
+          QueryObserverOptions<String>(
+              queryKey: a, queryFn: (_) => sleep(1).then((_) => 'a')),
+          QueryObserverOptions<int>(
+              queryKey: b, queryFn: (_) => sleep(1).then((_) => 1)),
+        ];
+
+    hookTest('creates its entries as Object, and a typed read then throws',
+        (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+      final shown = <Object?>[];
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          final results = useQueries(mixed(a, b));
+          shown
+            ..clear()
+            ..addAll([for (final result in results) result.dataOrNull]);
+          return const SizedBox();
+        }),
+      );
+      await advance(tester, 2);
+
+      expect(shown, ['a', 1]);
+      expect(() => client.getQueryData<String>(a),
+          throwsA(isA<QueryDataTypeError>()));
+    });
+
+    hookTest('throws in build where a typed reader created an entry first',
+        (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+      client.setQueryData<String>(a, 'a');
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          useQueries(mixed(a, b));
+          return const SizedBox();
+        }),
+      );
+
+      expect(tester.takeException(), isA<QueryDataTypeError>());
+    });
+  });
 }

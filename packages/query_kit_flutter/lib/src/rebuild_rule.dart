@@ -9,7 +9,11 @@
 /// package such as `query_kit_hooks` share it rather than copy it.
 library;
 
-// Exported alone by `adapter.dart`: ADR-0004 (map #92, D4).
+// Exported by `adapter.dart`, with `BuildWhen`: ADR-0004 (map #92, D4).
+
+import 'package:flutter/foundation.dart';
+
+import 'query_controller.dart';
 
 /// Whether a reader should rebuild for a change from [previous] to [current]
 /// — the `buildWhen` every call style takes.
@@ -42,10 +46,7 @@ typedef BuildWhen<T> = bool Function(T previous, T current);
 /// listener.
 ///
 /// ```dart
-/// final rule = RebuildRule<QueryResult<Task>>(
-///   value: () => controller.value,
-///   observedState: () => controller.value,
-/// );
+/// final rule = RebuildRule.of(controller);
 ///
 /// // In the build:
 /// final result = rule.read();
@@ -53,6 +54,11 @@ typedef BuildWhen<T> = bool Function(T previous, T current);
 /// // In the listener:
 /// if (rule.shouldRebuild(buildWhen)) markNeedsBuild();
 /// ```
+///
+/// [RebuildRule.of] is the rule the call styles use for one of the binding's
+/// controllers. A reading shape of its own — several controllers' results
+/// under an equality of its own, say — gives the parts one by one to the
+/// unnamed constructor.
 ///
 /// A change to this class is a major version of `query_kit_flutter`.
 final class RebuildRule<T> {
@@ -88,6 +94,22 @@ final class RebuildRule<T> {
         _observedState = observedState,
         _beside = beside;
 
+  /// The rule the call styles use for [controller]: its value, everything a
+  /// reader can see of it, and the part of that beside the value — for an
+  /// `InfiniteQueryController`, the paging flags.
+  ///
+  /// An adapter over the binding's controllers takes this one rather than
+  /// spelling the parts out, so whatever a later version of the binding
+  /// shows beside a controller's value is in its readers' rule too. It reads
+  /// [controller] and nothing more: the caller still listens to it and
+  /// disposes it.
+  RebuildRule.of(ValueListenable<T> controller)
+      : this(
+          value: () => controller.value,
+          observedState: () => observedStateOf(controller),
+          beside: () => besideOf(controller),
+        );
+
   final T Function() _value;
   final Object? Function() _observedState;
   final Object? Function()? _beside;
@@ -107,11 +129,17 @@ final class RebuildRule<T> {
 
   /// Reads the current value and records it as this build's, together with
   /// the observed state and what is beside the value.
+  ///
+  /// All three are read before any is recorded, so a read that throws leaves
+  /// the last one standing, and nothing it did not finish counts as built.
   T read() {
-    _builtState = _observedState();
-    _builtBeside = _beside?.call();
+    final Object? state = _observedState();
+    final Object? beside = _beside?.call();
+    final T value = _value();
+    _builtState = state;
+    _builtBeside = beside;
     _recorded = true;
-    return _built = _value();
+    return _built = value;
   }
 
   /// Whether what the controller holds now is worth a frame, given what

@@ -1136,6 +1136,26 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Danach frische Verifikationsdurchgänge über die Fixes, bis ein Durchgang
     keinen neuen Fehler findet.
 - **Akzeptanz:** Die `PORTING_NOTES` haben einen Abschnitt je Durchgang.
+- **Vorgezogen (Christian, 2026-10-15):** Die Review-Runde lief vor AP10.
+  Das Ticket schließt trotzdem erst nach AP10: Ändert AP10 etwas in `lib/`,
+  muss der letzte Verifikationsdurchgang das mit abdecken.
+- **Erster Durchgang (Astra über die Codex CLI auf xhigh, Fable 5.1), auf
+  `bc9e9f5`:** sechs Befunde, kein P1, alle reproduziert.
+  - A-1: `RebuildRule.read()` speicherte halb, wenn `value` warf. Behoben
+    in der Bindung.
+  - A-2: 2814 und 2841 sind ohne `throwOnError` portierbar und jetzt
+    angepasst (D14).
+  - F-1: Eine Liste mit zwei Datentypen wird zu `Object`, und ihre
+    Einträge sind `Object`-Einträge. Dokumentiert an jeder Listen-API. Eine
+    Debug-Prüfung braucht ein Feld an den Optionen des Kerns und ist
+    deshalb Backlog HB-4.
+  - F-2: `adapter.dart` exportiert jetzt auch `BuildWhen`.
+  - F-3: `RebuildRule.of(controller)` ist die Regel der Bindung für einen
+    Controller. Die Hooks kopieren die Paging-Flags nicht mehr. Fable
+    schlug vor, `observedStateOf` und `besideOf` zu exportieren; ein
+    Konstruktor hält die Fläche bei der Regel (D4, ADR-0004).
+  - F-4: Die Top-Type-Meldung nennt das Typargument an den Optionen.
+  - Hooks 332, Bindung 320.
 
 ### AP12 — Release: `query_kit_hooks` 0.1.0 und `query_kit_flutter` 1.1.0
 

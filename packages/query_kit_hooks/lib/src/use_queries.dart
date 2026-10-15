@@ -14,6 +14,14 @@ import 'controller_hook.dart';
 /// another query. A different list on a later build — longer, shorter or
 /// reordered — updates the same hook: each key that stays keeps its
 /// observer, so reordering starts no request.
+///
+/// Every query in [queries] has the one data type [TQueryData]. A list of
+/// two types still compiles: Dart infers their common supertype, `Object`
+/// for a `String` and an `int`, and the cache entries are created as that,
+/// so any typed read of one of those keys — a `useQuery` of `String`, a
+/// `getQueryData<String>` — then throws `QueryDataTypeError`. For queries of
+/// different types, use a `useQuery` each and combine the results with
+/// `(a, b).combine(…)`.
 List<QueryResult<TData>> useQueries<TQueryData, TData>(
   List<QueryObserverOptionsBase<TQueryData, TData>> queries, {
   QueryClient? client,
@@ -40,6 +48,10 @@ List<QueryResult<TData>> useQueries<TQueryData, TData>(
 /// every build as an inline `combine` does in React. So [keys] is required —
 /// `const []` for a combiner that captures nothing from the build, the
 /// captured values otherwise, as `useMemoized` spells it.
+///
+/// The queries share one data type, as with [useQueries], and a list of two
+/// types springs the same trap there: its entries are created as the common
+/// supertype.
 CombinedResult<R> useCombinedQueries<TQueryData, TData, R>(
   List<QueryObserverOptionsBase<TQueryData, TData>> queries,
   R Function(List<TData> values) combiner, {

@@ -9,10 +9,11 @@
 /// give: nothing rebuilds for a notification carrying what the reader is
 /// already showing.
 ///
-/// [RebuildRule] is that decision and nothing else. It owns no controller and
-/// listens to nothing, so the adapter keeps the controller's lifetime and the
-/// subscription in its own hands, and the binding's call styles use the same
-/// rule rather than a copy.
+/// [RebuildRule] is that decision and nothing else, and [BuildWhen] the
+/// predicate it asks. It owns no controller and listens to nothing, so the
+/// adapter keeps the controller's lifetime and the subscription in its own
+/// hands, and the binding's call styles use the same rule rather than a
+/// copy: [RebuildRule.of] is theirs for a given controller.
 ///
 /// ```dart
 /// import 'package:query_kit_flutter/adapter.dart';
@@ -25,4 +26,4 @@ library;
 
 // Why a separate library, and why only the rule: ADR-0004 (map #92, D4).
 
-export 'src/rebuild_rule.dart' show RebuildRule;
+export 'src/rebuild_rule.dart' show BuildWhen, RebuildRule;

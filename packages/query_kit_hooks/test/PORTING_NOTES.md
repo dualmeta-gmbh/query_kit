@@ -84,7 +84,7 @@ what every call style does. A case changed only in spelling is **ported**.
 
 | Upstream suite | Dart file | Cases | State |
 |---|---|---|---|
-| `useQuery.test.tsx`, lines 1–3600 | `use_query_part1_test.dart` | 72 / 78 | done (AP3) |
+| `useQuery.test.tsx`, lines 1–3600 | `use_query_part1_test.dart` | 74 / 78 | done (AP3) |
 | `useQuery.test.tsx`, lines 3601–7096 | `use_query_part2_test.dart` | 63 / 77 | done (AP3) |
 | `useInfiniteQuery.test.tsx` | `use_infinite_query_test.dart` | 28 / 28 | done (AP4) |
 | `useMutation.test.tsx` | `use_mutation_test.dart` | 55 / 61 | done (AP5) |
@@ -146,14 +146,14 @@ below the four call styles.
 
 ## `useQuery.test.tsx`
 
-**155 upstream cases: 122 ported, 13 adapted, 20 omitted (AP3, #96).** Every
+**155 upstream cases: 122 ported, 15 adapted, 18 omitted (AP3, #96; two adapted since, by the deep-dive review).** Every
 case not listed below is **ported**: upstream's scenario and assertions, in
 Dart spelling. Upstream's nested `describe`s are `group`s:
 `notifyOnChangeProps` › `function` in part 1, and the three `networkMode`
 groups in part 2. No case carries a skip, and the port found no defect in the
 hooks, the binding or the core.
 
-### Adapted (13)
+### Adapted (15)
 
 | Line | Case | What changed, and why |
 |---|---|---|
@@ -163,6 +163,8 @@ hooks, the binding or the core.
 | 2055 | notifyOnChangeProps › should not re-render when it should only re-render on data changes and the data did not change | As 2016 |
 | 2109 | notifyOnChangeProps › function › should not re-render when it should only re-render on data changes and the data did not change | The function form is the same `buildWhen` predicate. No assertion changed |
 | 2159 | notifyOnChangeProps › function › should not re-render when change props are not actively being tracked | The callback that answers from a ref is a `useCallback` `buildWhen` that answers from a `useRef` flag. Builds 2, 2, 4 as upstream; `delivered` holds all five observer transitions in upstream's order |
+| 2814 | should update with data if we observe no properties and throwOnError | D14: `throwOnError: true` is dropped. The query succeeds, so upstream's boundary never runs, and the case's point is left: a build that reads nothing of the result still gets the data. The assertions are unchanged. Omitted at first; the deep-dive review (A-2) showed its remainder ports |
+| 2841 | should set status to error instead of throwing when error should not be thrown | D14: the `throwOnError` predicate is dropped. It answers `false` for this case's error, so the boundary never runs: 6923's mapping. The assertions are unchanged. Omitted at first, as 2814 |
 | 4189 | should accept an empty string as query key | **Strengthened, not under D8/D10/D14.** Upstream's `getByText('')` matches an element with no text before and after the fetch, so it checks nothing. The port asserts what the sibling case 4204 asserts for its key: the data's JSON, `[""]`. The inventory prescribed this |
 | 4291 | should use placeholder data even for disabled queries | **D8, a build count of 3 becomes 2.** The effect's `setCount(1)` lands after the first frame (`afterFrame`), and the synchronous query function's data lands before the next frame, so upstream's `states[1]` (placeholder, count 1) and `states[2]` (data, count 1) are one build. `delivered` is `[data]`: the observer's own sequence, placeholder then data, is upstream's. The lost render was a `setCount` render, not a delivery, so no list of deliveries can hold it in either framework. A delay in the query function would keep three builds, but it would change the case |
 | 4912 | should hash query keys that contain bigints given a supported query hash function | D14: there is no `queryKeyHashFn`, because keys compare by `==`. `getQueryCache().get(queryKeyHashFn(key))` becomes `queryCache.find` with an equal key built anew (`BigInt.from(1)`). The asserted value, `'test'`, is unchanged |
@@ -175,11 +177,11 @@ A constant `retryOnMount: () => false` is spelled `retryOnMount: false`
 (4935, 4996, 5056, 6068, 6495). Only 6973 and 7004 inspect or count the
 callback's calls.
 
-### Omitted (20)
+### Omitted (18)
 
 | Lines | Category | Why |
 |---|---|---|
-| 2751, 2785, 2814, 2841, 2873, 6851 | `throwOnError` and error boundaries (D14) | #15: errors are data in the result. 2785 also throws a falsy value, which Dart cannot do. 6851 asserts that a throwing `throwOnError` stops the remount's retry, which needs the boundary |
+| 2751, 2785, 2873, 6851 | `throwOnError` and error boundaries (D14) | #15: errors are data in the result. 2785 also throws a falsy value, which Dart cannot do. 6851 asserts that a throwing `throwOnError` stops the remount's retry, which needs the boundary |
 | 5921, 5966, 6002, 6031 | `subscribed` (D14) | Binding backlog HB-1, for all call styles at once |
 | 6539 | `skipToken` (D14) | With `Enabled.yes` and no `queryFn`, the core fails with `MissingQueryFunctionError` instead of staying `pending`/`idle`. `Enabled.no` serves the purpose, as 6495 shows |
 | 6786 | missing-`queryFn` warning (D14) | The core fails the fetch with `MissingQueryFunctionError`; asserting that would be a different test |
@@ -500,3 +502,50 @@ Sol's sparring:
 - **The map `_expectMatch`.** It agreed.
 - **The controller's `isRefetching`.** It agreed.
 - **The controller's ownership.** It agreed, and asked that the hook say what a retained `fetchNextPage` does: after a key switch it acts on the new key, and after the unmount it still fetches into the cache, with no observer and no build. That is upstream's behaviour too, since an observer's `fetchNextPage` fetches whether anything listens or not. The hook's dartdoc says so now.
+
+## The deep-dive review (AP11)
+
+Christian brought the review round forward (2026-10-15), before AP10's
+example app. Two models reviewed the whole package at `bc9e9f5`, each in its
+own snapshot, with one brief and without the other's results:
+
+- GPT-6-Astra via the Codex CLI, at xhigh;
+- Fable 5.1.
+
+The scope was everything in `lib/`, the binding surface `adapter.dart` will
+publish, the tests as evidence (each reviewer put faults into `lib/`), and
+the shipping files. The lenses, in order: lifecycle under `flutter_hooks`,
+fidelity at the pin, the adapter as a `1.x` contract, rebuild decisions,
+types, the tests as proof, and release readiness.
+
+### First pass
+
+Six findings, no P1, each reproduced before anything changed. The binding's
+share is recorded in the core's PORTING_NOTES, "The hooks' deep-dive review".
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| A-1 (P2) | `RebuildRule.read()` recorded the observed state and `beside` before the value. A `value` that threw left a half-recorded build: a `LateInitializationError` after a failed first read, and `false` from `shouldRebuild` after a failed later one | Yes, with Astra's probe: both red | Fixed in the binding: all three are read before any is recorded. Two cases in the binding's `adapter_test.dart`, red without the fix |
+| A-2 (P2) | 2814 and 2841 were omitted as `throwOnError` cases, but their assertions need no boundary, as 6805 and 6923 before them | Yes: both pass with upstream's assertions, and both go red with the hook's subscription removed | Ported as adapted (D14). `useQuery` is 122 ported, 15 adapted, 18 omitted |
+| F-1 (P2) | A list of a `String` and an `int` query compiles as `Object`, and the collection creates its entries as `Object` entries. A typed reader of one of those keys then throws `QueryDataTypeError`; where a typed reader came first, the list's build throws | Yes, with Fable's probes, both orders | Documented on `useQueries`, `useCombinedQueries`, `QueriesBuilder` and `QueriesController`, in the hooks guide and on the troubleshooting page. Pinned by "a list of queries of two data types" in `hook_specifics_test.dart`. A debug check needs a member on the core's options, `Object` being a legal data type, so it is the binding's backlog item HB-4, for all four styles at once |
+| F-2 (P3) | `adapter.dart` did not export `BuildWhen`, the type `shouldRebuild` takes | Yes: the export list | Exported |
+| F-3 (P3) | `useInfiniteQuery` copied the controller's six paging flags as its `beside`. A hooks release resolves against any later binding of the same major, so a flag that binding added would be missing from the copy | Yes, by reading: the copy, and the barrel hiding `besideOf` | `RebuildRule.of(controller)`, the rule the binding's own readers use, built from the binding's own functions. `useQuery`, `useInfiniteQuery` and `useMutation` take it through `ControllerHookState.ruleOf`. With the binding's `besideOf` switched off, three hooks cases go red. Fable proposed exporting `observedStateOf` and `besideOf`; one constructor keeps the surface to the rule, as ADR-0004 decided, and an adapter needs to know neither name |
+| F-4 (P3) | The top-type assertion offered only `QueryController.create<Task>` and `QueryBuilder<Task>` as remedies, for a hooks user who wrote neither | Yes: the message, printed | It names the options' type argument first, `QueryObserverOptions<Task>(…)`, which every reader takes |
+
+Plan decisions reopened: Astra none. Fable reopened D4 narrowly, for the
+copy of the flags. F-3 answers it with one constructor rather than two more
+exports.
+
+What both checked and found sound: hot reload with a hook's type changed at
+a position, a `GlobalKey` move with a `client:` alone, a client switch,
+nested `HookBuilder`s on one key, deliveries queued before an unmount, all
+39 adapted rows against upstream, inference at ordinary call sites, the
+export list, `pubspec.yaml`, `.pubignore`, the dartdoc (no warnings) and a
+publish dry-run. Faults that the suite caught: Fable's four, from 1 to 28
+red each; Astra's, both new cases red without a subscription.
+
+Not checked by either: the browser and the floor runs, the example app
+(AP10, not yet built), and release-mode scheduling.
+
+**Counts after the first pass:** hooks **332**, binding **320**. A fresh
+verification pass over these fixes follows.

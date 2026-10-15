@@ -48,10 +48,22 @@ abstract base class ControllerHookState<R, T, C extends ChangeNotifier,
   Object? observedStateOf(C controller) => valueOf(controller);
 
   /// The part of [observedStateOf] that is not in the value, which
-  /// `buildWhen` never sees and so cannot decline: an infinite query's
-  /// paging flags. `null`, nothing, by default.
+  /// `buildWhen` never sees and so cannot decline. `null`, nothing, by
+  /// default.
   @protected
   Object? besideOf(C controller) => null;
+
+  /// The rule that decides this hook's rebuilds over [controller], from
+  /// [valueOf], [observedStateOf] and [besideOf]. A hook over one of the
+  /// binding's own controllers returns `RebuildRule.of` instead: the rule
+  /// the binding's readers use, so what the controller shows beside its
+  /// value is the binding's to say, in whichever version resolves.
+  @protected
+  RebuildRule<T> ruleOf(C controller) => RebuildRule<T>(
+        value: () => valueOf(controller),
+        observedState: () => observedStateOf(controller),
+        beside: () => besideOf(controller),
+      );
 
   /// What the hook returns, given the controller and the value just read.
   @protected
@@ -65,11 +77,7 @@ abstract base class ControllerHookState<R, T, C extends ChangeNotifier,
       _release();
       _client = client;
       final created = controller = _controller = create(client);
-      _rule = RebuildRule<T>(
-        value: () => valueOf(created),
-        observedState: () => observedStateOf(created),
-        beside: () => besideOf(created),
-      );
+      _rule = ruleOf(created);
       created.addListener(_onChanged);
     } else {
       apply(controller);

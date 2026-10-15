@@ -5,6 +5,7 @@
 /// drives it.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:query_kit_flutter/adapter.dart';
 
@@ -223,5 +224,57 @@ void main() {
     rule.read();
     source.value = 1;
     expect(rule.shouldRebuild((_, __) => false), isFalse);
+  });
+
+  // A value getter can throw: a `select` or a combiner over data it did not
+  // expect. The build that read it threw, so it showed nothing of what it
+  // was reading.
+  test('a first read that throws records nothing', () {
+    var raw = 0;
+    final rule = RebuildRule<int>(
+      observedState: () => raw,
+      value: () => raw == 0 ? throw StateError('invalid source') : raw * 2,
+    );
+
+    expect(rule.read, throwsStateError);
+    raw = 1;
+    expect(rule.shouldRebuild((_, __) => false), isTrue);
+  });
+
+  test('a later read that throws leaves the last one standing', () {
+    var raw = 1;
+    var fail = false;
+    final rule = RebuildRule<int>(
+      observedState: () => raw,
+      value: () => fail ? throw StateError('selection failed') : raw * 2,
+    );
+
+    expect(rule.read(), 2);
+    raw = 2;
+    fail = true;
+    expect(rule.read, throwsStateError);
+    fail = false;
+    expect(rule.shouldRebuild(null), isTrue);
+    expect(rule.shouldRebuild((built, now) => (built, now) == (2, 4)), isTrue);
+  });
+
+  // The call styles' own rule, for an adapter over the binding's
+  // controllers. A listenable with nothing beside its value is ruled by the
+  // value alone; an infinite query's paging flags are the widget suites'.
+  // `BuildWhen` is spelled here with `adapter.dart` as the only import of
+  // the binding.
+  test('of: a plain listenable is ruled by its value', () {
+    final notifier = ValueNotifier<int>(0);
+    addTearDown(notifier.dispose);
+    final rule = RebuildRule.of(notifier);
+    bool never(int built, int now) => false;
+    final BuildWhen<int> declines = never;
+
+    expect(rule.read(), 0);
+    expect(rule.shouldRebuild(null), isFalse);
+
+    notifier.value = 1;
+    expect(rule.shouldRebuild(declines), isFalse);
+    expect(rule.shouldRebuild(null), isTrue);
   });
 }

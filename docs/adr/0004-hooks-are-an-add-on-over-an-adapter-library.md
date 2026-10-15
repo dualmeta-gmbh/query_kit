@@ -39,6 +39,18 @@ query already repaired. The binding's own infinite readers had the same flaw.
 A move beside the value now rebuilds unasked, in every call style and every
 hook, because one class decides it.
 
+`RebuildRule.of(controller)` came with the first review of the whole hooks
+package (AP11, Fable's F-3). The infinite-query hook had copied the
+controller's six paging flags as its `beside`. A hooks release resolves
+against any later binding of the same major, so a flag that binding added
+would be missing from the copy, and a declining `buildWhen` could hold it
+back. `of` is the rule the binding's own readers use for a controller, built
+from the binding's own functions, so what is beside the value is always the
+resolved binding's. It reads the controller and nothing more, as the
+closures did, so the rule still owns nothing. `BuildWhen`, the predicate
+`shouldRebuild` takes, is exported with it, so an adapter can spell it with
+`adapter.dart` alone.
+
 It lives in a library of its own, `adapter.dart`, not in the barrel. An app
 never needs it; an adapter package does, and its dartdoc says so.
 

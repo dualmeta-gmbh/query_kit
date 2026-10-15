@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:query_kit_flutter/adapter.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
 import 'controller_hook.dart';
@@ -68,6 +69,11 @@ final class _MutationHookState<TData, TVariables, TOnMutateResult>
   MutationResult<TData, TVariables> valueOf(
           MutationController<TData, TVariables, TOnMutateResult> controller) =>
       controller.value;
+
+  @override
+  RebuildRule<MutationResult<TData, TVariables>> ruleOf(
+          MutationController<TData, TVariables, TOnMutateResult> controller) =>
+      RebuildRule.of(controller);
 
   @override
   MutationController<TData, TVariables, TOnMutateResult> result(
