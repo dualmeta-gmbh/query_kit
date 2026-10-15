@@ -3,6 +3,7 @@ import type { Config } from '@docusaurus/types'
 import { execSync } from 'node:child_process'
 import dartSource from './plugins/dart-source'
 import llmsTxt, { type LlmsTxtOptions } from './plugins/llms-txt'
+import ogImages, { type OgImagesOptions } from './plugins/og-images'
 import { geist } from './src/prismThemes'
 
 // The live documentation site's coordinates: GitHub Pages under the custom
@@ -128,6 +129,14 @@ Install with \`flutter pub add query_kit_flutter\` in a Flutter app, or \`dart p
         optional: ['Project'],
       } satisfies LlmsTxtOptions,
     ],
+    // A share image per doc page and one for the landing page, written into
+    // the build; `static/img/og-image.png` stays the fallback for the rest.
+    [
+      ogImages,
+      {
+        landing: { kicker: 'TanStack Query for Dart and Flutter', title: 'Server data. Cached. Kept fresh.' },
+      } satisfies OgImagesOptions,
+    ],
     [
       '@docusaurus/plugin-client-redirects',
       { redirects: [{ from: '/docs', to: '/docs/overview' }] },
@@ -135,9 +144,9 @@ Install with \`flutter pub add query_kit_flutter\` in a Flutter app, or \`dart p
   ],
 
   themeConfig: {
-    // Docusaurus emits absolute og:image and twitter:image URLs, including
-    // baseUrl, for the landing page and every doc page. Titles, descriptions,
-    // canonical URLs and og:locale remain specific to each page.
+    // The fallback share image, for pages without their own: the landing page
+    // and every doc page get one from `plugins/og-images.ts`. Titles,
+    // descriptions, canonical URLs and og:locale are specific to each page.
     image: 'img/og-image.png',
     metadata: [
       { property: 'og:type', content: 'website' },

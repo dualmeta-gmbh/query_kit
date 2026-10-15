@@ -2,6 +2,8 @@ import Head from "@docusaurus/Head";
 import Link from "@docusaurus/Link";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import LiveDemo from "@site/src/components/LiveDemo";
+import { ogImagePath } from "@site/src/og-image-path";
+import { PageMetadata } from "@docusaurus/theme-common";
 import CodeBlock from "@theme/CodeBlock";
 import IconCopy from "@theme/Icon/Copy";
 import IconSuccess from "@theme/Icon/Success";
@@ -274,6 +276,8 @@ export default function Home(): ReactNode {
       title="TanStack Query for Dart and Flutter"
       description="TanStack Query for Flutter and Dart: cached server data, background refetching, retries, mutations and infinite queries, ported test for test."
     >
+      {/* Its own share image, from plugins/og-images.ts. */}
+      <PageMetadata image={`/${ogImagePath(siteConfig.baseUrl, siteConfig.baseUrl)}`} />
       <Head>
         <script type="application/ld+json">
           {structuredData(siteConfig.url + siteConfig.baseUrl)}
