@@ -1171,11 +1171,18 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
       einfache Optionen.
     - Einfache Optionen, die erst beim Lesen verbreitert werden, bekamen
       einen Rat zu einem Select, den sie gar nicht haben.
-    - Jetzt entscheidet `options is QuerySelectOptions`. Der Test baut jede
-      genannte Abhilfe tatsächlich.
+    - Jetzt entscheidet `options is QuerySelectOptions`.
   - V2-2 (P3): Unter `strict-casts` kompiliert ein Typargument allein über
     `jsonDecode` nicht. Der Rat zum Select nennt jetzt den Cast, in
     `QueryController` wie in `InfiniteQueryController`.
+- **Vierter Durchgang (Sol, xhigh), über `3d225e0`:** kein Fehler im Code.
+  Drei ungenaue Einträge, alle nachgeprüft und behoben:
+  - V3-1 (P2): Der Test baute nicht jede Abhilfe, die die Meldungen nennen.
+    Jetzt baut er alle und liest ihre Daten, `QueryBuilder<String>` und
+    beide Infinite-Abhilfen eingeschlossen.
+  - V3-2 (P2): Der AP12-Abgleich übersah die Hinweise „In development“.
+    Er nennt sie jetzt, zusammen mit zwei korrigierten Punkten.
+  - V3-3 (P3): eine falsche Zahl von Analyzer-Fehlern in den Notes.
 
 ### AP12 — Release: `query_kit_hooks` 0.1.0 und `query_kit_flutter` 1.1.0
 
@@ -1206,14 +1213,21 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
       Fällen) und die Startseite `website/src/pages/index.tsx`.
     - `project/examples.md` braucht die Beispiel-App aus AP10, mit ihren
       E2E-Suiten.
-    - Folgende Stände werden auf den Release gezogen: die CHANGELOGs (Bindung
-      1.1.0, Hooks 0.1.0), die Zahlen in `CLAUDE.md` und in der README des
-      Repos sowie `installation.md` (Versionen statt `-dev`).
+    - Die Hinweise auf den Entwicklungsstand fallen weg: das
+      `:::note[In development]` im Hooks-Guide („not on pub.dev yet“), der
+      Hinweis „In development“ in der README des Hook-Pakets und „In
+      development, not yet on pub.dev“ in der README des Repos.
+    - `installation.md` nimmt das Add-on in die Paket-Tabelle auf, mit
+      einer Zeile zur Installation.
+    - Folgende Stände werden auf den Release gezogen: die CHANGELOGs
+      (Bindung 1.1.0, Hooks 0.1.0) und die Zahlen in `CLAUDE.md`.
     - Kein Tag von AP12 stößt `pages.yml` an, denn das tut nur ein Tag des
       Kerns. Die Website wird deshalb von Hand über das Actions-Tab
       ausgerollt (`docs/releasing.md`).
-    - Vor dem Commit läuft eine Suche nach `0.1.0-dev`, `^1.0.3` und den
-      alten Testzahlen über das ganze Repo.
+    - Vor dem Commit läuft eine Suche über das ganze Repo nach
+      `0.1.0-dev`, `^1.0.3`, den alten Testzahlen und Worten zum
+      Entwicklungsstand („In development“, „not on pub.dev“, „not yet“,
+      „unreleased“, „not been released“).
 - **Akzeptanz:**
   - Beide Versionen sind auf pub.dev.
   - Die Website ist ausgerollt, und jede Lücke oben ist geschlossen.

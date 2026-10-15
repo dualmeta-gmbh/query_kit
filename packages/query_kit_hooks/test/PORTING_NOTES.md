@@ -603,11 +603,36 @@ V1-1's fix keyed the message on the wrong thing.
 
 | Id | Finding | Reproduced | Outcome |
 |---|---|---|---|
-| V2-1 (P2) | V1-1 branched on whether the cached type is named, not on whether there is a select. Options with a select whose two types are both `dynamic` got the plain advice. Following it, by typing the fetch, only moved the failure to `QueryController<String, dynamic>`. Options widened where they are read, `QueryController<String, Object?>` over plain options, were told to type a select they do not have. The binding's test checked substrings of the message, never that the cure worked | Yes, with Sol's probe: `BOTH-TOP` printed the plain advice, and the widened plain options printed the select's | The message now branches on `options is QuerySelectOptions`. The binding's case covers both shapes and constructs each cure it names. With the old condition, it fails on the both-`dynamic` select |
-| V2-2 (P3) | Under `strict-casts`, which this repository sets, `withSelect<int>((text) => jsonDecode(text))` does not compile, and neither does a `jsonDecode` tear-off. The advice named only the type argument | Yes: three analyzer errors, two `return_of_invalid_type_from_closure` and one `argument_type_not_assignable`; the form with `as int` is clean | The select's advice now leads with the cast, `(raw) => jsonDecode(raw) as Selected`, in `QueryController` and `InfiniteQueryController` alike. Both cases check for it |
+| V2-1 (P2) | V1-1 branched on whether the cached type is named, not on whether there is a select. Options with a select whose two types are both `dynamic` got the plain advice. Following it, by typing the fetch, only moved the failure to `QueryController<String, dynamic>`. Options widened where they are read, `QueryController<String, Object?>` over plain options, were told to type a select they do not have. The binding's test checked substrings of the message, never that the cure worked | Yes, with Sol's probe: `BOTH-TOP` printed the plain advice, and the widened plain options printed the select's | The message now branches on `options is QuerySelectOptions`. The binding's case covers both shapes. With the old condition, it fails on the both-`dynamic` select. It built only two cures until the fourth pass (V3-1) |
+| V2-2 (P3) | Under `strict-casts`, which this repository sets, `withSelect<int>((text) => jsonDecode(text))` does not compile, and neither does a `jsonDecode` tear-off. The advice named only the type argument | Yes. Sol's four forms give four analyzer errors, two of each: `return_of_invalid_type_from_closure` for the closures and `argument_type_not_assignable` for the tear-offs. A fixture with three of the forms gave three. The form with `as int` is clean | The select's advice now leads with the cast, `(raw) => jsonDecode(raw) as Selected`, in `QueryController` and `InfiniteQueryController` alike. Both cases check for it |
 
 Sol's probe pinned the old branch. Run against the fix, it fails in
 exactly the three cases that encoded it, and its two cure cases pass.
 
-**Counts after the third pass:** hooks **332**, binding **320**. A fourth
+**Counts after the third pass:** hooks **332**, binding **320**.
+
+### Fourth pass (verification of the third pass's fixes)
+
+GPT-6.1-Sol (xhigh) read `3d225e0`, which includes the plan's new AP12
+sweep. It found no defect in code. It confirmed the following:
+
+- The sealed options hierarchy has exactly two finite shapes, and
+  `withSelect`, `useQuery` and `useSelectQuery` keep them. So
+  `options is QuerySelectOptions` is the right test.
+- A typed select needs no cast, and the message makes the cast
+  conditional.
+- The message calls no user code.
+- The regression case fails on the old condition and leaves no listener,
+  cache entry or timer behind.
+- AP12's other gaps, and the deploy by hand, are real.
+
+It found three inaccurate records:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| V3-1 (P2) | The third pass's notes and the plan said the binding's case builds every cure the messages name. It built two casts and `QueryController.create`. It did not build `withSelect<Selected>`, `QuerySelectOptions<Raw, Selected>`, `QueryBuilder<Task>` or an infinite cure. It checked the infinite message only as text | Yes, by reading the case | The case now builds every cure the three messages name and reads each one's data: the select's cast, over a named and over a `dynamic` cached type; `withSelect<int>`; `QuerySelectOptions<String, int>`; a typed `queryFn`; the options' type argument; `QueryController.create<String>`; `QueryBuilder<String>`, pumped; and the infinite cast and type arguments. The file is under the analyzer gate, so every cure compiles under `strict-casts` |
+| V3-2 (P2) | AP12's sweep missed the release notices. The hooks guide says "not on pub.dev yet", and the hooks README and the root README say "In development". The planned search for `0.1.0-dev` and `^1.0.3` finds none of them. Two items were wrong: the root README has no test counts, and `installation.md` holds `^1.0.0`, not `-dev` | Yes: `hooks.md:22`, the hooks README line 9 and the root README line 23; `installation.md:32` | The sweep lists the three notices and searches for release-status wording too. The root README's item is its notice. `installation.md` gets the add-on into its package table with an install line |
+| V3-3 (P3) | The third pass's V2-2 row said three analyzer errors, but the report had four | Yes: the row counted a fixture with three of the four forms | Corrected |
+
+**Counts after the fourth pass:** hooks **332**, binding **320**. A fifth
 pass reads these fixes.

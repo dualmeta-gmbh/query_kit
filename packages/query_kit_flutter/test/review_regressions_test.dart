@@ -1455,8 +1455,8 @@ void main() {
         );
         // Options with a select: the cure is the select's return type,
         // whether or not the cached type is named (hooks review, V1-1 and
-        // V2-1), and the cure works — with the cast `strict-casts` asks for
-        // where the select returns `dynamic` (V2-2).
+        // V2-1), with the cast `strict-casts` asks for where the select
+        // returns `dynamic` (V2-2). Every cure is built below.
         var cure = 0;
         QueryKey cured() => QueryKey(<Object?>['cured', cure++]);
         final selectAdvice = isA<AssertionError>().having(
@@ -1484,16 +1484,6 @@ void main() {
           ),
           throwsA(selectAdvice),
         );
-        QueryController(
-          client,
-          QueryObserverOptions<String>(queryKey: cured(), queryFn: (_) => 'a')
-              .withSelect((text) => jsonDecode('"$text"') as String),
-        ).dispose();
-        QueryController(
-          client,
-          QueryObserverOptions<dynamic>(queryKey: cured())
-              .withSelect((raw) => jsonDecode(raw as String) as int),
-        ).dispose();
         // Options without one, widened where they are read: no select to
         // name, so the advice is where the query is read.
         final plain = QueryObserverOptions<String>(queryKey: key);
@@ -1506,9 +1496,6 @@ void main() {
                 contains('where the query is read'), isNot(contains('select'))),
           )),
         );
-        QueryController.create<String>(
-                client, QueryObserverOptions(queryKey: cured()))
-            .dispose();
         // A plain infinite shape's data is always an `InfiniteData`, never a
         // top type; the infinite backstop is reachable only through a select
         // whose return type is one — `jsonDecode` returns `dynamic`.
@@ -1530,8 +1517,126 @@ void main() {
                 contains('as Selected')),
           )),
         );
-        // Neither refusal touched the cache.
+        // No refusal touched the cache.
         expect(cached(client), isNull);
+
+        // Each cure the messages name, built and read: it compiles under
+        // this package's `strict-casts`, passes the backstop and delivers
+        // what it promises (hooks review, V3-1).
+        void reads<R, S>(
+          QueryController<R, S> Function(QueryKey at) make,
+          R raw,
+          S selected,
+        ) {
+          final at = cured();
+          final controller = make(at);
+          client.setQueryData<R>(at, raw);
+          expect(controller.value.dataOrNull, selected);
+          controller.dispose();
+        }
+
+        // The select's: a cast where it returns `dynamic`, whatever the
+        // cached type, or a type argument on either select shape.
+        reads(
+          (at) => QueryController(
+            client,
+            QueryObserverOptions<String>(queryKey: at, queryFn: (_) => 'a')
+                .withSelect((text) => jsonDecode('"$text"') as String),
+          ),
+          'b',
+          'b',
+        );
+        reads(
+          (at) => QueryController(
+            client,
+            QueryObserverOptions<dynamic>(queryKey: at)
+                .withSelect((raw) => jsonDecode(raw as String) as int),
+          ),
+          '1',
+          1,
+        );
+        reads(
+          (at) => QueryController(
+            client,
+            QueryObserverOptions<String>(queryKey: at)
+                .withSelect<int>((text) => text.length),
+          ),
+          'abc',
+          3,
+        );
+        reads(
+          (at) => QueryController(
+            client,
+            QuerySelectOptions<String, int>(
+                queryKey: at, select: (text) => text.length),
+          ),
+          'abc',
+          3,
+        );
+        // The plain ones: a queryFn whose return type names it, the options'
+        // type argument, or the reader's.
+        reads(
+          (at) => QueryController(
+              client, QueryObserverOptions(queryKey: at, queryFn: (_) => 'a')),
+          'b',
+          'b',
+        );
+        reads(
+          (at) => QueryController(
+              client, QueryObserverOptions<String>(queryKey: at)),
+          'b',
+          'b',
+        );
+        reads(
+          (at) => QueryController.create<String>(
+              client, QueryObserverOptions(queryKey: at)),
+          'b',
+          'b',
+        );
+        final read = cured();
+        await tester.pumpWidget(app(
+          client,
+          QueryBuilder<String>(
+            options: QueryObserverOptions(queryKey: read, enabled: Enabled.no),
+            builder: (_, result) => Text('read:${result.dataOrNull}'),
+          ),
+        ));
+        client.setQueryData<String>(read, 'b');
+        await tester.pump();
+        expect(find.text('read:b'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        // The infinite ones: a cast in the select, or explicit type
+        // arguments.
+        final pages =
+            InfiniteData<int, int>(pages: <int>[1, 2], pageParams: <int>[0, 1]);
+        final castAt = cured();
+        final castFeed = InfiniteQueryController(
+          client,
+          InfiniteQuerySelectOptions(
+            queryKey: castAt,
+            pageFn: (_) async => 1,
+            initialPageParam: 0,
+            getNextPageParam: (_, __, ___, ____) => null,
+            select: (data) => jsonDecode('${data.pages.length}') as int,
+          ),
+        );
+        client.setQueryData<InfiniteData<int, int>>(castAt, pages);
+        expect(castFeed.value.dataOrNull, 2);
+        castFeed.dispose();
+        final typedAt = cured();
+        final typedFeed = InfiniteQueryController(
+          client,
+          InfiniteQuerySelectOptions<int, int, int>(
+            queryKey: typedAt,
+            pageFn: (_) async => 1,
+            initialPageParam: 0,
+            getNextPageParam: (_, __, ___, ____) => null,
+            select: (data) => data.pages.length,
+          ),
+        );
+        client.setQueryData<InfiniteData<int, int>>(typedAt, pages);
+        expect(typedFeed.value.dataOrNull, 2);
+        typedFeed.dispose();
       } finally {
         client.clear();
       }
