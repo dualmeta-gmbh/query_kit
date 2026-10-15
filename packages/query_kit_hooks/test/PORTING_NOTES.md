@@ -603,7 +603,7 @@ V1-1's fix keyed the message on the wrong thing.
 
 | Id | Finding | Reproduced | Outcome |
 |---|---|---|---|
-| V2-1 (P2) | V1-1 branched on whether the cached type is named, not on whether there is a select. Options with a select whose two types are both `dynamic` got the plain advice. Following it, by typing the fetch, only moved the failure to `QueryController<String, dynamic>`. Options widened where they are read, `QueryController<String, Object?>` over plain options, were told to type a select they do not have. The binding's test checked substrings of the message, never that the cure worked | Yes, with Sol's probe: `BOTH-TOP` printed the plain advice, and the widened plain options printed the select's | The message now branches on `options is QuerySelectOptions`. The binding's case covers both shapes. With the old condition, it fails on the both-`dynamic` select. It built only two cures until the fourth pass (V3-1) |
+| V2-1 (P2) | V1-1 branched on whether the cached type is named, not on whether there is a select. Options with a select whose two types are both `dynamic` got the plain advice. Following it, by typing the fetch, only moved the failure to `QueryController<String, dynamic>`. Options widened where they are read, `QueryController<String, Object?>` over plain options, were told to type a select they do not have. The binding's test checked substrings of the message, never that the cure worked | Yes, with Sol's probe: `BOTH-TOP` printed the plain advice, and the widened plain options printed the select's | The message now branches on `options is QuerySelectOptions`. The binding's case covers both shapes. With the old condition, it fails on the both-`dynamic` select. Until the fourth pass (V3-1) it built two casts and `QueryController.create`, and no other cure |
 | V2-2 (P3) | Under `strict-casts`, which this repository sets, `withSelect<int>((text) => jsonDecode(text))` does not compile, and neither does a `jsonDecode` tear-off. The advice named only the type argument | Yes. Sol's four forms give four analyzer errors, two of each: `return_of_invalid_type_from_closure` for the closures and `argument_type_not_assignable` for the tear-offs. A fixture with three of the forms gave three. The form with `as int` is clean | The select's advice now leads with the cast, `(raw) => jsonDecode(raw) as Selected`, in `QueryController` and `InfiniteQueryController` alike. Both cases check for it |
 
 Sol's probe pinned the old branch. Run against the fix, it fails in
@@ -630,9 +630,39 @@ It found three inaccurate records:
 
 | Id | Finding | Reproduced | Outcome |
 |---|---|---|---|
-| V3-1 (P2) | The third pass's notes and the plan said the binding's case builds every cure the messages name. It built two casts and `QueryController.create`. It did not build `withSelect<Selected>`, `QuerySelectOptions<Raw, Selected>`, `QueryBuilder<Task>` or an infinite cure. It checked the infinite message only as text | Yes, by reading the case | The case now builds every cure the three messages name and reads each one's data: the select's cast, over a named and over a `dynamic` cached type; `withSelect<int>`; `QuerySelectOptions<String, int>`; a typed `queryFn`; the options' type argument; `QueryController.create<String>`; `QueryBuilder<String>`, pumped; and the infinite cast and type arguments. The file is under the analyzer gate, so every cure compiles under `strict-casts` |
+| V3-1 (P2) | The third pass's notes and the plan said the binding's case builds every cure the messages name. It built two casts and `QueryController.create`. It did not build `withSelect<Selected>`, `QuerySelectOptions<Raw, Selected>`, `QueryBuilder<Task>` or an infinite cure. It checked the infinite message only as text | Yes, by reading the case | The case now builds the cures of the select, plain and infinite messages and reads each one's data: the select's cast, over a named and over a `dynamic` cached type; `withSelect<int>`; `QuerySelectOptions<String, int>`; a typed `queryFn`; the options' type argument; `QueryController.create<String>`; `QueryBuilder<String>`, pumped; and the infinite cast and type arguments. The file is under the analyzer gate, so every cure compiles under `strict-casts` |
 | V3-2 (P2) | AP12's sweep missed the release notices. The hooks guide says "not on pub.dev yet", and the hooks README and the root README say "In development". The planned search for `0.1.0-dev` and `^1.0.3` finds none of them. Two items were wrong: the root README has no test counts, and `installation.md` holds `^1.0.0`, not `-dev` | Yes: `hooks.md:22`, the hooks README line 9 and the root README line 23; `installation.md:32` | The sweep lists the three notices and searches for release-status wording too. The root README's item is its notice. `installation.md` gets the add-on into its package table with an install line |
 | V3-3 (P3) | The third pass's V2-2 row said three analyzer errors, but the report had four | Yes: the row counted a fixture with three of the four forms | Corrected |
 
-**Counts after the fourth pass:** hooks **332**, binding **320**. A fifth
+**Counts after the fourth pass:** hooks **332**, binding **320**.
+
+### Fifth pass (verification of the fourth pass's fixes)
+
+GPT-6.1-Sol (xhigh) read `9c51acb` and found no defect in code. It
+confirmed four things:
+
+- `reads` does not anchor the type it is handed. A cure with its `queryFn`
+  removed infers `dynamic`, and the case throws.
+- A read before the first listener sees `setQueryData`. When Sol made those
+  reads stale, the case failed.
+- Nothing leaks.
+- The fourth pass's corrections hold.
+
+It found three gaps in the records:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| V4-1 (P2) | The fourth pass said the case builds every cure the messages name. There are four messages, and `QueryController.observing`'s cure was never built. That constructor was not refused anywhere in the suite either. With `.observing` faulted to reject ordinary observers, the case stayed green | Yes: no test calls `QueryController.observing` with an ordinary observer | The case now refuses an untyped observer and builds the cure: a `QueryObserver<String, String>`, read through a subscription, because `.observing`'s value before the first listener is the observer's last result. With the fault put back, it fails. The V3-1 row now names the three messages it built |
+| V4-2 (P2) | AP12's sweep still missed one release-status line. `docs/releasing.md` says the hooks add-on "is not released yet", and none of the search's patterns matches it | Yes: `docs/releasing.md:4` | The sweep lists it, and its search includes "not released" |
+| V4-3 (P3) | The V2-1 row said the case "built only two cures". It built three things: two casts and `QueryController.create` | Yes | The row says so |
+
+The sweep's search was then run over the repository, as AP12 will run it.
+It found three items the list did not have, and the list has them now:
+
+- the hooks row of `CLAUDE.md`'s state table ("in development");
+- `docs/releasing.md`'s hooks section, written in the future tense;
+- the lockfiles' `^1.0.3`, which is noise, so the search now excludes the
+  lockfiles.
+
+**Counts after the fifth pass:** hooks **332**, binding **320**. A sixth
 pass reads these fixes.

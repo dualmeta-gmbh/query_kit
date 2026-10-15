@@ -6899,9 +6899,11 @@ what changed in the binding, each finding reproduced first.
   `(raw) => jsonDecode(raw) as Selected`, because under `strict-casts` a
   type argument alone does not compile over `jsonDecode`.
   `InfiniteQueryController`'s message carries the same cast. Since the
-  fourth pass (V3-1), the binding's case builds every cure the three
-  messages name and reads its data, `QueryBuilder<String>` and both
-  infinite cures included.
+  fourth and fifth passes (V3-1, V4-1), the binding's case builds and reads
+  every cure the four messages name. The four messages are the select's,
+  the plain options', the infinite query's and `.observing`'s. The cures
+  include `QueryBuilder<String>`, both infinite cures and a typed
+  `QueryObserver`.
 - **F-1 (P2), in the docs only:** a list of queries of two data types
   infers `Object`, and its entries are created as `Object` entries.
   `QueriesBuilder` and `QueriesController` now say so in their dartdoc. A

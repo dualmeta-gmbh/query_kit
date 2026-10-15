@@ -1520,7 +1520,7 @@ void main() {
         // No refusal touched the cache.
         expect(cached(client), isNull);
 
-        // Each cure the messages name, built and read: it compiles under
+        // Each cure the four messages name, built and read: it compiles under
         // this package's `strict-casts`, passes the backstop and delivers
         // what it promises (hooks review, V3-1).
         void reads<R, S>(
@@ -1637,6 +1637,40 @@ void main() {
         client.setQueryData<InfiniteData<int, int>>(typedAt, pages);
         expect(typedFeed.value.dataOrNull, 2);
         typedFeed.dispose();
+        // `.observing`'s: the refusal, then its cure, an explicit type
+        // argument on the observer (hooks review, V4-1). Its value before
+        // the first listener is the observer's last result, so the cure is
+        // read through a subscription.
+        final untyped = QueryObserver(
+          client,
+          // ignore: inference_failure_on_instance_creation
+          QueryObserverOptions(queryKey: cured(), enabled: Enabled.no),
+        );
+        expect(
+          () => QueryController.observing(client, untyped),
+          throwsA(isA<AssertionError>().having(
+            (e) => e.message.toString(),
+            'message',
+            contains('give the observer an explicit type argument'),
+          )),
+        );
+        untyped.destroy();
+        final observedAt = cured();
+        final observed = QueryController.observing(
+          client,
+          QueryObserver<String, String>(
+            client,
+            QueryObserverOptions<String>(
+                queryKey: observedAt, enabled: Enabled.no),
+          ),
+        );
+        void onChange() {}
+        observed.addListener(onChange);
+        client.setQueryData<String>(observedAt, 'b');
+        await tester.pump();
+        expect(observed.value.dataOrNull, 'b');
+        observed.removeListener(onChange);
+        observed.dispose();
       } finally {
         client.clear();
       }

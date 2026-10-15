@@ -1183,6 +1183,15 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - V3-2 (P2): Der AP12-Abgleich übersah die Hinweise „In development“.
     Er nennt sie jetzt, zusammen mit zwei korrigierten Punkten.
   - V3-3 (P3): eine falsche Zahl von Analyzer-Fehlern in den Notes.
+- **Fünfter Durchgang (Sol, xhigh), über `9c51acb`:** kein Fehler im
+  Code. Drei Lücken in den Einträgen, alle nachgeprüft und behoben:
+  - V4-1 (P2): Die Abhilfe von `QueryController.observing`, der vierten
+    Meldung, war nicht gebaut. Jetzt lehnt der Test einen untypisierten
+    Observer ab und baut einen typisierten. Die Gegenprobe ist rot.
+  - V4-2 (P2): `docs/releasing.md` sagt noch „not released yet“. Der
+    AP12-Abgleich nennt die Stelle jetzt, und die Suche enthält „not
+    released“.
+  - V4-3 (P3): eine Zählung in der Zeile zu V2-1.
 
 ### AP12 — Release: `query_kit_hooks` 0.1.0 und `query_kit_flutter` 1.1.0
 
@@ -1216,18 +1225,26 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     - Die Hinweise auf den Entwicklungsstand fallen weg: das
       `:::note[In development]` im Hooks-Guide („not on pub.dev yet“), der
       Hinweis „In development“ in der README des Hook-Pakets und „In
-      development, not yet on pub.dev“ in der README des Repos.
+      development, not yet on pub.dev“ in der README des Repos sowie „is
+      not released yet“ in der Einleitung von `docs/releasing.md`.
     - `installation.md` nimmt das Add-on in die Paket-Tabelle auf, mit
       einer Zeile zur Installation.
     - Folgende Stände werden auf den Release gezogen: die CHANGELOGs
-      (Bindung 1.1.0, Hooks 0.1.0) und die Zahlen in `CLAUDE.md`.
+      (Bindung „Unreleased“ → 1.1.0, Hooks „0.1.0-dev … not yet published“
+      → 0.1.0) und in `CLAUDE.md` die Zeile des Hook-Pakets in der
+      Statustabelle („in development“) samt Zahlen.
+    - Der Abschnitt „The hooks add-on“ in `docs/releasing.md` beschreibt den
+      ersten Release im Futur (`0.1.0-dev`, `^1.0.3` → `^1.1.0`). Er wird
+      zur Anleitung für spätere Releases, mit dem ersten als Rückblick.
     - Kein Tag von AP12 stößt `pages.yml` an, denn das tut nur ein Tag des
       Kerns. Die Website wird deshalb von Hand über das Actions-Tab
       ausgerollt (`docs/releasing.md`).
-    - Vor dem Commit läuft eine Suche über das ganze Repo nach
+    - Vor dem Commit läuft eine Suche über das ganze Repo, ohne `query/`,
+      die Lockfiles (`*.lock`, `package-lock.json`) und die historischen
+      Notes und Pläne, nach
       `0.1.0-dev`, `^1.0.3`, den alten Testzahlen und Worten zum
       Entwicklungsstand („In development“, „not on pub.dev“, „not yet“,
-      „unreleased“, „not been released“).
+      „unreleased“, „not released“, „not been released“).
 - **Akzeptanz:**
   - Beide Versionen sind auf pub.dev.
   - Die Website ist ausgerollt, und jede Lücke oben ist geschlossen.
