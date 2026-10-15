@@ -1192,6 +1192,13 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     AP12-Abgleich nennt die Stelle jetzt, und die Suche enthält „not
     released“.
   - V4-3 (P3): eine Zählung in der Zeile zu V2-1.
+- **Sechster Durchgang (Sol, xhigh), über `59021f3`:** kein Fehler im
+  Code. Zwei Fehler in den Einträgen, beide nachgeprüft und behoben:
+  - V5-1 (P2): Die Zeile zu V4-1 behauptete, kein Test baue `.observing`
+    mit einem gewöhnlichen Observer. Zwei Lifetime-Tests tun es. Die
+    Lücke betraf nur den Backstop-Fall.
+  - V5-2 (P2): Bei der Umformulierung des AP12-Abgleichs fiel die
+    allgemeine Zahlenpflege für `CLAUDE.md` weg. Sie steht wieder drin.
 
 ### AP12 — Release: `query_kit_hooks` 0.1.0 und `query_kit_flutter` 1.1.0
 
@@ -1231,8 +1238,11 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
       einer Zeile zur Installation.
     - Folgende Stände werden auf den Release gezogen: die CHANGELOGs
       (Bindung „Unreleased“ → 1.1.0, Hooks „0.1.0-dev … not yet published“
-      → 0.1.0) und in `CLAUDE.md` die Zeile des Hook-Pakets in der
-      Statustabelle („in development“) samt Zahlen.
+      → 0.1.0). In `CLAUDE.md` ändert sich der Status des Hook-Pakets in
+      der Statustabelle („in development“).
+    - Jede Zahl in der Statustabelle von `CLAUDE.md` geht auf den
+      gemessenen Stand: Kern, Bindung (dort stehen noch 287 Tests) und
+      Hooks.
     - Der Abschnitt „The hooks add-on“ in `docs/releasing.md` beschreibt den
       ersten Release im Futur (`0.1.0-dev`, `^1.0.3` → `^1.1.0`). Er wird
       zur Anleitung für spätere Releases, mit dem ersten als Rückblick.

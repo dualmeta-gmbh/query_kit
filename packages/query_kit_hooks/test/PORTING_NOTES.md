@@ -652,7 +652,7 @@ It found three gaps in the records:
 
 | Id | Finding | Reproduced | Outcome |
 |---|---|---|---|
-| V4-1 (P2) | The fourth pass said the case builds every cure the messages name. There are four messages, and `QueryController.observing`'s cure was never built. That constructor was not refused anywhere in the suite either. With `.observing` faulted to reject ordinary observers, the case stayed green | Yes: no test calls `QueryController.observing` with an ordinary observer | The case now refuses an untyped observer and builds the cure: a `QueryObserver<String, String>`, read through a subscription, because `.observing`'s value before the first listener is the observer's last result. With the fault put back, it fails. The V3-1 row now names the three messages it built |
+| V4-1 (P2) | The fourth pass said the case builds every cure the messages name. There are four messages, and the case never built `QueryController.observing`'s cure. No test in the suite refused that constructor. With `.observing` faulted to reject ordinary observers, the case stayed green | Yes, in the backstop case. Two lifetime cases elsewhere in the file already build `.observing` over a typed ordinary observer, and the fault fails them. No test checked its refusal, and none checked that cure where the message is checked. The fifth-pass record first said that no test called it at all; the sixth pass corrected this (V5-1) | The case now refuses an untyped observer and builds the cure: a `QueryObserver<String, String>`, read through a subscription, because `.observing`'s value before the first listener is the observer's last result. With the fault put back, it fails. The V3-1 row now names the three messages it built |
 | V4-2 (P2) | AP12's sweep still missed one release-status line. `docs/releasing.md` says the hooks add-on "is not released yet", and none of the search's patterns matches it | Yes: `docs/releasing.md:4` | The sweep lists it, and its search includes "not released" |
 | V4-3 (P3) | The V2-1 row said the case "built only two cures". It built three things: two casts and `QueryController.create` | Yes | The row says so |
 
@@ -664,5 +664,27 @@ It found three items the list did not have, and the list has them now:
 - the lockfiles' `^1.0.3`, which is noise, so the search now excludes the
   lockfiles.
 
-**Counts after the fifth pass:** hooks **332**, binding **320**. A sixth
+**Counts after the fifth pass:** hooks **332**, binding **320**.
+
+### Sixth pass (verification of the fifth pass's fixes)
+
+GPT-6.1-Sol (xhigh) read `59021f3`. It found no defect in code and
+confirmed the following:
+
+- The new refusal infers `dynamic`, and the case fails without the
+  assertion.
+- The cure reads fresh data, and the case fails without the
+  subscription.
+- Cleanup releases every observer, subscription and timer.
+- The `ignore` is needed and placed right.
+- AP12's search finds the release notices.
+
+It found two errors in the records:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| V5-1 (P2) | The V4-1 row said no test calls `QueryController.observing` with an ordinary observer. Two lifetime cases do, at lines 566 and 614 of `review_regressions_test.dart`. The fifth pass had found the gap in the backstop case only | Yes. A search for `QueryController.observing(` missed `QueryController<int, int>.observing(` | The V4-1 row is scoped to the backstop case and names the lifetime cases |
+| V5-2 (P2) | The fifth pass's rewording of AP12's sweep dropped the general count update for `CLAUDE.md` and kept only the hooks row. The binding row still says 287 tests, and the suite has 320 | Yes: `CLAUDE.md:128` | The sweep has a separate item for every count in `CLAUDE.md`'s state table again, the binding row's included |
+
+**Counts after the sixth pass:** hooks **332**, binding **320**. A seventh
 pass reads these fixes.
