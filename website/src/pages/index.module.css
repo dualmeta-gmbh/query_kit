@@ -524,6 +524,11 @@
   font-size: 0.82em;
 }
 
+.addOn {
+  margin: -1rem 0 2.25rem;
+  font-size: 0.95rem;
+}
+
 .package .install {
   display: flex;
   margin-top: 1rem;

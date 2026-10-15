@@ -19,11 +19,6 @@ default: nothing on this site prefers the hooks to the four call styles, or
 the four to the hooks. An app that does not use `flutter_hooks` needs nothing
 on this page.
 
-:::note[In development]
-`query_kit_hooks` is not on pub.dev yet. Its first release will be 0.1.0, and
-until then its API can change without notice.
-:::
-
 ## Installation
 
 ```bash

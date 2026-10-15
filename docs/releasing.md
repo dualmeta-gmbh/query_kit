@@ -1,7 +1,8 @@
 # Releasing
 
-Two packages go to pub.dev, in a fixed order, from a tag each. A third, the
-hooks add-on `query_kit_hooks`, is not released yet; it has a section of its
+Three packages go to pub.dev, in a fixed order, from a tag each. Most of
+this document is about the first two, the core and the binding; the third,
+the hooks add-on `query_kit_hooks`, has a version line and a section of its
 own, [The hooks add-on](#the-hooks-add-on).
 
 **[`scripts/release.sh`](../scripts/release.sh) walks the whole procedure.** It
@@ -30,6 +31,8 @@ releases take the path in [Later releases](#later-releases).
    pub.dev will not accept a package whose dependency it cannot resolve.
 2. **`query_kit_flutter` second**, once the core version is visible on
    pub.dev (a minute or two after publishing).
+3. **`query_kit_hooks` last**, once pub.dev serves the binding version its
+   `query_kit_flutter:` constraint names.
 
 The examples (`examples/showcase`, `examples/task_manager`) are never published
 (`publish_to: none`).
@@ -142,8 +145,8 @@ From 1.0.1 on, nothing is done in a browser:
    pub.dev does not serve yet.
 
 Only one of the two packages changed? Tag that one alone. The site is
-redeployed on core tags only; run `pages` by hand after a binding-only
-release whose docs changed.
+redeployed on core tags only; run `pages` by hand after a binding-only or
+hooks-only release whose docs changed.
 
 The wizard's pre-flight is still worth running before the tags: start
 `./scripts/release.sh`, let stage 1 finish, and stop with Ctrl-C at its "All
@@ -155,32 +158,51 @@ must not go through stage 4, which publishes by hand.
 `packages/query_kit_hooks` is a workspace member like the other two and runs
 through every CI gate with them: tests on the VM and compiled to JavaScript,
 `floors`, the analyzer, the formatter, `dart doc` and the publish dry-run.
-What differs is how it is released (map #92, plan D17):
+What differs is how it is released:
 
-- **Its own version line, 0.x.** It is `0.1.0-dev` until its first release,
-  0.1.0. In 0.x a breaking change is a minor (0.1 → 0.2); the rule that a
-  breaking change is a major holds for it from 1.0.0 on.
-- **It goes out with the binding version that first exports
-  `package:query_kit_flutter/adapter.dart`, 1.1.0, on the same day.** Until
-  then `adapter.dart` stays on `main` unpublished, so a binding release cut
-  from `main` in between would publish it early.
-- **Before tagging**, the hooks' `query_kit_flutter:` constraint goes from
-  `^1.0.3` to `^1.1.0`. In the workspace it resolves to the checkout's
-  binding, so nothing but the published package would notice the old lower
-  bound — pana's lower-bound check would, against 1.0.3 on pub.dev.
-- **The first publish is by hand,** as for any new package: binding 1.1.0
-  through its tag and `publish.yml` first, then, once pub.dev serves it,
+- **Its own version line, 0.x.** In 0.x a breaking change is a minor
+  (0.1 → 0.2); the rule that a breaking change is a major holds for it from
+  1.0.0 on.
+- **Its `query_kit_flutter:` constraint names the oldest binding it works
+  with.** In the workspace it resolves to the checkout's binding, so nothing
+  but the published package notices a lower bound that is too low — pana's
+  lower-bound check does, against that older binding on pub.dev. A hooks
+  release that needs something new in the binding raises the constraint and
+  goes out after that binding version.
+- **It is built on `package:query_kit_flutter/adapter.dart`,** public API of
+  the binding since 1.1.0. A change to that library is a major version of
+  the binding (ADR-0004).
+- **A release is a `query_kit_hooks-v<version>` tag,** pushed once pub.dev
+  serves the binding version the constraint names. From 0.1.1 on,
+  `publish.yml` publishes it as it does the other two, through automated
+  publishing for the tag pattern `query_kit_hooks-v{{version}}`, which the
+  first release switches on. `scripts/release.sh` does not cover the
+  add-on, and a hooks tag does not redeploy the site: run `pages` by hand
+  when its docs changed.
 
-  ```bash
-  cd packages/query_kit_hooks && flutter pub publish
-  ```
+**The first release, 0.1.0,** goes out with binding 1.1.0, the first
+binding version to export `adapter.dart`:
 
-  then *Transfer to publisher* (dualmeta.io) and automated publishing for
-  the tag pattern `query_kit_hooks-v{{version}}` on its admin page. The tag
-  `query_kit_hooks-v0.1.0` is pushed with `publish.yml` disabled, the
-  contortion [Tags](#tags) describes. `scripts/release.sh` does not cover it.
-- **Later releases** are a `query_kit_hooks-v<version>` tag, as for the
-  other two, after the binding version it needs is on pub.dev.
+1. One commit carries both versions, the hooks' constraint `^1.1.0`, and
+   the docs at the release. It is merged to `main` and checked there as
+   step 2 of [Later releases](#later-releases) says, and both tags go on
+   `main`'s commit.
+2. `query_kit_flutter-v1.1.0` is pushed, and `publish.yml` publishes the
+   binding as usual.
+3. The add-on is a new package, so no tag can publish it. Once pub.dev
+   serves binding 1.1.0, and the name has been checked there once more,
+   the account owner publishes it by hand:
+
+   ```bash
+   cd packages/query_kit_hooks && flutter pub publish
+   ```
+
+4. On its admin page: *Transfer to publisher* (dualmeta.io), then automated
+   publishing for the tag pattern `query_kit_hooks-v{{version}}`.
+5. `query_kit_hooks-v0.1.0` is pushed with `publish.yml` disabled, the
+   contortion [Tags](#tags) describes.
+6. Neither tag starts `pages`, so the site, whose docs now present the
+   add-on as released, is deployed by hand from the Actions tab.
 
 ## Documentation site
 
@@ -202,8 +224,9 @@ true for that, all of it set on 2026-09-23:
   ```
 
 - **When it runs:** on every `query_kit-v*` tag, and by hand (Actions →
-  `pages` → Run workflow, on `main`). Its build is the `ci` workflow's
-  `website` job step for step, demos from `tool/build_demos.sh` included, so
+  `pages` → Run workflow, on `main`). A binding or hooks tag does not start
+  it, so a release without a core tag deploys the site by hand. Its build
+  is the `ci` workflow's `website` job step for step, demos from `tool/build_demos.sh` included, so
   what CI tested is what ships. A failed deploy is retried with *Re-run
   failed jobs*; the built artifact is kept.
 - **Settings → Pages → Custom domain: `query-kit.dualmeta.io`**, with

@@ -9,7 +9,8 @@ This page lists the Flutter binding's public surface: the provider, the four
 call styles for reading queries and mutations, the side-effect listeners, the
 collection helpers and the connectivity value. Everything here comes from one
 import, `package:query_kit_flutter/query_kit_flutter.dart`, which also
-re-exports the whole core. Where a member has a TanStack Query counterpart,
+re-exports the whole core — except [the adapter
+library](#the-adapter-library), which is not for apps. Where a member has a TanStack Query counterpart,
 its description names it ("TanStack: `useQuery`").
 
 For the options these widgets take, see [query options](query-options.md);
@@ -620,6 +621,30 @@ How the provider feeds it to `client.onlineManager` (through `setOnline`):
 
 While the client believes it is offline, what a query or mutation does is
 its [network mode](../guides/network-mode.md).
+
+## The adapter library
+
+[Dartdoc](https://pub.dev/documentation/query_kit_flutter/latest/adapter/)
+
+```dart snippet="prose-only: an import line, with nothing beside it to compile"
+import 'package:query_kit_flutter/adapter.dart';
+```
+
+The binding's second library, since 1.1.0. An app does not need it: it reads
+queries in one of the four call styles. It is for a package that puts
+another way of reading queries over the binding's controllers — the
+[hooks add-on](../guides/hooks.md) is one — and owes its readers what the
+four call styles guarantee: nothing rebuilds for a notification carrying
+what the reader is already showing.
+
+| Member | Meaning |
+|---|---|
+| [`RebuildRule`](https://pub.dev/documentation/query_kit_flutter/latest/adapter/RebuildRule-class.html) | The rebuild decision every call style makes: what one reader's last build read from a controller, and whether what the controller holds now is worth a rebuild. It owns no controller and listens to nothing. The caller subscribes, owns and disposes what it reads, calls `read()` in its build and asks `shouldRebuild(buildWhen)` from its listener. |
+| [`RebuildRule.of(controller)`](https://pub.dev/documentation/query_kit_flutter/latest/adapter/RebuildRule/RebuildRule.of.html) | The rule the call styles use for one of the binding's controllers. For an `InfiniteQueryController` it covers the paging flags beside the result. |
+| [`RebuildRule({value, observedState, beside})`](https://pub.dev/documentation/query_kit_flutter/latest/adapter/RebuildRule/RebuildRule.html) | A rule for a reading shape of its own, its parts given one by one. |
+| [`BuildWhen`](#buildwhen) | The predicate the rule asks: the same type the main library exports. |
+
+A change to this library is a major version of the binding.
 
 ## Testing
 

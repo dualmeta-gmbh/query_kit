@@ -3,7 +3,7 @@ description: >-
   TanStack Query for Flutter: cached server data, background refetching,
   retries, mutations and infinite queries, read in four equal styles.
   AI-coded, not affiliated with TanStack.
-version: 1.0.4
+version: 1.1.0
 homepage: https://query-kit.dualmeta.io/
 documentation: https://query-kit.dualmeta.io/docs/overview
 repository: https://github.com/dualmeta-gmbh/query_kit

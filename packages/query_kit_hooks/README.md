@@ -6,9 +6,6 @@ the same cache, with the same rules, as the four call styles of
 [`query_kit_flutter`](https://pub.dev/packages/query_kit_flutter), which this
 package builds on and re-exports.
 
-> **In development.** This package has not been released yet. The first
-> release is 0.1.0; until then its API can change without notice.
-
 **Documentation: [the hooks guide](https://query-kit.dualmeta.io/docs/guides/hooks)**
 on [query-kit.dualmeta.io](https://query-kit.dualmeta.io/) ·
 [API reference](https://pub.dev/documentation/query_kit_hooks/latest/)

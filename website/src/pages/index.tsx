@@ -490,7 +490,9 @@ export default function Home(): ReactNode {
 
         <section className={`${styles.section} ${styles.closing}`}>
           <div className={styles.closingPanel}>
-            <h2 className={styles.heading}>Two packages on pub.dev.</h2>
+            <h2 className={styles.heading}>
+              Two packages on pub.dev, and an add-on.
+            </h2>
             <div className={styles.packages}>
               {packages.map((pkg) => (
                 <div key={pkg.name} className={styles.package}>
@@ -507,6 +509,19 @@ export default function Home(): ReactNode {
                 </div>
               ))}
             </div>
+            {/* Optional, so it is a line under the two and not a third card. */}
+            <p className={`${styles.prose} ${styles.addOn}`}>
+              For an app written with <code>flutter_hooks</code>, the optional
+              add-on{" "}
+              <a href="https://pub.dev/packages/query_kit_hooks">
+                <code>query_kit_hooks</code>
+              </a>{" "}
+              reads the same cache with <code>useQuery</code> and the rest of
+              React Query's hooks.{" "}
+              <Link className={styles.textAction} to="/docs/guides/hooks">
+                Hooks <Arrow />
+              </Link>
+            </p>
             <div className={styles.actions}>
               <Link
                 className="button button--primary button--lg"

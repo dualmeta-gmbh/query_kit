@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 - A new library, `package:query_kit_flutter/adapter.dart`, exports
   `RebuildRule`: the decision every call style makes about whether a
