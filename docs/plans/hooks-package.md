@@ -1175,6 +1175,36 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Vorher wird der Name auf pub.dev noch einmal geprüft (D2).
   - Die Einschränkung `query_kit_flutter:` des Hook-Pakets geht von
     `^1.0.3` auf `^1.1.0`, die erste Version mit `adapter.dart` (AP2).
+  - **Doku und Website auf den Release-Stand bringen (Christian,
+    2026-10-15: „Wenn all das fertig ist, dürfen wir nicht vergessen,
+    Doku/Website etc. anzupassen“).** Das passiert vor dem Tag, im selben
+    Release-Commit, und erst, wenn AP10 und AP11 abgeschlossen sind. Der
+    Hooks-Guide (AP9) und die Release-Mechanik (`publish.yml`,
+    `docs/releasing.md`) stehen schon. Eine Bestandsaufnahme am 2026-10-15
+    hat diese Lücken gefunden:
+    - `adapter.dart` (`RebuildRule`, `RebuildRule.of`, `BuildWhen`) ist die
+      neue öffentliche Bibliothek der Bindung 1.1.0. Weder die Website
+      (`reference/widgets-and-controllers.md`, `reference/api.md`) noch die
+      README der Bindung erwähnen sie.
+    - Diese Seiten kennen das Add-on nicht: `overview.md`, `quick-start.md`,
+      `reference/api.md` (Link zur API-Doku auf pub.dev),
+      `reference/feature-matrix.md`, `project/fidelity.md` (269 von 305
+      Fällen) und die Startseite `website/src/pages/index.tsx`.
+    - `project/examples.md` braucht die Beispiel-App aus AP10, mit ihren
+      E2E-Suiten.
+    - Folgende Stände werden auf den Release gezogen: die CHANGELOGs (Bindung
+      1.1.0, Hooks 0.1.0), die Zahlen in `CLAUDE.md` und in der README des
+      Repos sowie `installation.md` (Versionen statt `-dev`).
+    - Kein Tag von AP12 stößt `pages.yml` an, denn das tut nur ein Tag des
+      Kerns. Die Website wird deshalb von Hand über das Actions-Tab
+      ausgerollt (`docs/releasing.md`).
+    - Vor dem Commit läuft eine Suche nach `0.1.0-dev`, `^1.0.3` und den
+      alten Testzahlen über das ganze Repo.
+- **Akzeptanz:**
+  - Beide Versionen sind auf pub.dev.
+  - Die Website ist ausgerollt, und jede Lücke oben ist geschlossen.
+  - Die Liste oben ist abgehakt, und jeder Punkt ist im Abschlusskommentar
+    der Karte belegt.
 
 **Reihenfolge:**
 
