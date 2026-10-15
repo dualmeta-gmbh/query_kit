@@ -171,7 +171,7 @@ jobs:
   # The built site in a real Chromium: the `<LiveDemo>` on a doc page loads
   # on its click and its screen fetches from the in-memory backend, and every
   # showcase feature — the list is the catalogue's own, so none can be
-  # missed — boots at its embed URL. Served as it ships, under /query_kit/.
+  # missed — boots at its embed URL. Served as it ships, at the root.
   website-e2e:
     needs: website
     runs-on: ubuntu-latest
@@ -188,7 +188,7 @@ jobs:
         with:
           name: website
           path: website/build
-      # For `docusaurus serve`, which serves build/ under the site's baseUrl.
+      # For e2e/serve.mjs, which serves build/ as GitHub Pages does.
       - run: npm ci
         working-directory: website
       - name: playwright
