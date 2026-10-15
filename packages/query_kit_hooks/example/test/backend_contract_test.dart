@@ -169,10 +169,11 @@ void main() {
         expect((await target.api.posts()).map(_post), posts);
       });
 
-      test('post: one by id, and a refusal for one that is not there',
+      test('post: each by id, every field, and a refusal for one not there',
           () async {
-        expect(_post(await target.api.post(2)), posts[1]);
-        expect(_post(await target.api.post(30)), posts.last);
+        for (final post in posts) {
+          expect(_post(await target.api.post(post['id']! as int)), post);
+        }
         await expectLater(target.api.post(999), _refused('Post not found'));
       });
 
@@ -221,7 +222,10 @@ void main() {
           await target.api.setDone(1, done: true),
           const Todo(id: 1, text: 'Update the deploy checklist', done: true),
         );
-        expect((await target.api.setDone(2, done: false)).done, isFalse);
+        expect(
+          await target.api.setDone(2, done: false),
+          todos[1].copyWith(done: false),
+        );
         await expectLater(
           target.api.setDone(999, done: true),
           _refused('Todo not found'),
@@ -262,9 +266,15 @@ void main() {
             _refused('Scripted failure 500'),
           );
         }
-        expect((await target.api.post(3)).id, 3);
+        expect(_post(await target.api.post(3)), posts[2]);
         // The path is exact, so a neighbour was never affected.
-        expect((await target.api.comments(3)), hasLength(3));
+        expect(
+          (await target.api.comments(3)).map(_comment),
+          [
+            for (final comment in comments)
+              if (comment['postId'] == 3) comment,
+          ],
+        );
       });
 
       test('failNext: a prefix, its own message, and the method it names',
@@ -276,7 +286,7 @@ void main() {
           message: 'Taken',
         );
         // A read of the same path is the other method.
-        expect(await target.api.todos(), hasLength(3));
+        expect(await target.api.todos(), todos);
         await expectLater(
           target.api.setDone(1, done: true),
           _refused('Taken'),
@@ -287,6 +297,11 @@ void main() {
           await target.api.setDone(1, done: true),
           todos[0].copyWith(done: true),
         );
+        expect(await target.api.todos(), [
+          todos[0].copyWith(done: true),
+          todos[1],
+          todos[2],
+        ]);
       });
 
       test('the log: every answered request with its status', () async {

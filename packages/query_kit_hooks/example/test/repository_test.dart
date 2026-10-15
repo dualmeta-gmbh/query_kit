@@ -13,7 +13,9 @@
 // suites themselves, which CI runs. And it reads the source with a scanner,
 // not a parser: comments, strings with their interpolations, and
 // TypeScript's regular expressions are told apart from code, and the cases
-// at the top of `main` are the shapes it is known to read.
+// at the top of `main` are the shapes it is known to read. A test must be
+// written in its `describe` or `group` itself: one a helper registers is not
+// seen, and the hook fails here rather than passing unproven.
 import 'dart:io';
 import 'dart:math';
 
@@ -37,20 +39,52 @@ String _code(
     }
   }
 
+  // For each open parenthesis, whether it holds the condition of `if`,
+  // `while`, `for` or `with`; and whether the code so far ends with one
+  // closed. A `/` after that starts a regular expression, after any other
+  // `)` it divides.
+  final conditions = <bool>[];
+  var afterCondition = false;
   while (i < source.length) {
     if (_commentEnd(source, i, typescript: typescript) case final end?) {
       copy(end, keep: false);
     } else if (_stringEnd(source, i, typescript: typescript) case final end?) {
       copy(end, keep: keepStrings);
-    } else if ((typescript ? _regExpEnd(source, i) : null) case final end?) {
+      afterCondition = false;
+    } else if ((typescript
+            ? _regExpEnd(source, i, afterCondition: afterCondition)
+            : null)
+        case final end?) {
       copy(end, keep: keepStrings);
+      afterCondition = false;
     } else {
-      out.write(source[i]);
+      final char = source[i];
+      if (char == '(') {
+        conditions
+            .add(_condition.hasMatch(source.substring(max(0, i - 32), i)));
+      }
+      if (char.trim().isNotEmpty) {
+        afterCondition =
+            char == ')' && conditions.isNotEmpty && conditions.removeLast();
+      }
+      out.write(char);
       i += 1;
     }
   }
   return out.toString();
 }
+
+/// Code that a condition's `(` follows.
+final RegExp _condition = RegExp(r'(?<![\w$.])(if|while|for|with)\s*$');
+
+/// Code after which a `/` starts a regular expression: an opening bracket,
+/// a closing brace, a comma, an operator, or a keyword that an expression
+/// follows.
+final RegExp _expressionStart = RegExp(
+  r'([(\[{},;:=!&|?+\-*%<>~^]|(?<![\w$.])'
+  r'(return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|'
+  r'yield|await))\s*$',
+);
 
 /// Where the comment that starts at [i] ends, if one does. Dart's block
 /// comments nest; TypeScript's do not.
@@ -134,10 +168,10 @@ int _interpolationEnd(String source, int i, {required bool typescript}) {
 }
 
 /// Where the TypeScript regular-expression literal that starts at [i]
-/// ends, if one does. A `/` starts one where an expression can start:
-/// first in the file, after an opening bracket, a comma, an operator or
-/// `return`; anywhere else it divides.
-int? _regExpEnd(String source, int i) {
+/// ends, if one does. A `/` starts one where an expression can start: first
+/// in the file, after [_expressionStart], or [afterCondition]; after a name,
+/// a number or any other `)` or `]` it divides.
+int? _regExpEnd(String source, int i, {required bool afterCondition}) {
   if (source[i] != '/' ||
       source.startsWith('//', i) ||
       source.startsWith('/*', i)) {
@@ -147,9 +181,9 @@ int? _regExpEnd(String source, int i) {
   while (k >= 0 && source[k].trim().isEmpty) {
     k -= 1;
   }
-  if (k >= 0 &&
-      !'([{,;:=!&|?+-*%<>~^'.contains(source[k]) &&
-      !source.substring(0, k + 1).endsWith('return')) {
+  if (!afterCondition &&
+      k >= 0 &&
+      !_expressionStart.hasMatch(source.substring(max(0, k - 16), k + 1))) {
     return null;
   }
   var j = i + 1;
@@ -236,28 +270,35 @@ Set<String> _declaredHooks(String source) {
   return hooks;
 }
 
-/// The files of [library] whose declarations it exports: the files it
-/// exports from its own package, whole, the files those export in turn, and
-/// every file's parts. An export with `show`, `hide` or a condition would
-/// make the declarations a wrong answer, so it fails here. An export of
+/// The files of [library], in [package], whose declarations it exports: the
+/// files it exports from its own package, whole, by a relative URI or a
+/// `package:` one, the files those export in turn, and every file's parts.
+/// An export with `show`, `hide` or a condition would make the declarations
+/// a wrong answer, so it fails here, whatever URI it names. An export of
 /// another package (the binding) is not read: it declares no hook.
-List<File> _librarySources(File library) {
+List<File> _librarySources(File library, {required String package}) {
   final directive = RegExp(
     r"""\b(export|part)\s+(['"])([^'"]+)\2\s*([^;]*);""",
   );
+  final own = 'package:$package/';
   final files = <String, File>{};
   void visit(File file) {
     final code = _code(file.readAsStringSync(), keepStrings: true);
     for (final match in directive.allMatches(code)) {
       final uri = match.group(3)!;
-      if (uri.startsWith('package:') || uri.startsWith('dart:')) {
-        continue;
-      }
       if (match.group(4)!.trim().isNotEmpty) {
         throw StateError('${match.group(1)} $uri ${match.group(4)}: not a '
             'whole file, which this test does not read');
       }
-      final target = File.fromUri(file.uri.resolve(uri));
+      if (!uri.startsWith(own) &&
+          (uri.startsWith('package:') || uri.startsWith('dart:'))) {
+        continue;
+      }
+      final target = File.fromUri(
+        uri.startsWith(own)
+            ? library.parent.uri.resolve(uri.substring(own.length))
+            : file.uri.resolve(uri),
+      );
       if (files.putIfAbsent(target.absolute.path, () => target) == target) {
         visit(target);
       }
@@ -314,8 +355,9 @@ Iterable<File> _files(String directory, String suffix) => Directory(directory)
 String _read(Iterable<File> files) =>
     files.map((file) => _code(file.readAsStringSync())).join('\n');
 
-/// A test call in a `test.describe`'s bare text.
-final RegExp _browserTest = RegExp(r'\btest\s*\(');
+/// A test call in a `test.describe`'s bare text: `test(`, not a member
+/// such as a regular expression's `.test(`.
+final RegExp _browserTest = RegExp(r'(?<![\w$.])test\s*\(');
 
 /// A run narrowed or skipped in a `test.describe`'s bare text: a modifier
 /// by name, or any member of `test` reached by index, which is how one
@@ -324,7 +366,7 @@ final RegExp _browserSkip =
     RegExp(r'\.\s*(skip|fixme|fail|only)\b|\btest(\s*\.\s*\w+)*\s*\[');
 
 /// A test call in a `group`'s bare text, and a skip.
-final RegExp _nativeTest = RegExp(r'\b(nativeTest|testWidgets)\s*\(');
+final RegExp _nativeTest = RegExp(r'(?<![\w$.])(nativeTest|testWidgets)\s*\(');
 final RegExp _nativeSkip = RegExp(r'\bskip\s*:');
 
 /// [contents] as a file of its own, named [name].
@@ -389,21 +431,33 @@ void useT(void Function(int) callback, {int count = 1}) {}
     File('${root.path}/src/b.dart')
         .writeAsStringSync("part of 'a.dart';\nint get useB => 1;\n");
     File('${root.path}/src/c.dart').writeAsStringSync('void useC() {}\n');
+    File('${root.path}/src/d.dart').writeAsStringSync('void useD() {}\n');
     final library = File('${root.path}/library.dart')
       ..writeAsStringSync(
-        "export 'package:other/other.dart';\nexport 'src/a.dart';\n",
+        "export 'package:other/other.dart';\nexport 'src/a.dart';\n"
+        "export 'package:self/src/d.dart';\n",
       );
     expect(
       {
-        for (final file in _librarySources(library))
+        for (final file in _librarySources(library, package: 'self'))
           ..._declaredHooks(file.readAsStringSync()),
       },
-      {'useA', 'useB', 'useC'},
+      {'useA', 'useB', 'useC', 'useD'},
     );
 
-    final narrowed = File('${root.path}/narrowed.dart')
-      ..writeAsStringSync("export 'src/c.dart' show useC;\n");
-    expect(() => _librarySources(narrowed), throwsStateError);
+    for (final directive in [
+      "export 'src/c.dart' show useC;",
+      "export 'package:other/other.dart' if (dart.library.io) 'src/c.dart';",
+      "export 'package:other/other.dart' hide useOther;",
+    ]) {
+      final narrowed = File('${root.path}/narrowed.dart')
+        ..writeAsStringSync('$directive\n');
+      expect(
+        () => _librarySources(narrowed, package: 'self'),
+        throwsStateError,
+        reason: directive,
+      );
+    }
   });
 
   test(
@@ -434,6 +488,38 @@ test.describe('shell', () => { test('not a hook', () => {}); });
     expect(calls['useD']!.single.bare, matches(_browserSkip));
   });
 
+  test('a slash starts a regular expression or divides, by what precedes it',
+      () {
+    final file = _scratch('b.spec.ts', r'''
+test.describe('useA', () => {
+  if (ready) /["(]/.test('x');
+  test('after a condition', () => {});
+});
+test.describe('useB', () => {
+  test('after a name that ends in a keyword', () => {
+    const ratio = myreturn / 2; test.skip(); /abc/.test('abc');
+  });
+});
+test.describe('useC', () => { /abc/.test('abc'); });
+function proof() { test('in a helper', () => {}); }
+test.describe('useD', () => { proof(); });
+test.describe('useE', () => {
+  const block = () => {}
+  /["]/.test('x');
+  test('after a closing brace', () => {});
+});
+''');
+    final calls = _calls([file], RegExp(r'\btest\.describe(\.\w+)?\s*\('));
+    expect(calls.keys, ['useA', 'useB', 'useC', 'useD', 'useE']);
+    expect(calls['useA']!.single.bare, matches(_browserTest));
+    expect(calls['useB']!.single.bare, matches(_browserSkip));
+    // A member called `test` is not a test.
+    expect(calls['useC']!.single.bare, isNot(matches(_browserTest)));
+    // Nor is a helper's: the hook fails here rather than pass unproven.
+    expect(calls['useD']!.single.bare, isNot(matches(_browserTest)));
+    expect(calls['useE']!.single.bare, matches(_browserTest));
+  });
+
   test('a group is read to its closing parenthesis, past interpolations', () {
     final file = _scratch('a_test.dart', r'''
 group('useA', () {
@@ -457,7 +543,10 @@ group('useD', () {
 
   group('every exported hook', () {
     final hooks = {
-      for (final file in _librarySources(File('../lib/query_kit_hooks.dart')))
+      for (final file in _librarySources(
+        File('../lib/query_kit_hooks.dart'),
+        package: 'query_kit_hooks',
+      ))
         ..._declaredHooks(file.readAsStringSync()),
     };
 

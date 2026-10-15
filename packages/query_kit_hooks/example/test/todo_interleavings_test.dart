@@ -90,7 +90,7 @@ Future<void> settle(WidgetTester tester) => tester.pump(Duration.zero);
 void main() {
   heldTest(
       'an add answered while a refetch is in flight stays on the screen: '
-      'the add cancels the read', (tester, api, client) async {
+      'its refetch cancels that read', (tester, api, client) async {
     api.reads.single.complete(seeded);
     await settle(tester);
 
@@ -128,8 +128,43 @@ void main() {
   });
 
   heldTest(
+      'a tick made while a refetch is in flight cancels it: the read from '
+      'before would take the tick back', (tester, api, client) async {
+    api.reads.single.complete(seeded);
+    await settle(tester);
+
+    // A tick, alone, and the refetch it starts as it settles.
+    await tester.tap(box(checklist));
+    await settle(tester);
+    api.ticks[1]!.complete(seeded.first.copyWith(done: true));
+    await settle(tester);
+    expect(api.reads, hasLength(2));
+
+    // A second tick while that read is held, which then answers with the
+    // list from before it.
+    await tester.tap(box(token));
+    await settle(tester);
+    expect(ticked(tester, token), isTrue);
+    api.reads[1].complete([seeded.first.copyWith(done: true), seeded.last]);
+    await settle(tester);
+    expect(ticked(tester, token), isTrue);
+
+    api.ticks[3]!.complete(seeded.last.copyWith(done: true));
+    await settle(tester);
+    expect(api.reads, hasLength(3));
+    api.reads[2].complete([
+      seeded.first.copyWith(done: true),
+      seeded.last.copyWith(done: true),
+    ]);
+    await settle(tester);
+    expect(ticked(tester, checklist), isTrue);
+    expect(ticked(tester, token), isTrue);
+  });
+
+  heldTest(
       'two ticks answered in one turn each put their answer in the list, '
-      'over a read from before', (tester, api, client) async {
+      'over a read from before, and one of them refetches',
+      (tester, api, client) async {
     api.reads.single.complete(seeded);
     await settle(tester);
     await tester.tap(box(checklist));
@@ -155,9 +190,190 @@ void main() {
     expect(ticked(tester, checklist), isTrue);
     expect(ticked(tester, token), isTrue);
     expect(writing(client), 0);
-    // Each counted the other in its `onSettled`, so neither refetched: the
-    // count's blind spot, which PORTING_NOTES records. Each write's own
-    // answer is in the list all the same.
+    // `isMutating` in each `onSettled` would count the other, and neither
+    // would refetch. The writes' own count tells the second one it is last.
+    expect(api.reads, hasLength(3));
+    api.reads[2].complete([
+      seeded.first.copyWith(done: true),
+      seeded.last.copyWith(done: true),
+    ]);
+    await settle(tester);
+    expect(ticked(tester, checklist), isTrue);
+    expect(ticked(tester, token), isTrue);
+  });
+
+  heldTest(
+      'an add answered while the first load is in flight: that load is '
+      'replaced, it may not have the add', (tester, api, client) async {
+    await tester.enterText(find.byType(TextField), added);
+    await tester.tap(find.text('Add'));
+    await settle(tester);
+    api.adds[added]!.complete(const Todo(id: 4, text: added, done: false));
+    await settle(tester);
+    expect(writing(client), 0);
     expect(api.reads, hasLength(2));
+
+    // Served before the add was stored.
+    api.reads.first.complete(seeded);
+    await settle(tester);
+    expect(find.text('Loading todos…'), findsOneWidget);
+    api.reads[1].complete([
+      ...seeded,
+      const Todo(id: 4, text: added, done: false),
+    ]);
+    await settle(tester);
+    expect(find.text(added), findsOneWidget);
+  });
+
+  heldTest(
+      'two adds made before the list has loaded, answered in one turn: the '
+      'last one loads it', (tester, api, client) async {
+    for (final text in ['A', 'B']) {
+      await tester.enterText(find.byType(TextField), text);
+      await tester.tap(find.text('Add'));
+      await settle(tester);
+    }
+    expect(api.reads, hasLength(1));
+
+    api.adds['A']!.complete(const Todo(id: 4, text: 'A', done: false));
+    api.adds['B']!.complete(const Todo(id: 5, text: 'B', done: false));
+    await settle(tester);
+    expect(writing(client), 0);
+    // The first load is cancelled, the second answers with both.
+    expect(api.reads, hasLength(2));
+    api.reads.first.complete(seeded);
+    await settle(tester);
+    expect(find.text('Loading todos…'), findsOneWidget);
+    api.reads[1].complete([
+      ...seeded,
+      const Todo(id: 4, text: 'A', done: false),
+      const Todo(id: 5, text: 'B', done: false),
+    ]);
+    await settle(tester);
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('B'), findsOneWidget);
+  });
+
+  heldTest(
+      'a first load answered after an add, while another is in flight, is '
+      'dropped: it may not have the add', (tester, api, client) async {
+    for (final text in ['A', 'B']) {
+      await tester.enterText(find.byType(TextField), text);
+      await tester.tap(find.text('Add'));
+      await settle(tester);
+    }
+    api.adds['A']!.complete(const Todo(id: 4, text: 'A', done: false));
+    await settle(tester);
+    expect(writing(client), 1);
+
+    // Served before A was stored: a list without it.
+    api.reads.first.complete(seeded);
+    await settle(tester);
+    expect(client.getQueryData<List<Todo>>(Keys.todos), isNull);
+    expect(find.text('Loading todos…'), findsOneWidget);
+    expect(api.reads, hasLength(1));
+
+    api.adds['B']!.complete(const Todo(id: 5, text: 'B', done: false));
+    await settle(tester);
+    expect(api.reads, hasLength(2));
+    api.reads[1].complete([
+      ...seeded,
+      const Todo(id: 4, text: 'A', done: false),
+      const Todo(id: 5, text: 'B', done: false),
+    ]);
+    await settle(tester);
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('B'), findsOneWidget);
+  });
+
+  heldTest(
+      'an add answered after a read that has its todo leaves that row as it '
+      'is: ticked since', (tester, api, client) async {
+    await tester.enterText(find.byType(TextField), added);
+    await tester.tap(find.text('Add'));
+    await settle(tester);
+
+    // The first load, served after the add was stored.
+    api.reads.single.complete([
+      ...seeded,
+      const Todo(id: 4, text: added, done: false),
+    ]);
+    await settle(tester);
+    await tester.tap(box(added));
+    await settle(tester);
+    expect(ticked(tester, added), isTrue);
+
+    // The add's own answer, from before the tick.
+    api.adds[added]!.complete(const Todo(id: 4, text: added, done: false));
+    await settle(tester);
+    expect(writing(client), 1);
+    expect(ticked(tester, added), isTrue);
+    expect(find.text(added), findsOneWidget);
+
+    api.ticks[4]!.complete(const Todo(id: 4, text: added, done: true));
+    await settle(tester);
+    expect(api.reads, hasLength(2));
+    api.reads[1].complete([
+      ...seeded,
+      const Todo(id: 4, text: added, done: true),
+    ]);
+    await settle(tester);
+    expect(ticked(tester, added), isTrue);
+  });
+
+  heldTest(
+      'a remount while the list has no data loads it, writes or not, and an '
+      'add answered late leaves its row ticked since',
+      (tester, api, client) async {
+    for (final text in ['A', 'B']) {
+      await tester.enterText(find.byType(TextField), text);
+      await tester.tap(find.text('Add'));
+      await settle(tester);
+    }
+    api.adds['A']!.complete(const Todo(id: 4, text: 'A', done: false));
+    await settle(tester);
+    expect(find.text('Loading todos…'), findsOneWidget);
+
+    // The tab built again: a list with no data loads on mount whatever
+    // `refetchOnMount` says, so this read starts with B in flight.
+    await tester.pumpWidget(
+      QueryClientProvider(
+        client: client,
+        child: ApiScope(
+          api: api,
+          child: const MaterialApp(
+            home: Scaffold(body: TodosTab(key: ValueKey('again'))),
+          ),
+        ),
+      ),
+    );
+    await settle(tester);
+    expect(api.reads, hasLength(2));
+    api.reads[1].complete([
+      ...seeded,
+      const Todo(id: 4, text: 'A', done: false),
+      const Todo(id: 5, text: 'B', done: false),
+    ]);
+    await settle(tester);
+    await tester.tap(box('B'));
+    await settle(tester);
+    expect(ticked(tester, 'B'), isTrue);
+
+    api.adds['B']!.complete(const Todo(id: 5, text: 'B', done: false));
+    await settle(tester);
+    expect(writing(client), 1);
+    expect(ticked(tester, 'B'), isTrue);
+
+    api.ticks[5]!.complete(const Todo(id: 5, text: 'B', done: true));
+    await settle(tester);
+    expect(api.reads, hasLength(3));
+    api.reads[2].complete([
+      ...seeded,
+      const Todo(id: 4, text: 'A', done: false),
+      const Todo(id: 5, text: 'B', done: true),
+    ]);
+    await settle(tester);
+    expect(ticked(tester, 'A'), isFalse);
+    expect(ticked(tester, 'B'), isTrue);
   });
 }

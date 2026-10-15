@@ -1190,9 +1190,31 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     Schreibvorgang und die Kommentare aller Posts.
   - **Entschieden:** Zwei Schreibvorgänge, die im selben Turn fertig werden,
     laden nicht neu. Die Antwort jedes Schreibvorgangs steht trotzdem in der
-    Liste.
+    Liste. (Im vierten Durchgang zurückgenommen, siehe W-1.)
   - **Tests danach:** 19 Widget-Tests, 2 Interleaving-Fälle, 10
     Vertragsfälle je Backend, 19 Katalogfälle, 19 Playwright-Tests und 18
+    native Flows mit 2 Lebenszyklus-Fällen.
+- **Zweite Verifikation durch Sol:** fünf Befunde, W-1 bis W-5, alle
+  reproduziert und behoben. Die Tabelle steht in den `PORTING_NOTES` unter
+  „Fourth pass“.
+  - **W-1 und W-2 (von V-1 eingeführt):** Zwei Hinzufügungen vor dem ersten
+    Laden der Liste ließen sie für immer im Ladezustand. Eine späte Antwort
+    auf eine Hinzufügung überschrieb ein neueres Häkchen.
+  - **Behoben:** Die Schreibvorgänge zählen sich selbst statt
+    `isMutating`, also lädt immer genau der letzte neu. Jeder bricht beim
+    Erledigen die laufenden Lesevorgänge ab, der letzte vor dem Neuladen.
+    Eine Hinzufügung hängt ihr Todo nur an, wenn die Liste es noch nicht
+    hat. Damit ist auch die Entscheidung zum selben Turn zurückgenommen.
+  - **W-3 und W-4:** Der Scanner hielt eine Division nach einem Namen auf
+    `return` für einen regulären Ausdruck, `.test(` für einen Test und einen
+    regulären Ausdruck nach `if (…)` für eine Division. Ein bedingter Export
+    blieb unbemerkt. Alle vier sind behoben. Ein Test, den ein Helfer
+    registriert, wird nicht gesehen, und der Hook scheitert dann: das ist
+    so dokumentiert.
+  - **W-5:** Der Vertrag vergleicht jetzt jede Antwort vollständig, jeden
+    Post einzeln.
+  - **Tests danach:** 19 Widget-Tests, 8 Interleaving-Fälle, 10
+    Vertragsfälle je Backend, 20 Katalogfälle, 19 Playwright-Tests und 18
     native Flows mit 2 Lebenszyklus-Fällen.
 
 ### AP11 — Review-Runde
