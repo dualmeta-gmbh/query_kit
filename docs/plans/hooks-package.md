@@ -968,7 +968,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     eine für den alten Client nach einem Client-Wechsel bewirken nichts
     (H-03).
 
-### AP8 — `usePrefetchQuery`, `usePrefetchInfiniteQuery`
+### AP8 — `usePrefetchQuery`, `usePrefetchInfiniteQuery` — **erledigt** (#101)
 
 - **Inhalt:** Die vier anpassbaren der neun Prefetch-Fälle, dazu ein Test
   mit `useIsFetching` im selben Baum, mit und ohne Provider (D11).
@@ -976,6 +976,19 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Ein Build mit vorhandenem Eintrag wirft nicht (P2-1).
   - Der Prefetch-Hook ruft einen fehlgeschlagenen Eintrag nicht erneut ab.
   - Keine Assertion „setState during build“.
+- **Ergebnis, gemessen:**
+  - **9 Fälle:** 6 angepasst (D14, Suspense: der Leser über `suspense(…)`
+    mit den Optionen, die upstreams Suspense-Hooks setzen), 3 ausgelassen.
+    240 und 88 waren als N geführt und sind portierbar.
+  - `usePrefetchInfiniteQuery` neu; beide Hooks teilen eine untypisierte
+    Suche `queryCache.find(exact)`.
+  - Alle drei Akzeptanzkriterien als Tests; jeder Fall wird unter
+    mindestens einem von sieben eingebauten Fehlern rot.
+  - Falle für die Doku (AP9): `unawaited(client.query(options))` legt einen
+    Eintrag vom Typ `void` an.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** ein Befund, 66s zusätzliche
+  Assertion. Behalten als Verschärfung wie 4189, weil upstreams eigene
+  Assertion dort nichts prüft.
 
 ### AP9 — Doku
 

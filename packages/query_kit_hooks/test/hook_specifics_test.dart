@@ -680,4 +680,276 @@ void main() {
       expect(observersOf(client, key), 0);
     });
   });
+
+  // AP8 (map #92): what the prefetch hooks promise beyond upstream's cases
+  // (plan, D7 and D11). Each case runs both hooks, each on its own key.
+  group('AP8: usePrefetchQuery and usePrefetchInfiniteQuery', () {
+    var failing = false;
+    final fetches = <QueryKey, int>{};
+    void count(QueryKey key) => fetches[key] = (fetches[key] ?? 0) + 1;
+
+    QueryOptions<String> plain(QueryKey key) => QueryOptions<String>(
+          queryKey: key,
+          queryFn: (_) {
+            count(key);
+            final fail = failing;
+            return sleep(10).then((_) => fail ? throw StateError('x') : 'data');
+          },
+        );
+    InfiniteQueryOptions<String, int> infinite(QueryKey key) =>
+        InfiniteQueryOptions<String, int>(
+          queryKey: key,
+          pageFn: (context) {
+            count(key);
+            final fail = failing;
+            return sleep(10).then(
+              (_) => fail ? throw StateError('x') : 'page ${context.pageParam}',
+            );
+          },
+          initialPageParam: 0,
+          getNextPageParam: (_, __, ___, ____) => null,
+        );
+
+    // Both prefetch hooks in one widget, which a case can rebuild.
+    late void Function() rebuild;
+    Widget prefetcher(QueryKey a, QueryKey b, {QueryClient? client}) =>
+        StatefulBuilder(builder: (context, setState) {
+          rebuild = () => setState(() {});
+          return HookBuilder(builder: (context) {
+            usePrefetchQuery(plain(a), client: client);
+            usePrefetchInfiniteQuery(infinite(b), client: client);
+            return const SizedBox();
+          });
+        });
+    // A reader for each key, with default options.
+    Widget readers(QueryKey a, QueryKey b) => HookBuilder(builder: (context) {
+          final query = useQuery(QueryObserverOptions<String>(
+            queryKey: a,
+            queryFn: plain(a).queryFn,
+          ));
+          final pages = useInfiniteQuery(InfiniteQueryObserverOptions(
+            queryKey: b,
+            pageFn: infinite(b).pageFn,
+            initialPageParam: 0,
+            getNextPageParam: infinite(b).getNextPageParam,
+          ));
+          return Text('${query.dataOrNull} ${pages.value.dataOrNull?.pages}');
+        });
+
+    setUp(() {
+      failing = false;
+      fetches.clear();
+    });
+
+    // Review P2-1, the infinite twin of review_reproductions_test.dart's
+    // `usePrefetchQuery` case.
+    hookTest(
+        'usePrefetchInfiniteQuery: a build with the entry present does not '
+        'throw', (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+
+      await tester.pumpApp(client, prefetcher(a, b));
+      rebuild();
+      await tester.pump();
+      await advance(tester, 11);
+      rebuild();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(fetches, {a: 1, b: 1});
+      expect(
+        client.getQueryData<InfiniteData<String, int>>(b)?.pages,
+        ['page 0'],
+      );
+      // What `getQueryState` without a type argument does once it exists:
+      expect(() => client.getQueryState<dynamic>(b),
+          throwsA(isA<QueryDataTypeError>()));
+    });
+
+    hookTest('a failed entry: the prefetch hooks leave it, a reader refetches',
+        (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+      failing = true;
+      prefetch(client, plain(a)).ignore();
+      prefetch(client, infinite(b)).ignore();
+      await advance(tester, 10);
+      expect(client.getQueryState<String>(a)!.status, QueryStatus.error);
+      expect(
+        client.getQueryState<InfiniteData<String, int>>(b)!.status,
+        QueryStatus.error,
+      );
+      failing = false;
+
+      await tester.pumpApp(client, prefetcher(a, b));
+      rebuild();
+      await tester.pump();
+      await advance(tester, 20);
+      expect(fetches, {a: 1, b: 1});
+      expect(client.getQueryState<String>(a)!.status, QueryStatus.error);
+
+      // `retryOnMount` defaults to true: a reader retries what failed.
+      await tester.pumpApp(
+        client,
+        Column(children: [prefetcher(a, b), readers(a, b)]),
+      );
+      await advance(tester, 11);
+      expect(fetches, {a: 2, b: 2});
+      expect(find.text('data [page 0]'), findsOneWidget);
+    });
+
+    // A fetching entry would not be fetched twice anyway: `client.query`
+    // joins a fetch in flight. The entry a cancelled fetch leaves behind,
+    // pending and idle, is the one only the hook's lookup leaves alone.
+    hookTest('a pending entry: the prefetch hooks leave it, a reader fetches',
+        (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+      prefetch(client, plain(a)).ignore();
+      prefetch(client, infinite(b)).ignore();
+
+      // Fetching: built and rebuilt while the fetch runs.
+      await tester.pumpApp(client, prefetcher(a, b));
+      await advance(tester, 5);
+      rebuild();
+      await advance(tester, 6);
+      expect(fetches, {a: 1, b: 1});
+      expect(client.getQueryData<String>(a), 'data');
+
+      // Pending and idle, as a cancelled first fetch leaves it.
+      final c = queryKey();
+      final d = queryKey();
+      prefetch(client, plain(c)).ignore();
+      prefetch(client, infinite(d)).ignore();
+      await client.cancelQueries(filters: QueryFilters(queryKey: c));
+      await client.cancelQueries(filters: QueryFilters(queryKey: d));
+      for (final state in [
+        client.getQueryState<String>(c)!,
+        client.getQueryState<InfiniteData<String, int>>(d)!,
+      ]) {
+        expect(state.status, QueryStatus.pending);
+        expect(state.fetchStatus, FetchStatus.idle);
+      }
+
+      await tester.pumpApp(client, prefetcher(c, d));
+      rebuild();
+      await tester.pump();
+      await advance(tester, 20);
+      expect(fetches, {a: 1, b: 1, c: 1, d: 1});
+      expect(client.getQueryState<String>(c)!.fetchStatus, FetchStatus.idle);
+
+      await tester.pumpApp(
+        client,
+        Column(children: [prefetcher(c, d), readers(c, d)]),
+      );
+      await advance(tester, 11);
+      expect(fetches, {a: 1, b: 1, c: 2, d: 2});
+      expect(find.text('data [page 0]'), findsOneWidget);
+    });
+
+    hookTest('the prefetch hooks hold no observer and never rebuild',
+        (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+      var builds = 0;
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          builds++;
+          usePrefetchQuery(plain(a));
+          usePrefetchInfiniteQuery(infinite(b));
+          return const SizedBox();
+        }),
+      );
+      expect(observersOf(client, a), 0);
+      expect(observersOf(client, b), 0);
+      await advance(tester, 11);
+
+      expect(client.getQueryData<String>(a), 'data');
+      expect(builds, 1);
+      expect(observersOf(client, a), 0);
+      expect(observersOf(client, b), 0);
+    });
+
+    // Upstream's `void client.query(options).catch(noop)`: a failure is the
+    // entry's state, not an error in the zone.
+    hookTest('a fetch the prefetch hooks start fails into the entry',
+        (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+      failing = true;
+
+      await tester.pumpApp(client, prefetcher(a, b));
+      await advance(tester, 11);
+
+      expect(tester.takeException(), isNull);
+      expect(client.getQueryState<String>(a)!.status, QueryStatus.error);
+      expect(
+        client.getQueryState<InfiniteData<String, int>>(b)!.status,
+        QueryStatus.error,
+      );
+      expect(fetches, {a: 1, b: 1});
+    });
+
+    // `find` is exact by default and `findAll` is not: a lookup that matched
+    // by prefix would take a longer key for this one.
+    hookTest('an entry under a longer key is not the entry',
+        (tester, client) async {
+      final a = queryKey();
+      final b = queryKey();
+      client.setQueryData<int>(QueryKey([...a.parts, 1]), 1);
+      client.setQueryData<int>(QueryKey([...b.parts, 1]), 1);
+
+      await tester.pumpApp(client, prefetcher(a, b));
+      await advance(tester, 11);
+      expect(fetches, {a: 1, b: 1});
+    });
+
+    // D11: the prefetch starts its fetch in the middle of a frame's build,
+    // after the counter beside it was built. The cache's notification must
+    // reach the counter after the build: with a provider after the frame,
+    // without one in a microtask (D7). `phases` records when a delivery
+    // scheduled the way `useIsFetching` schedules its own ran.
+    for (final provider in [true, false]) {
+      hookTest(
+          'a useIsFetching built before the prefetch: no setState during '
+          'build, ${provider ? 'with a provider' : 'without one'}',
+          (tester, client) async {
+        final a = queryKey();
+        final b = queryKey();
+        final own = provider ? null : client;
+        final counts = <int>[];
+        final phases = <String>[];
+        final unsubscribe = client.queryCache.subscribe((_) =>
+            client.notifyManager.schedule(
+                () => phases.add(WidgetsBinding.instance.schedulerPhase.name)));
+        addTearDown(unsubscribe);
+        Widget wrap(Widget child) =>
+            provider ? app(client, child) : MaterialApp(home: child);
+
+        // The tree exists first, so the next build is a frame's.
+        await tester.pumpWidget(wrap(const SizedBox()));
+        await tester.pumpWidget(wrap(Column(children: [
+          HookBuilder(builder: (context) {
+            counts.add(useIsFetching(client: own));
+            return const SizedBox();
+          }),
+          prefetcher(a, b, client: own),
+        ])));
+
+        expect(tester.takeException(), isNull);
+        expect(counts, [0]);
+        expect(phases, isNotEmpty);
+        expect(phases.toSet(), {provider ? 'postFrameCallbacks' : 'idle'});
+
+        await tester.pump();
+        expect(counts, [0, 2]);
+        await advance(tester, 10);
+        expect(counts, [0, 2, 0]);
+        expect(fetches, {a: 1, b: 1});
+      });
+    }
+  });
 }

@@ -91,6 +91,8 @@ what every call style does. A case changed only in spelling is **ported**.
 | `useQueries.test.tsx` | `use_queries_test.dart` | 17 / 24 | done (AP6) |
 | `useIsFetching.test.tsx` | `use_is_fetching_test.dart` | 1 / 5 | spike selection; AP7 |
 | `useMutationState.test.tsx` | `use_mutation_state_test.dart` | 1 / 5 | spike selection; AP7 |
+| `usePrefetchQuery.test.tsx` | `use_prefetch_query_test.dart` | 4 / 6 | done (AP8) |
+| `usePrefetchInfiniteQuery.test.tsx` | `use_prefetch_infinite_query_test.dart` | 2 / 3 | done (AP8) |
 
 `useQuery.test.tsx` is accounted for in full. The other rows are still the
 spike's selection (AP0, `docs/research/hooks-spike.md`); each later ticket
@@ -234,3 +236,41 @@ GPT-6.1-Sol (xhigh) compared all 17 Dart cases with upstream, found no unsupport
 | S-3 (P2) | This file had no AP6 section | — | This section; the porting agent's notes were outside the repository by design |
 
 Sol's sparring agreed with 589, the provider-less pages, `keys:` for `useCallback`, 490's partial port and the extra H-01 angles. It disagreed on 94: a list-level `buildWhen` could compare data without knowing which query moved, so the build count is a missing capability rather than the frame. Kept: `QueriesBuilder` takes no `buildWhen` either, and a list predicate would be new API in both packages; it is a candidate for the binding's backlog. On 434 it asked that the strengthening cite the decision whose gap it closes, which the row above now does.
+
+## `usePrefetchQuery.test.tsx` and `usePrefetchInfiniteQuery.test.tsx`
+
+**9 upstream cases (6 and 3): 6 adapted, 3 omitted (AP8, #101).** Every upstream case reads through `useSuspenseQuery` or `useSuspenseInfiniteQuery` inside a `React.Suspense`. The port translates that one way for all of them: the reader is `useQuery` or `useInfiniteQuery` over a file-private `suspense(options)`, which puts on the options what upstream's suspense hooks put there — `ensureSuspenseTimers` raises `staleTime` to at least 1000 ms, `ensurePreventErrorBoundaryRetry` sets `retryOnMount: false`. The reader's pending branch is the suspense fallback, its error branch the boundary's. The prefetch hook gets upstream's options as written, without the floor: with the floor on its options too, `client.query` would skip fresh data with no lookup in the hook, and 66 and 88 would pass with the lookup removed. No case carries a skip, and the port found no defect.
+
+### Adapted (6)
+
+| File:line | Case | What changed, and why |
+|---|---|---|
+| usePrefetchQuery:31 | should prefetch query if query state does not exist | D14 (Suspense): the reader over `suspense(…)`, its pending branch the `Loading...` fallback. No assertion changed |
+| usePrefetchQuery:66 | should not prefetch query if query state exists | D14 (Suspense), as 31. **Strengthened, as 4189:** upstream's `queryByText('fetching: true')` matches nothing in either framework, because nothing renders that text. It stays as written, and `client.isFetching() == 0` beside it says what it meant |
+| usePrefetchQuery:101 | should let errors fall through and not refetch failed queries | D14 (Suspense, error boundary): the reader's error branch renders the boundary's `Oops!`, and `retryOnMount: false` keeps it from refetching, as it keeps `useSuspenseQuery`. No assertion changed |
+| usePrefetchQuery:240 | should not create a suspense waterfall if prefetch is fired | D14 (Suspense): each reader builds a counted fallback instead of its children while pending, which is the waterfall one boundary makes. No assertion changed. The inventory and the plan had it N; it ports, and goes red with the hook inert |
+| usePrefetchInfiniteQuery:29 | should prefetch an infinite query if query state does not exist | D14 (Suspense): the reader over `suspense(…)`. No assertion changed |
+| usePrefetchInfiniteQuery:88 | should not display fallback if the query cache is already populated | D14 (Suspense), as 29. No assertion changed. The inventory had it N; it is 66's infinite twin and goes red with the lookup removed |
+
+### Omitted (3)
+
+| File:line | Category | Why |
+|---|---|---|
+| usePrefetchQuery:146, usePrefetchInfiniteQuery:146 | Suspense (D14) | The loop needs a boundary that throws the prefetching component's render away on every suspension. A Flutter element keeps its state, so a port would be 31 with one more wrapper and nothing new to fail. What the case guards, that the hook decides from the cache and not from component state, is held by `review_reproductions_test.dart` (P2-1) and the AP8 group's pending case |
+| usePrefetchQuery:180 | `QueryErrorResetBoundary` (D14) | The case is the boundary's reset. The prefetching `App` does not render again after it, so the hook takes no part; its part, not refetching the failed entry, is 101 |
+
+### What the port measured
+
+- **The inventory's suggestion, a plain reader with call counts, fails four of six** (66, 101, 240, 88): a plain reader refetches stale data and retries a failed entry on mount. The suspense hooks' option rewrites are part of the scenario.
+- **The inventory's mechanism, a fetch when `getQueryState(key) == null`, is the plan review's P2-1 bug**, which D11 corrects: `getQueryState` with the reader's type throws for an entry cached under another. Both hooks share one untyped `queryCache.find(exact)` lookup.
+- **A trap for the documentation, not a defect.** `unawaited(client.query(options))` infers `void` for the query's data type from `unawaited`'s parameter, so the entry is typed `void` and the first typed reader throws `QueryDataTypeError`. The `unawaited_futures` lint suggests exactly that wrapper. `.ignore()` or an explicit type argument avoids it.
+- **The AP8 group** in `hook_specifics_test.dart` (8 cases, each running both hooks on keys of their own) holds the acceptance criteria: a build with the entry present does not throw; a failed or pending entry is not fetched again; and no "setState during build" — the `useIsFetching` beside the prefetch is delivered after the frame with a provider and in the microtask flush without one, both checked against the scheduler phase. With a synchronous scheduler the same tree does throw that assertion, so the cases can fail.
+- **The suite has teeth.** Seven faults in `use_prefetch.dart`, over the 15 prefetch cases (the 14 above and the P2-1 reproduction): no lookup turns 7 red, a typed `getQueryState` lookup 7, skipping only entries with data 3, no fetch 10, a prefix lookup 1, the future not ignored 1, an observing `useQuery` instead 6. Every case goes red under at least one.
+
+### Second review
+
+GPT-6.1-Sol (xhigh) ran the suite (174 green), reproduced the notes' controls (no lookup 7, no fetch 10, plain readers 4) and added three probes of its own, all green: differently typed cached entries, client and key switches, a fetch outliving its hook. It agreed with every decision: the suspense stand-in, the prefetch's own options, 240 and 88 adapted, plain functions with no state. One finding:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S-1 (P2) | 66 adds `client.isFetching() == 0`, an assertion upstream does not have, outside D8, D10 and D14 | It is there | Kept, as 4189's strengthening: upstream's own assertion there matches nothing in either framework, which is the case this file allows a strengthening for. The row above says so |
