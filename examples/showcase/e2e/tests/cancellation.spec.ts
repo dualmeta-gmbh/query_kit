@@ -113,17 +113,21 @@ test('a needle typed while the last is in flight cancels it', async ({ page, ope
   await open('/cancellation')
   await expect(searched(page, 'needle=none')).toBeVisible()
 
+  // `a` is held in the browser, so it is still in flight when `az` is
+  // committed however long the typing takes — the one-second answer alone
+  // was outrun by WebKit under load.
+  const hold = holdRequest(page, (url) => url.pathname === '/api/search' && url.searchParams.get('q') === 'a')
   await typeNeedle(page, 'a')
-  // The needle is committed after the debounce, well before the one-second
-  // request can answer.
   await expect(searched(page, 'needle=a')).toBeVisible()
   await expect(searched(page, 'searching=true')).toBeVisible()
+  await expect.poll(() => hold.seen).toBe(1)
 
   await typeNeedle(page, 'az')
 
   await expect(searched(page, 'needle=az')).toBeVisible()
   await expect(searched(page, 'searchCancels=1')).toBeVisible()
   await expect.poll(() => aborted.length).toBe(1)
+  await hold.release()
   // The abandoned needle keeps its entry, reverted to before the fetch.
   await expect(fact(page, 'previous', 'fetchStatus=idle')).toBeVisible()
   await expect(fact(page, 'previous', 'status=pending')).toBeVisible()

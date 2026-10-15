@@ -7,6 +7,7 @@
 // gets: rows are groups named after the task, buttons carry their tooltips.
 import { expect, test, type Page } from '@playwright/test'
 import { createTask, getTask, requestCounter, sweepTestTasks, uniqueName } from './backend'
+import { trackInputListeners, typeInto } from './flutter_input'
 
 // The list builds only the rows in view, and a created task lands at the
 // end of it — so the leftovers of earlier runs are cleared away, and the
@@ -14,6 +15,7 @@ import { createTask, getTask, requestCounter, sweepTestTasks, uniqueName } from 
 test.beforeAll(async ({ request }) => sweepTestTasks(request))
 test.afterAll(async ({ request }) => sweepTestTasks(request))
 test.use({ viewport: { width: 1280, height: 1600 } })
+test.beforeEach(({ page }) => trackInputListeners(page))
 
 const open = async (page: Page) => {
   await page.goto('/')
@@ -37,6 +39,28 @@ function holdWrite(page: Page) {
     letGo = resolve
   })
   const routed = page.route('**/api/tasks/*/name', async (route) => {
+    await held
+    await route.continue()
+  })
+  return {
+    async release() {
+      await routed
+      letGo()
+    },
+  }
+}
+
+// The same for any other request: `method` requests to `glob` are held, so
+// "optimistic" is asserted while the backend provably owes its answer, not
+// within a guessed number of milliseconds a busy browser may not keep. Other
+// requests to the same paths pass.
+function holdRequests(page: Page, method: string, glob: string) {
+  let letGo: () => void = () => {}
+  const held = new Promise<void>((resolve) => {
+    letGo = resolve
+  })
+  const routed = page.route(glob, async (route) => {
+    if (route.request().method() !== method) return route.fallback()
     await held
     await route.continue()
   })
@@ -104,7 +128,7 @@ test('renames optimistically and the backend keeps the name', async ({ page, req
   const field = page.getByRole('textbox', { name: /^Name/ })
   await field.click()
   await expect(field).toHaveValue(task.name)
-  await field.fill(newName)
+  await typeInto(page, field, newName)
 
   // Hold the write at the network layer, so "optimistic" is proven by
   // construction: the backend has provably not answered while we assert. A
@@ -137,7 +161,7 @@ test('a refused rename rolls back on screen and in the field', async ({ page, re
   const field = page.getByRole('textbox', { name: /^Name/ })
   await field.click()
   await expect(field).toHaveValue(task.name)
-  await field.fill('fail')
+  await typeInto(page, field, 'fail')
 
   // Same as the rename above: the rejected name has to be on screen while the
   // backend still owes an answer, so the write is held until we have seen it.
@@ -161,9 +185,11 @@ test('the reminder switch flips at once, waits for the scheduler, then settles',
 
   const reminder = page.getByRole('switch')
   await expect(reminder).toHaveAttribute('aria-checked', 'false')
+  const write = holdRequests(page, 'PUT', '**/api/tasks/*/reminder')
   await reminder.click()
   // Optimistic: the requested value shows before the write is accepted.
-  await expect(reminder).toHaveAttribute('aria-checked', 'true', { timeout: 300 })
+  await expect(reminder).toHaveAttribute('aria-checked', 'true')
+  await write.release()
 
   // Accepted, not confirmed: the backend answers with `pending`, the switch
   // is locked for the confirmation window, and the app polls the task.
@@ -201,8 +227,10 @@ test('a refused delete springs back with a notice; the retry goes through', asyn
   await expect(row(page, second.name)).toBeVisible()
 
   for (let attempt = 0; attempt < 2 && (await getTask(request, first.id)); attempt++) {
+    const held = holdRequests(page, 'DELETE', '**/api/tasks/*')
     await deleteButton(page, first.name).click()
-    await expect(row(page, first.name)).toBeHidden({ timeout: 300 })
+    await expect(row(page, first.name)).toBeHidden()
+    await held.release()
     await expect
       .poll(async () => (await getTask(request, first.id)) === null || (await row(page, first.name).isVisible()), {
         timeout: 5000,
@@ -211,9 +239,11 @@ test('a refused delete springs back with a notice; the retry goes through', asyn
   }
   expect(await getTask(request, first.id)).toBeNull()
 
+  const held = holdRequests(page, 'DELETE', '**/api/tasks/*')
   await deleteButton(page, second.name).click()
   // Optimistically gone …
-  await expect(row(page, second.name)).toBeHidden({ timeout: 300 })
+  await expect(row(page, second.name)).toBeHidden()
+  await held.release()
   // … and back, with the backend's own words.
   await expect(page.getByText('The server refused the delete — try again')).toBeVisible()
   await expect(row(page, second.name)).toBeVisible()
@@ -235,8 +265,7 @@ test('searching narrows the list through the backend, once per pause in typing',
 
   const searched = page.waitForRequest((r) => new URL(r.url()).searchParams.get('search') === needle)
   const search = page.getByRole('textbox', { name: 'Search tasks…' })
-  await search.click()
-  await search.fill(needle)
+  await typeInto(page, search, needle)
   await searched
   await expect(row(page, task.name)).toBeVisible()
   await expect(page.getByRole('button', { name: /^Delete / })).toHaveCount(1)
@@ -266,7 +295,7 @@ test('an unreachable backend shows the error panel after one retry, and recovers
   await expect(page.getByText(/\d+ of \d+ synced/)).toBeVisible()
 })
 
-test('shared data stays consistent through rename, rollback and network recovery', async ({ page, request, browserName }) => {
+test('shared data stays consistent through rename, rollback and network recovery', async ({ page, request }) => {
   const task = await createTask(request, uniqueName('Confidence'))
   const renamed = uniqueName('Confirmed')
   const requests = requestCounter(page)
@@ -280,7 +309,7 @@ test('shared data stays consistent through rename, rollback and network recovery
   const field = page.getByRole('textbox', { name: /^Name/ })
   await field.click()
   await expect(field).toHaveValue(task.name)
-  await field.fill(renamed)
+  await typeInto(page, field, renamed)
   const successfulWrite = holdWrite(page)
   await page.getByRole('button', { name: 'Rename', exact: true }).click()
   await expect(heroTitle(page)).toContainText(renamed)
@@ -290,37 +319,12 @@ test('shared data stays consistent through rename, rollback and network recovery
   await expect(page.getByRole('button', { name: 'Rename', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
   expect((await getTask(request, task.id))?.name).toBe(renamed)
 
-  // After the button click, DOM refocus alone can leave Flutter's input
-  // connection inactive. Retry the focus traversal as well as the readiness
-  // check: polling alone cannot repair a traversal Flutter did not accept.
-  // Chromium's debugger observes the listener without changing the app;
-  // Firefox and WebKit have no such session, and there focus is the check.
-  // Only focus is retried here; filling and submitting remain outside.
-  const editing = browserName === 'chromium' ? await page.context().newCDPSession(page) : null
-  try {
-    await expect(async () => {
-      await field.click({ timeout: 1000 })
-      await expect(field).toHaveValue(renamed, { timeout: 1000 })
-      await field.press('Tab', { timeout: 1000 })
-      await page.keyboard.press('Shift+Tab')
-      await expect(field).toBeFocused({ timeout: 1000 })
-      if (!editing) return
-      const { result } = await editing.send('Runtime.evaluate', {
-        expression: `(() => {
-          let element = document.activeElement
-          while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement
-          return getEventListeners(element).input?.length ?? 0
-        })()`,
-        includeCommandLineAPI: true,
-        returnByValue: true,
-      })
-      expect(result.value).toBeGreaterThan(0)
-    }).toPass({ timeout: 15_000, intervals: [100, 250, 500] })
-  } finally {
-    await editing?.detach()
-  }
-  await field.fill('fail')
-  await expect(field).toHaveValue('fail')
+  // After the button click the field still holds the confirmed name; a
+  // click alone can leave Flutter's input connection inactive, which
+  // `typeInto` repairs before it types.
+  await field.click()
+  await expect(field).toHaveValue(renamed)
+  await typeInto(page, field, 'fail')
   const rejectedWrite = holdWrite(page)
   const rejectedRequest = page.waitForRequest((r) =>
     r.method() === 'PUT' && new URL(r.url()).pathname.endsWith('/name'))

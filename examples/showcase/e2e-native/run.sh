@@ -12,7 +12,8 @@
 #                                             leave the app skip themselves
 #   e2e-native/run.sh web     [test file …]   Chrome, headless, through `flutter drive` and a
 #                                             chromedriver (CHROMEDRIVER, default the one on PATH)
-#                                             matching the installed Chrome
+#                                             matching the installed Chrome, or the one
+#                                             CHROME_EXECUTABLE names
 #
 # Without test files it runs the whole of `integration_test/`. MODE=profile
 # runs it compiled ahead of time, as a user gets it, without the binding's
@@ -138,6 +139,12 @@ if [ "$platform" = web ] || [ "$mode" != debug ]; then
   if [ "$#" -eq 0 ]; then set -- integration_test/*_test.dart; fi
   if [ "$platform" = web ]; then
     target_args=(-d web-server --browser-name=chrome --headless)
+    # The Chrome the chromedriver matches: left to itself the driver starts
+    # whichever Chrome is installed where it looks, which on a CI runner is
+    # another version than the one set up beside the driver.
+    if [ -n "${CHROME_EXECUTABLE:-}" ]; then
+      target_args+=("--chrome-binary=$CHROME_EXECUTABLE")
+    fi
   else
     target_args=(-d "$device")
   fi

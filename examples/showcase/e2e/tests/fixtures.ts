@@ -57,7 +57,33 @@ export class Scenario {
   }
 }
 
+declare global {
+  interface Window {
+    __inputListeners?: (element: Element | null) => number
+  }
+}
+
 export const test = base.extend<{ scenario: Scenario; open: (route: string) => Promise<void> }>({
+  // Every page counts the `input` listeners added to each element, before
+  // the app's own code runs and without changing what it does: `typeInto`
+  // types only once Flutter listens to the focused field.
+  page: async ({ page }, use) => {
+    await page.addInitScript(() => {
+      const counts = new WeakMap<EventTarget, number>()
+      const add = EventTarget.prototype.addEventListener
+      const remove = EventTarget.prototype.removeEventListener
+      EventTarget.prototype.addEventListener = function (type, listener, options) {
+        if (type === 'input') counts.set(this, (counts.get(this) ?? 0) + 1)
+        return add.call(this, type, listener, options)
+      }
+      EventTarget.prototype.removeEventListener = function (type, listener, options) {
+        if (type === 'input') counts.set(this, Math.max(0, (counts.get(this) ?? 0) - 1))
+        return remove.call(this, type, listener, options)
+      }
+      window.__inputListeners = (element) => (element ? (counts.get(element) ?? 0) : 0)
+    })
+    await use(page)
+  },
   scenario: async ({ request }, use, testInfo) => {
     // Unique per test and per run, so a re-run never meets an old world.
     const scenario = new Scenario(`${testInfo.testId}-${Date.now().toString(36)}`, request)
@@ -79,39 +105,43 @@ export type { Page }
 
 /// Clicks a Flutter text field and types `text` into it. A click can leave
 /// Flutter's input connection inactive, and a `fill` then lands in an
-/// element nobody listens to: the app never sees the text. So focus and fill
-/// are retried until the field keeps the text and, in Chromium, until the
-/// focused element has Flutter's `input` listener (DevTools' view of it;
-/// Firefox and WebKit have no such session). `fill` replaces what is there,
-/// so a retry types nothing twice. The task manager's rename test met the
-/// same.
+/// element nobody listens to: the DOM holds the text, so `toHaveValue`
+/// passes, and the app never sees it. So the field is focused — and, when
+/// two seconds bring no listener, the focus walked away and back, which
+/// waiting alone cannot repair — until the focused element has the `input`
+/// listener Flutter reads it through, as the `page` fixture counts them in
+/// every browser. Firefox and WebKit on Linux met exactly that under load.
+/// The task manager's suite does the same.
 export async function typeInto(page: Page, field: Locator, text: string) {
-  const browser = page.context().browser()?.browserType().name()
-  const editing = browser === 'chromium' ? await page.context().newCDPSession(page) : null
-  try {
-    await expect(async () => {
-      await field.click({ timeout: 1000 })
-      await expect(field).toBeFocused({ timeout: 1000 })
-      if (!editing) return
-      const { result } = await editing.send('Runtime.evaluate', {
-        expression: `(() => {
-          let element = document.activeElement
-          while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement
-          return getEventListeners(element).input?.length ?? 0
-        })()`,
-        includeCommandLineAPI: true,
-        returnByValue: true,
-      })
-      expect(result.value).toBeGreaterThan(0)
-    }).toPass({ timeout: 15_000, intervals: [100, 250, 500] })
-  } finally {
-    await editing?.detach()
-  }
+  const listenersOnFocus = () =>
+    page.evaluate(() => {
+      let element = document.activeElement
+      while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement
+      return window.__inputListeners?.(element) ?? -1
+    })
+  // Flutter attaches its listener a round trip through the framework after
+  // the focus, later still under load: walking away before then would break
+  // the connection on its way up.
+  const heard = () =>
+    expect
+      .poll(listenersOnFocus, { timeout: 2000 })
+      .toBeGreaterThan(0)
+      .then(
+        () => true,
+        () => false,
+      )
   await expect(async () => {
     await field.click({ timeout: 1000 })
-    await field.fill(text, { timeout: 1000 })
-    await expect(field).toHaveValue(text, { timeout: 1000 })
-  }).toPass({ timeout: 15_000, intervals: [100, 250, 500] })
+    await expect(field).toBeFocused({ timeout: 1000 })
+    if (await heard()) return
+    await field.press('Tab', { timeout: 1000 })
+    await page.keyboard.press('Shift+Tab')
+    await expect(field).toBeFocused({ timeout: 1000 })
+    if (await heard()) return
+    throw new Error('Flutter does not listen to the focused field')
+  }).toPass({ timeout: 20_000, intervals: [100, 250, 500] })
+  await field.fill(text)
+  await expect(field).toHaveValue(text)
 }
 
 /// The semantics group named `name`.
@@ -166,7 +196,8 @@ export const snackBar = (page: Page, text: string) => page.locator('flt-semantic
 /// an assertion between the action and the release runs while the backend
 /// provably has not answered. After the release the handler is a passthrough;
 /// unrouting it would race the handler that is still letting the held request
-/// go.
+/// go. A request the page aborted while it was held has nothing left to let
+/// go, so its `continue` is allowed to fail.
 export function holdRequest(page: Page, glob: Parameters<Page['route']>[0]) {
   let letGo: () => void = () => {}
   const held = new Promise<void>((resolve) => {
@@ -176,7 +207,7 @@ export function holdRequest(page: Page, glob: Parameters<Page['route']>[0]) {
   const routed = page.route(glob, async (route) => {
     seen += 1
     await held
-    await route.continue()
+    await route.continue().catch(() => {})
   })
   return {
     /// How many requests the hold has caught so far.

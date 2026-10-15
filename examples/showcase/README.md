@@ -257,7 +257,12 @@ paints to a canvas, so the tests read the **semantics tree**, switched on by
 - A `Card` that is a semantic container folds its texts into its accessible
   name; `SectionCard` opts out so every text stays findable. Buttons are their
   tooltips; a text field mirrors its text only once focused, so click before
-  you read or `fill`; a lazily built list only has the rows in view.
+  you read, and type through `typeInto`, never a bare `fill` — a click can
+  leave Flutter's input connection inactive, and a `fill` then reaches the DOM
+  but not the app; `typeInto` waits until the focused element has Flutter's
+  `input` listener. A lazily built list only has the rows in view, and a
+  row already in the tree can still lie past the window's edge, where a
+  click misses it.
 - No `Slider` (only increment steps reach the DOM), no hover (it does not reach
   a `MouseRegion` through the semantics overlay), no `page.goBack()` (Flutter
   web keeps one history entry — use the app's back button).

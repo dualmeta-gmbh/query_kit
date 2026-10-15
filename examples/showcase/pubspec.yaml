@@ -36,6 +36,20 @@ flutter:
   # to an existing one.
   uses-material-design: true
 
+  # Roboto, bundled. A web build whose manifest has no Roboto downloads it
+  # from fonts.gstatic.com before the app starts — the engine waits for that
+  # download — so the end-to-end suites would boot only as fast as the
+  # internet answers, and a stalled request left the page blank. Apache 2.0,
+  # fonts/LICENSE.txt; the weights the screens use.
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: fonts/Roboto-Regular.ttf
+        - asset: fonts/Roboto-Medium.ttf
+          weight: 500
+        - asset: fonts/Roboto-Bold.ttf
+          weight: 700
+
   # The in-memory backend's seed, the very file the express server loads, so
   # the demo build (`--dart-define=QK_BACKEND=inmemory`) holds the same data.
   assets:

@@ -6806,3 +6806,35 @@ by a cancel, which it answers with a silent `CancelledError`
 (`coverage_gaps_test.dart`). `continueMutation` reads its run with `!`: a run
 installs it before making its retryer and drops both together, so the branch
 for a retryer without a run could not be reached.
+
+**The suites in every engine.** The new `native-e2e` workflow's first run on
+the pull request also ran both Playwright suites in Firefox and WebKit, which
+the push CI never does. They failed, and so did the web leg, on things of the
+suites' own and none of the library's; each was reproduced in the Playwright
+Linux image under a CPU cap before anything changed, and the fixed suites ran
+clean there in all three engines with no retries (showcase 555 runs, task
+manager 30).
+
+- **Typing that never reached the app.** A click can leave Flutter's input
+  connection inactive; a `fill` then sets a DOM value no listener reads, and
+  `toHaveValue` passes all the same. The task manager's rename sent the old
+  name. `typeInto` (both suites) now counts the `input` listeners per element
+  from an init script and types only once the focused field has Flutter's.
+  Its first version checked right after the click and walked the focus away
+  when it found none, which under load broke every connection on its way up;
+  it now gives each focus two seconds first.
+- **Clocks in assertions.** Two task-manager checks proved an optimistic
+  change with `{ timeout: 300 }`, and a showcase case relied on a one-second
+  answer outlasting the next keystroke. Each request is now held in the
+  browser until the assertion has run.
+- **A click outside the window.** A row a lazy list builds is in the
+  semantics tree before it is on screen; WebKit's click on a button just past
+  the edge reached nothing. `reveal` scrolls until the target lies inside.
+- **A boot that waited on the internet.** A web build whose font manifest has
+  no Roboto fetches it from `fonts.gstatic.com`, and the engine starts the
+  app only once that answers; a stalled request left the page blank. Both
+  examples bundle Roboto (Apache 2.0, the weights their screens use).
+- **The web leg** started whichever Chrome the runner had, older than the
+  chromedriver set up beside it; `run.sh` passes `CHROME_EXECUTABLE` on as
+  `--chrome-binary`. Two task-manager names drawn in the same millisecond
+  could collide; they carry a random suffix.
