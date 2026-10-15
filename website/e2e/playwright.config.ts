@@ -1,9 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
 // The site as it ships: `npm run demos && npm run build` in website/, then
-// `docusaurus serve` over build/, under the real base URL. There is no backend
-// — every demo runs against its in-memory one inside the page — so nothing
-// here starts a server but the static one.
+// build/ served the way GitHub Pages serves it (serve.mjs). There is no
+// backend — every demo runs against its in-memory one inside the page — so
+// nothing here starts a server but the static one.
 const port = process.env.SITE_PORT ?? '3100'
 
 export default defineConfig({
@@ -21,7 +21,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `npx docusaurus serve --dir build --port ${port} --no-open`,
+    command: `node e2e/serve.mjs ${port}`,
     cwd: '..',
     url: `http://localhost:${port}/`,
     reuseExistingServer: !process.env.CI,
