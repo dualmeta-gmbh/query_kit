@@ -139,7 +139,7 @@ serve` has it all.
   |---|---|
   | `snippet="<id>"` | **exact**, character for character, once the block's own indentation is out of the way — plus one allowance: the twin's last line may carry the trailing `;` or `,` that makes it a statement where the page shows an expression |
   | `snippet="excerpt: <id>"` | the id resolves, so the sample is anchored to code that compiles; the lines are not compared, and the fence **must** show a `…` — which is what stops `excerpt:` becoming a way to silence a real drift |
-  | `snippet="prose-only: <reason>"` | no twin, and the reason is recorded rather than remembered. Every current one is a third-party package (`dio`, `connectivity_plus`, `signals_flutter`) that neither published package may depend on |
+  | `snippet="prose-only: <reason>"` | no twin, and the reason is recorded rather than remembered. Every current one is a third-party package (`dio`, `connectivity_plus`, `signals_flutter`, and `flutter_hooks` on the hooks guide) that neither published package may depend on |
 
   It stands at **39 exact, 6 excerpts, 5 prose-only** across 50 fences and 13
   pages, against 48 marked regions (counted before the release-1.0 docs pass;
@@ -150,6 +150,15 @@ serve` has it all.
   `QueryBuilder` shows `builder: (context, result) => switch (result) { /* … */ }`
   on purpose, and spelling the switch out to satisfy a checker would make the
   page worse.
+
+  The hooks guide, `docs/guides/hooks.md`, is the one page whose samples
+  cannot have their twin here: they need `query_kit_hooks`, and through it
+  `flutter_hooks`, which no example may depend on. So each of its fences is
+  `prose-only` to this check and names its twin with a second attribute,
+  `twin="<id>"`; the twins live in `packages/query_kit_hooks/test/doc_twins/`,
+  and `packages/query_kit_hooks/test/docs_fences_test.dart` holds the fences
+  of that page and of the hooks README equal to them, by the same three
+  forms (`twin="excerpt: …"`, `twin="prose-only: …"`).
 
   Two things the same pass turned up, both fixed rather than declared
   excerpts: `the-query-client.md` called an `api.get` that does not exist, and

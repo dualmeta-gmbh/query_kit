@@ -9,7 +9,8 @@ package builds on and re-exports.
 > **In development.** This package has not been released yet. The first
 > release is 0.1.0; until then its API can change without notice.
 
-**Documentation: [query-kit.dualmeta.io](https://query-kit.dualmeta.io/)** ·
+**Documentation: [the hooks guide](https://query-kit.dualmeta.io/docs/guides/hooks)**
+on [query-kit.dualmeta.io](https://query-kit.dualmeta.io/) ·
 [API reference](https://pub.dev/documentation/query_kit_hooks/latest/)
 
 > **AI-coded.** query_kit is an entirely AI-coded project: all code, tests
@@ -36,18 +37,19 @@ call styles do the same job, and none of them is behind the hooks.
 ## Install
 
 ```bash
-flutter pub add query_kit_hooks
+flutter pub add query_kit_hooks flutter_hooks
 ```
 
-That brings `query_kit_flutter` and `flutter_hooks` with it, and one import
-is enough, because this package re-exports the binding:
+This package brings `query_kit_flutter` with it and re-exports it, so its
+import gives you the whole binding. `flutter_hooks` goes in your
+`pubspec.yaml` as well, because your files import it for `HookWidget`: this
+package does not re-export it, and the `depend_on_referenced_packages` lint
+asks for a direct dependency on every package a file imports.
 
-```dart
+```dart twin="guides/hooks.md#imports"
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:query_kit_hooks/query_kit_hooks.dart';
 ```
-
-You also import `package:flutter_hooks/flutter_hooks.dart` for `HookWidget`.
-This package does not re-export `flutter_hooks`.
 
 Requires Flutter 3.27 or later.
 
@@ -56,7 +58,7 @@ Requires Flutter 3.27 or later.
 Provide a `QueryClient` with a `QueryClientProvider`, exactly as for the
 binding. Then read a query from a `HookWidget`:
 
-```dart
+```dart twin="guides/hooks.md#use-query"
 class TasksScreen extends HookWidget {
   const TasksScreen({super.key});
 
@@ -92,13 +94,20 @@ observer to the other query. Unmounting the widget lets the query go.
 | `useInfiniteQuery` | a paged query |
 | `useMutation` | a mutation, as a `MutationController` |
 | `useQueries`, `useCombinedQueries` | a list of queries, raw or combined |
-| `useIsFetching`, `useIsMutating`, `useMutationState` | counts and state across the caches |
+| `useIsFetching`, `useIsMutating` | how many queries are fetching, how many mutations are pending |
+| `useMutationState`, `useTypedMutationState` | a selection over the mutation cache, untyped or typed |
 | `usePrefetchQuery`, `usePrefetchInfiniteQuery` | start a fetch without reading it |
-| `useQueryClient` | the client the widget reads from |
+| `useQueryClient` | the client of the nearest provider |
 
-Every hook that reads a result takes a `buildWhen`, as the binding's call
-styles do, and none rebuilds for a notification carrying what the widget is
-already showing.
+The hooks that read one result — `useQuery`, `useSelectQuery`,
+`useInfiniteQuery`, `useMutation` and `useCombinedQueries` — take a
+`buildWhen`, as the binding's call styles do. `useQueries` takes none, as
+`QueriesBuilder` takes none. No hook rebuilds for a notification carrying
+what the widget is already showing.
+
+What each hook takes and returns, the rules of hooks, what a throw in
+`build` costs and how to test a `HookWidget` are in
+[the hooks guide](https://query-kit.dualmeta.io/docs/guides/hooks).
 
 ## License and credits
 

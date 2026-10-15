@@ -96,6 +96,30 @@ is not here at all, the [feature matrix](feature-matrix.md).
 | mutation defaults may carry callbacks | `setMutationDefaults` carries no callbacks |
 | mutations cannot be cancelled | `cancel()` fails a run with `CancelledError`; see [cancelling mutations](../guides/cancelling-mutations.md) |
 
+## Hooks
+
+The optional add-on [`query_kit_hooks`](../guides/hooks.md) has React Query's
+hook names, and React Query's own hook tests are ported and run against it.
+Where it differs:
+
+| React Query | `query_kit_hooks` |
+|---|---|
+| `notifyOnChangeProps` and tracked result properties | `buildWhen` on the hooks that read one result: `useQuery`, `useSelectQuery`, `useInfiniteQuery`, `useMutation`, `useCombinedQueries`. `useQueries` takes none, as `QueriesBuilder` takes none, so a refetch's fetching state costs it a build of its own |
+| a component renders after every timer | a widget builds once per frame, for every notification before it, so a build count can be lower |
+| `useQueries({ queries, combine })` | `useCombinedQueries(queries, combiner, keys: …)`, which returns a `CombinedResult`: pending until every query has data, with the combiner run over the values rather than the results. It runs again when a value or a key changes, not on every build, so what it captures goes in `keys:` where React wraps it in `useCallback`. There is no raw `combine` |
+| `useInfiniteQuery` returns a result with `hasNextPage`, `fetchNextPage`, … | it returns the `InfiniteQueryController`: the result in `value`, the paging flags and `fetchNextPage` beside it |
+| `useMutation` returns a result with `mutate`, `mutateAsync`, `reset` | it returns the `MutationController`: the result in `value`, `mutate`, `mutateAsync` and `reset` its members |
+| `useMutationState` with an optional `select` | `select` is required, and `useTypedMutationState` selects from mutations of one type, typed |
+| `useQueryClient(queryClient?)` | `useQueryClient()` takes no client; the other hooks take `client:`. A missing provider throws the binding's `FlutterError`, not "No QueryClient set" |
+| `usePrefetchQuery` and `usePrefetchInfiniteQuery` beside the Suspense hooks | no Suspense: the reader shows its own pending state |
+| the mutation callbacks' last argument, the mutation function context | not passed: `onMutate` gets the variables alone, and the other callbacks end at `onMutateResult` |
+| the Suspense hooks, `throwOnError`, `HydrationBoundary`, `useIsRestoring`, `subscribed`, `skipToken`, `retryOnMount` as a function | not in the package; see [not in this package](../guides/hooks.md#not-in-this-package) |
+
+One difference comes from `flutter_hooks` rather than from React Query: a
+build that throws disposes the hooks from the throw on, and the next build
+creates them anew. [When a build throws](../guides/hooks.md#when-a-build-throws)
+says what that costs a fetch or a mutation in flight.
+
 ## Dart and Flutter only
 
 - **Structural sharing into your own classes.** A class implementing

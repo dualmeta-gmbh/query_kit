@@ -13,6 +13,10 @@ are building:
 | `query_kit` | Pure Dart: a CLI, a server, a shared data package | `clock`, `meta` |
 | `query_kit_flutter` | A Flutter app | Flutter, `meta`, `query_kit` |
 
+For apps written with `flutter_hooks`, the optional add-on `query_kit_hooks`
+puts `useQuery` and the rest on top of the binding; it is the one package
+that depends on `flutter_hooks`, and [hooks](guides/hooks.md) covers it.
+
 ## In a Flutter app
 
 ```bash
@@ -112,7 +116,10 @@ linter:
   written without its type argument.
 - **`unawaited_futures`** reports a `client.invalidateQueries(...)` or
   `client.query(...)` whose future nobody awaits. Await it, or mark a
-  deliberate fire-and-forget with `unawaited(...)` from `dart:async`.
+  deliberate fire-and-forget: `unawaited(...)` from `dart:async` for most
+  futures, `.ignore()` for a `client.query(...)`. Inside `unawaited(...)`
+  its type argument is inferred as `void`, and the cache entry is created
+  for `void` ([the trap, in full](guides/hooks.md#a-trap-unawaitedclientquery)).
 
 ## Next
 

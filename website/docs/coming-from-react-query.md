@@ -22,21 +22,31 @@ Two rules shape most of the table:
 
 ## Reading a query
 
-`useQuery` has no single counterpart. The binding offers four **equal**
-alternatives — there is no recommended default, pick per situation:
+`useQuery` has no single counterpart in the binding. It offers four
+**equal** alternatives — there is no recommended default, pick per situation.
+The hook names themselves are in an optional add-on,
+[`query_kit_hooks`](guides/hooks.md), on `flutter_hooks`: one more way to
+read the same cache, for widgets that are already `HookWidget`s, and not a
+replacement for the four. Its column says what to call there.
 
-| JS | Here |
-|---|---|
-| `useQuery(options)` in a component | `QueryBuilder<T>(options: …, builder: …)` |
-| | `QueryController<TQueryData, TData>(client, options)` — a `ValueListenable` |
-| | `with QueryMixin` on a `State`, then `watchQuery(options)` in `build` |
-| | `context.query(options)` in any widget under a `QueryClientProvider` |
-| `useInfiniteQuery` | `InfiniteQueryBuilder` / `InfiniteQueryController` / `watchInfiniteQuery` / `context.infiniteQuery` |
-| `useMutation` | `MutationBuilder` / `MutationController` / `watchMutation` / `context.mutation` |
-| `useQueryClient()` outside a build (a handler) | `QueryClientProvider.read(context)` — the same client, without subscribing |
-| `useQueryClient()` | `QueryClientProvider.of(context)` |
-| `QueryClientProvider` | `QueryClientProvider(client: …, child: …)` |
-| `new QueryObserver(client, options)` | `client.observe(options)` or `QueryObserver(client, options)` |
+| JS | The binding | With `query_kit_hooks` |
+|---|---|---|
+| `useQuery(options)` in a component | `QueryBuilder<T>(options: …, builder: …)` | `useQuery(options)` in a `HookWidget`; `useSelectQuery(options)` when the options carry a `select` |
+| | `QueryController<TQueryData, TData>(client, options)` — a `ValueListenable` | |
+| | `with QueryMixin` on a `State`, then `watchQuery(options)` in `build` | |
+| | `context.query(options)` in any widget under a `QueryClientProvider` | |
+| `useInfiniteQuery` | `InfiniteQueryBuilder` / `InfiniteQueryController` / `watchInfiniteQuery` / `context.infiniteQuery` | `useInfiniteQuery(options)`, which returns the `InfiniteQueryController` |
+| `useMutation` | `MutationBuilder` / `MutationController` / `watchMutation` / `context.mutation` | `useMutation(options)`, which returns the `MutationController` |
+| `useQueries({ queries })` | `QueriesObserver` / `QueriesBuilder`, homogeneous: one data type per collection, `select` when the selected type differs. For different types, `(a, b).combine(…)` over a record of results | `useQueries(queries)`, one data type per list as well |
+| `useQueries({ queries, combine })` | `combine` over the list of results, see [combining queries](guides/combining-queries.md) | `useCombinedQueries(queries, combiner, keys: […])` |
+| `useMutationState({ filters, select })` | `MutationStateObserver` / `MutationStateController` | `useMutationState(filters: …, select: …)`; `useTypedMutationState` over the mutations of one type |
+| `useIsFetching(filters)` | `IsFetchingController(client, filters: …)`, a `ValueListenable<int>`; the snapshot is `client.isFetching()` | `useIsFetching(filters: …)` |
+| `useIsMutating(filters)` | a `MutationStateController` filtered on `MutationStatus.pending`, read for its length; the snapshot is `client.isMutating()` | `useIsMutating(filters: …)` |
+| `usePrefetchQuery`, `usePrefetchInfiniteQuery` | `client.query(options).ignore()`, as under [the client](#the-client) | `usePrefetchQuery(options)`, `usePrefetchInfiniteQuery(options)` |
+| `useQueryClient()` outside a build (a handler) | `QueryClientProvider.read(context)` — the same client, without subscribing | the same |
+| `useQueryClient()` | `QueryClientProvider.of(context)` | `useQueryClient()` |
+| `QueryClientProvider` | `QueryClientProvider(client: …, child: …)` | the same |
+| `new QueryObserver(client, options)` | `client.observe(options)` or `QueryObserver(client, options)` | the same |
 
 ## The client
 
@@ -44,10 +54,6 @@ alternatives — there is no recommended default, pick per situation:
 |---|---|
 | `fetchQuery`, `prefetchQuery`, `ensureQueryData` | one `QueryClient.query(options)`; prefetch is `client.query(…).ignore()`, "only if nothing is cached" is `staleTime: StaleTime.static` |
 | `ensureQueryData({ revalidateIfStale: true })` | `client.query(options, revalidateIfStale: true)` — cached data now, refresh behind it |
-| `useQueries({ queries })` | `QueriesObserver` / `QueriesBuilder`, homogeneous: one data type per collection, `select` when the selected type differs. For different types, `(a, b).combine(…)` over a record of results |
-| `useMutationState({ filters, select })` | `MutationStateObserver` / `MutationStateController` |
-| `useIsFetching(filters)` | `IsFetchingController(client, filters: …)`, a `ValueListenable<int>`; the snapshot is `client.isFetching()` |
-| `useIsMutating(filters)` | a `MutationStateController` filtered on `MutationStatus.pending`, read for its length; the snapshot is `client.isMutating()` |
 | `getQueryData<InfiniteData<…>>(key)` | `getInfiniteQueryData<TPage, TParam>(key)` |
 | `fetchQuery({ select })` | none — `await` the future and map it |
 | `setQueryData(key, value)` | `setQueryData(key, value)` |
