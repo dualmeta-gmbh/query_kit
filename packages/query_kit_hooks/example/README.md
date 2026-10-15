@@ -6,18 +6,18 @@ calls every hook the package exports, each where an app would call it:
 | Hook | Where | What it does there |
 |---|---|---|
 | `useQuery` | Posts tab, post screen | the list of posts; one post |
-| `useSelectQuery` | post screen, Todos tab | the posts' ids, to know which comes next; how many todos are open |
+| `useSelectQuery` | post screen, Todos tab | the posts' ids, to know which comes next; how many todos are open, rebuilt only when that number moves |
 | `useQueries` | Posts tab | the posts opened last, each its own query, from the cache |
-| `useCombinedQueries` | post screen | the next two posts as one answer, with one retry |
+| `useCombinedQueries` | post screen | the next two posts as one answer (one near the end, none after the last), with one retry |
 | `useInfiniteQuery` | Projects tab | projects, a page at a time |
 | `usePrefetchQuery` | post screen | a post's comments, asked for beside the post instead of after it |
 | `usePrefetchInfiniteQuery` | the shell | the first page of projects, before its tab is opened |
-| `useMutation` | Todos tab | ticking a todo, optimistic, taken back if the backend refuses; adding one |
-| `useQueryClient` | Todos tab | the tick's write to the cache and its rollback |
+| `useMutation` | Todos tab | ticking a todo, optimistic, and only that todo taken back if the backend refuses; adding one. Ticks on different todos overlap, and the last write to settle refetches the list |
+| `useQueryClient` | Todos tab | the tick's write to the cache, its rollback, and the added todo put into the list |
 | `useIsFetching` | the shell | how many queries are fetching, app-wide |
 | `useIsMutating` | the shell | how many todo writes are in flight |
 | `useMutationState` | the shell | the todo writes that failed, and the last reason |
-| `useTypedMutationState` | Todos tab | the text of every todo still being added, shown as a pending row |
+| `useTypedMutationState` | Todos tab | the text of every todo still being added, shown as a pending row; the todos with a tick in flight, whose boxes take no other |
 
 `lib/src/queries.dart` holds every key, query and mutation in one place; the
 widgets in `posts.dart`, `todos.dart` and `projects.dart` say which hook reads

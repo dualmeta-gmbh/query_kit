@@ -131,6 +131,27 @@ class NativeHarness {
     }).length;
   }
 
+  /// Waits until the backend has answered [count] requests matching
+  /// [method] and [path], pumping as it goes: for a request the app makes
+  /// on its own, which no frame shows.
+  Future<void> waitForRequests(
+    WidgetTester tester,
+    String method,
+    Pattern path,
+    int count, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      await tester.pump();
+      if (await requests(method, path) == count) return;
+      if (DateTime.now().isAfter(deadline)) {
+        fail('Timed out after $timeout waiting for $count of $method $path');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
   /// What the backend holds for [path], read past the app.
   Future<Object?> read(String path) => _http
       .getUri<Object?>(

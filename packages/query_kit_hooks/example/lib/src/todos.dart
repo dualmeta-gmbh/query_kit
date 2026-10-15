@@ -18,7 +18,6 @@ class TodosTab extends HookWidget {
     final api = ApiScope.of(context);
     final client = useQueryClient();
     final todos = useQuery(todosQuery(api));
-    final open = useSelectQuery(openTodosQuery(api));
     final toggle = useMutation(toggleTodoMutation(client, api));
     final add = useMutation(addTodoMutation(client, api));
     // What every pending add was called with: the rows the list shows until
@@ -30,6 +29,16 @@ class TodosTab extends HookWidget {
       ),
       select: (Mutation<Object?, String, Object?> mutation) =>
           mutation.state.variables!,
+    );
+    // The todos with a tick in flight: their boxes take no other until the
+    // backend has answered.
+    final writing = useTypedMutationState(
+      filters: MutationFilters(
+        mutationKey: Keys.toggleTodo,
+        status: MutationStatus.pending,
+      ),
+      select: (Mutation<Object?, Toggle, Object?> mutation) =>
+          mutation.state.variables!.id,
     );
     final text = useTextEditingController();
 
@@ -45,16 +54,7 @@ class TodosTab extends HookWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Group(
-          name: 'open todos',
-          child: Text(
-            switch (open) {
-              QuerySuccess(:final data) => '$data open',
-              _ => '… open',
-            },
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-        ),
+        const OpenCount(),
         Row(
           children: [
             Expanded(
@@ -80,8 +80,10 @@ class TodosTab extends HookWidget {
                     CheckboxListTile(
                       value: todo.done,
                       title: Text(todo.text),
-                      onChanged: (done) =>
-                          toggle.mutate((id: todo.id, done: done ?? false)),
+                      onChanged: writing.contains(todo.id)
+                          ? null
+                          : (done) =>
+                              toggle.mutate((id: todo.id, done: done ?? false)),
                     ),
                   // A row, not a `ListTile`: nothing here can be tapped, and
                   // a tile's selected state would make it a labelled node on
@@ -108,6 +110,30 @@ class TodosTab extends HookWidget {
             ),
         },
       ],
+    );
+  }
+}
+
+/// How many todos are open, from the same cache entry as the list, through
+/// a selector. It rebuilds when that number moves: a refetch changes what
+/// the list shows while it runs, and nothing this shows.
+class OpenCount extends HookWidget {
+  const OpenCount({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final open = useSelectQuery(
+      openTodosQuery(ApiScope.of(context)),
+      buildWhen: (previous, current) =>
+          previous.dataOrNull != current.dataOrNull,
+    );
+
+    return Group(
+      name: 'open todos',
+      child: Text(
+        '${open.dataOrNull ?? '…'} open',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
     );
   }
 }

@@ -140,36 +140,53 @@ class _Server implements _Target {
 Matcher _refused(String message) => throwsA(
     isA<BackendException>().having((e) => e.message, 'message', message));
 
+List<Map<String, Object?>> _seedRows(String name) =>
+    (seed()[name]! as List<Object?>).cast<Map<String, Object?>>();
+
+/// A post as its fields, to compare with a row of the seed.
+Map<String, Object?> _post(Post post) =>
+    {'id': post.id, 'title': post.title, 'body': post.body};
+
+/// A comment as its fields, to compare with a row of the seed.
+Map<String, Object?> _comment(Comment comment) => {
+      'id': comment.id,
+      'postId': comment.postId,
+      'author': comment.author,
+      'text': comment.text,
+    };
+
 void main() {
-  final firstPost =
-      (seed()['posts']! as List<Object?>).first! as Map<String, Object?>;
+  final posts = _seedRows('posts');
+  final comments = _seedRows('comments');
+  final todos = [for (final row in _seedRows('todos')) Todo.fromJson(row)];
 
   void contract(String name, _Target target, {Object? skip}) {
     group(name, skip: skip, () {
       setUp(target.reset);
 
-      test('posts: the seed, in order', () async {
-        final posts = await target.api.posts();
+      test('posts: the seed, every field, in order', () async {
         expect(posts, hasLength(30));
-        expect(posts.first.id, firstPost['id']);
-        expect(posts.first.title, firstPost['title']);
-        expect(posts.first.body, firstPost['body']);
-        expect(posts.map((post) => post.id), List.generate(30, (i) => i + 1));
+        expect((await target.api.posts()).map(_post), posts);
       });
 
       test('post: one by id, and a refusal for one that is not there',
           () async {
-        expect(
-          (await target.api.post(2)).title,
-          'Continuous integration: setup guide',
-        );
+        expect(_post(await target.api.post(2)), posts[1]);
+        expect(_post(await target.api.post(30)), posts.last);
         await expectLater(target.api.post(999), _refused('Post not found'));
       });
 
-      test('comments: three per post, and none for a post not there', () async {
-        final comments = await target.api.comments(2);
-        expect(comments, hasLength(3));
-        expect(comments.map((comment) => comment.postId).toSet(), {2});
+      test(
+          'comments: a post\'s three from the seed, every field, in order, '
+          'and none for a post not there', () async {
+        for (final id in [1, 2, 30]) {
+          final expected = [
+            for (final comment in comments)
+              if (comment['postId'] == id) comment,
+          ];
+          expect(expected, hasLength(3));
+          expect((await target.api.comments(id)).map(_comment), expected);
+        }
         await expectLater(
           target.api.comments(999),
           _refused('Post not found'),
@@ -177,12 +194,12 @@ void main() {
       });
 
       test('todos: the seed, an add, trimmed, and a refused one', () async {
-        final todos = await target.api.todos();
         expect(todos, const [
           Todo(id: 1, text: 'Update the deploy checklist', done: false),
           Todo(id: 2, text: 'Rename the columns on the board', done: true),
           Todo(id: 3, text: 'Replace the expired API token', done: false),
         ]);
+        expect(await target.api.todos(), todos);
         expect(
           await target.api.addTodo('  Write the README  '),
           const Todo(id: 4, text: 'Write the README', done: false),
@@ -212,15 +229,21 @@ void main() {
       });
 
       test('projects: ten at a time from a cursor, a hundred in all', () async {
+        // Every field the app reads: the id, and the name it shows.
+        Iterable<(int, String)> named(ProjectSlice slice) =>
+            slice.items.map((project) => (project.id, project.name));
+        Iterable<(int, String)> expected(int from, int count) =>
+            List.generate(count, (i) => (from + i, 'Project ${from + i}'));
+
+        expect(seed()['projectCount'], 100);
         final first = await target.api.projects(0);
-        expect(first.items.map((p) => p.id), List.generate(10, (i) => i));
-        expect(first.items.first.name, 'Project 0');
+        expect(named(first), expected(0, 10));
         expect(first.nextId, 10);
         final last = await target.api.projects(90);
-        expect(last.items.map((p) => p.id), List.generate(10, (i) => 90 + i));
+        expect(named(last), expected(90, 10));
         expect(last.nextId, isNull);
         final short = await target.api.projects(95);
-        expect(short.items, hasLength(5));
+        expect(named(short), expected(95, 5));
         expect(short.nextId, isNull);
         expect((await target.api.projects(100)).items, isEmpty);
       });

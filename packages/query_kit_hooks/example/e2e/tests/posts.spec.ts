@@ -4,6 +4,8 @@ import { expect, factIn, group, holdRequest, test } from './fixtures'
 const first = 'Local development: setup guide'
 const second = 'Continuous integration: setup guide'
 const third = 'Code review: setup guide'
+const lastButOne = 'Data export: setup guide'
+const last = 'Analytics events: setup guide'
 
 test.describe('useQuery', () => {
   test('the list loads, and a refusal shows the backend’s sentence', async ({ page, open, scenario }) => {
@@ -12,8 +14,11 @@ test.describe('useQuery', () => {
 
     // The first attempt and the client's one retry.
     await scenario.config({ failNext: [{ method: 'GET', path: '/api/posts/1', count: 2, status: 503 }] })
+    const post = holdRequest(page, /\/api\/posts\/1$/)
     await page.getByRole('button', { name: first }).click()
     await expect(page.getByText('Loading post…', { exact: true })).toBeVisible()
+
+    await post.release()
     await expect(page.getByText('Scripted failure 503', { exact: true })).toBeVisible()
     expect(await scenario.count('GET', /^\/api\/posts\/1$/)).toBe(2)
   })
@@ -57,6 +62,28 @@ test.describe('useCombinedQueries', () => {
     await expect(page.getByRole('heading', { name: 'Post 2' })).toBeVisible()
     await expect(group(page, 'post').getByText(second, { exact: false })).toBeVisible()
     expect(await scenario.count('GET', /^\/api\/posts\/2$/)).toBe(1)
+  })
+
+  test('one post left is an answer of one, and none is no answer', async ({ page, open }) => {
+    await open()
+    // The wheel lands on the list under the pointer; the end of the list has
+    // the last two posts.
+    const firstBox = (await page.getByRole('button', { name: first }).boundingBox())!
+    await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2)
+    const target = page.getByRole('button', { name: lastButOne })
+    await expect(async () => {
+      await page.mouse.wheel(0, 4000)
+      await expect(target).toBeVisible({ timeout: 500 })
+    }).toPass()
+
+    await target.click()
+    await expect(page.getByRole('heading', { name: 'Post 29' })).toBeVisible()
+    await expect(factIn(page, 'up next', `Up next: ${last}`)).toBeVisible()
+
+    await group(page, 'up next').getByRole('button', { name: 'Next post' }).click()
+    await expect(page.getByRole('heading', { name: 'Post 30' })).toBeVisible()
+    await expect(group(page, 'post').getByText(last, { exact: false })).toBeVisible()
+    await expect(group(page, 'up next')).toHaveCount(0)
   })
 
   test('one failure fails the answer, and retry asks again', async ({ page, open, scenario }) => {

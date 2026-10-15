@@ -733,14 +733,16 @@ so no further AP11 pass is owed.
 
 | Suite | Where | Cases | Against |
 |---|---|---|---|
-| Widget tests | `test/widget_test.dart` | 10 | the in-memory backend, on the test's fake clock |
+| Widget tests | `test/widget_test.dart` | 17 | the in-memory backend, on the test's fake clock |
 | Backend contract | `test/backend_contract_test.dart` | 10 per backend | the in-memory backend, and the showcase server when `HOOKS_EXAMPLE_SERVER` names it (CI's `e2e` job) |
-| Repository test | `test/repository_test.dart` (not in the archive) | 15 | the seed against the server's; every hook declared in `lib/src/` against the app, `e2e/tests/` and `integration_test/` |
-| Playwright | `e2e/tests/` | 15, one `describe` per hook | the web build and the real server; Chromium in CI, Firefox and WebKit in `native-e2e` |
-| Native | `integration_test/` | 13 flows, one `group` per hook, and 2 lifecycle cases | a device and the real server through the showcase's device control; `native-e2e` runs it after the showcase's suite on every platform |
+| Repository test | `test/repository_test.dart` (not in the archive) | 17 | the seed against the server's; every hook declared in `lib/src/` against the app, `e2e/tests/` and `integration_test/` |
+| Playwright | `e2e/tests/` | 18, one `describe` per hook | the web build and the real server; Chromium in CI, Firefox and WebKit in `native-e2e` |
+| Native | `integration_test/` | 17 flows in one `group` per hook, and 2 lifecycle cases | a device and the real server through the showcase's device control; `native-e2e` runs it after the showcase's suite on every platform |
 
 The repository test reads the hook names from the declarations, so a hook
-added to the package fails it until both suites prove it.
+added to the package fails it until both suites prove it. It is a
+catalogue: it finds a `describe` and a `group` with a test in them and
+nothing skipped, and the suites are the proof.
 
 Both prefetch claims were tested against their fault. With `usePrefetchQuery`
 and `usePrefetchInfiniteQuery` commented out, the four widget tests that
@@ -753,7 +755,7 @@ The native lifecycle cases send the app away for real:
 - the todos on screen (`staleTime` 0) are fetched again on return;
 - the posts on screen (a minute fresh) are not.
 
-### Runs before the commit
+### Runs before the first commit (`48e18fe`)
 
 - The widget and contract tests pass; the contract against the showcase
   server on 5178 is 20 of 20.
@@ -782,10 +784,11 @@ app built on the hooks, or the next suite, meets it too.
   state makes the engine put its title in `aria-label` and not in the
   node's text. `getByText` misses it, and so does an accessibility snapshot.
   The pending todo row is a plain `Row`: nothing in it can be tapped.
-- **A failed write is counted only after the refetch.** `onSettled` returns
-  the invalidation's refetch, so a failed toggle stays pending until the
-  list is reloaded, and only then counts as `failed`. The rollback in
-  `onError` shows at once. The widget test asserts both moments.
+- **A failed write is counted only after the refetch.** The last todo
+  write to settle returns the list's refetch from `onSettled`, so a failed
+  toggle stays pending until the list is reloaded, and only then counts as
+  `failed`. The rollback in `onError` shows at once. The widget test
+  asserts both moments.
 - **`pushReplacement` keeps two back buttons for a while.** The replaced
   route leaves only when the new route's entrance is over, and that takes
   longer than 400 ms on Flutter 3.41's Android transition. The widget test
@@ -793,3 +796,88 @@ app built on the hooks, or the next suite, meets it too.
 - **`flutter create` writes Xcode settings that current Xcode rejects.** The
   iOS template targets 13.0, and Xcode 27 builds from 15.0. The Podfiles are
   the showcase's, which raise the pods as well.
+
+### Second review
+
+GPT-6.1-Sol (xhigh) reviewed a snapshot of `48e18fe`. It had no device and
+no browser: its sandbox refused Chromium. It ran the widget, contract and
+repository suites, the analyzer and the publish dry-run, and traced all
+13 hooks through the app and the suites. Its seven reproductions each make
+a change to the app, or add a test, that the suites ought to reject.
+
+Six findings, each reproduced here before anything changed:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S-1 (P1) | Writes to the todos overlap, and the app had taken upstream's snapshot recipe whole: every write refetched the list as it settled, and a refused write put back the whole list it had seen. Two ticks on different todos, the first answered first: its refetch erases the second tick while that write is still in flight. Two ticks on one todo, the second answered first: the backend keeps the first | Yes, Sol's two widget cases, both red | A tick writes, and takes back, its own todo and only that: `onMutate` returns what the todo was. The list is refetched by the last todo write to settle, `isMutating == 1` in its `onSettled`, as TkDodo's "Concurrent Optimistic Updates in React Query" does. A todo with a write in flight takes no second tick: its box is disabled while `useTypedMutationState` lists its id. Held by four widget tests (one answered first, a second tick refused, a refusal taking back only its own todo, an add during a tick) and by browser and native cases |
+| S-2 (P2) | Three hook proofs accepted a simpler substitute, every widget test green: `useSelectQuery` replaced by `useQuery` and a local projection; `useTypedMutationState` by the screen's own `useMutation`; `useCombinedQueries` by two `useQuery`s and a tuple `combine`. And the heading's comment promised no rebuild for a refetch, while it lived in the list's widget: builds 2, 3, 4, "2 open" throughout | Yes, the three mutants green | The open count is a widget of its own, `OpenCount`, with a `buildWhen` on the number: 0 builds over a refetch, 1 for a tick, counted with `debugOnRebuildDirtyWidget`. Two adds in flight survive a tab change, which the screen's own `useMutation` cannot show (widget, browser, native). Post 29 is up next with one post, post 30 with none (widget, browser, native). Each mutant is red now |
+| S-3 (P2) | The repository test's declaration pattern missed a hook with a record return type, and its presence checks accepted a comment, or an empty or skipped block | Yes, a record-typed hook added to `use_query.dart`: 15 of 15 green | A scanner blanks comments and strings, then takes every `use…` followed by a parameter list that stands outside brackets and outside expression bodies, whatever its return type. A case of its own runs it over eight shapes. Each `describe` and `group` is read to its closing parenthesis, and must hold a test with nothing skipped or narrowed. An export narrowed by `show` or `hide` fails, because then the declarations would be the wrong list. The header says the test is a catalogue. The mutant is red |
+| S-4 (P2) | The native prefetch case waited for the post, then for the comments: a waterfall passes it | Yes, as a widget mirror (no device) | A second native case refuses the post twice, the first attempt and the retry. The widget that reads the comments never exists, so only the prefetch can ask for them, and the case waits until the backend has answered that request. It hangs on no window: without the prefetch, the request never comes |
+| S-5 (P2) | Transient states were read inside a backend latency natively (1,500 ms), or with nothing held in the browser (`Loading post…`). Two `.seen` checks ran straight after a click. Static, not an observed flake; CI did flake on one `.seen` on the first push | Static | Browser: the post is held while `Loading post…` is read, and `.seen` is polled. Native: the backend holds nothing back on request, so the windows are 3 s (`slow`), and twice that for two adds and two tab changes. An order the app keeps is proven where no window decides it: by the browser's holds, and natively by a failure that stops the waterfall. The suite's header says so |
+| S-6 (P2) | The contract compared only a comment's post id: a fake answering the wrong text and author passed all twenty cases | Yes, 20 of 20 green | The contract compares every field the app reads with the seed: every post, three posts' comments in order, the todos, and each project's id and name. The mutant is red |
+
+Each new test was run against what it stands for:
+
+- **The pre-fix `queries.dart` and `todos.dart`.**
+  - In the widget tests, the order case, the refusal case and the add
+    cases go red.
+  - In the browser, "a tick answered first" goes red at "saving 1".
+    Its first form passed against the old app: the old refetch landed after
+    its assertions. It now holds the refetch too, and a write that
+    refetches stays pending on it.
+  - The disabled-box assertion goes red.
+- **Four mutants of `todos.dart`.** No `buildWhen`; the count from
+  `useQuery`; the box always enabled; the pending rows from `useMutation`.
+  Each goes red in its widget test, and the last also in the browser's
+  remount case.
+- **Sol's `combined`, `repository` and `contract-comments` modes.** All
+  three go red.
+
+Sol's sparring: it agreed with the eight decisions it was given except the
+seventh, the declaration pattern, which is S-3.
+
+Three decisions were made along the way:
+
+- **A box that takes no tick while its write is in flight, not a
+  `MutationScope` per todo.** A scope would run a second tick after the
+  first. But the screen would show the second tick at once and the first
+  write's settling would contradict it, and a refusal would hold up every
+  write queued behind it. The disabled box says what is happening.
+- **The last write to settle refetches.** The alternative refetches on
+  every write and stops each refetch from overwriting a pending tick. That
+  costs a request per write, plus a guard on every read of the list.
+  Counting the writes in flight is one line, and it is the pattern TkDodo
+  documents.
+- **An add puts the backend's answer into the list.** The pending row then
+  hands over to the todo in the same frame. Waiting for the refetch would
+  leave a gap, which the refetch ends a request later.
+
+Runs after the fixes:
+
+- The widget, contract and repository tests: 44 pass, and 10 skip without a
+  server. The contract against the showcase server on 5178 passes 20 of 20.
+- Playwright in Chromium, each test three times: 54 of 54.
+- Native on an iOS 26 simulator (iPhone 17 Pro), the flows: 17 of 17.
+- Native on this Mac, the flows: no verdict. The window fell behind the
+  others twice, and an occluded window gets no frames. The locked-box case
+  timed out while its write finished unseen, and its finder passes in a
+  widget test. That is #109's cause, below.
+
+CI on the first push ran the native suites on every platform:
+
+- **Android, Linux and Chrome:** green, and Playwright in all three
+  browsers.
+- **iOS:** the second file's launch failed with "The log reader failed
+  unexpectedly", in flutter_tools before any test ran. It is to be run
+  again.
+- **macOS:** failed in both suites, the showcase's and this one, on every
+  case that sends the app away. The app's window is never in front:
+  flutter_tools' `open` returns 1 at every launch, locally too. A trip
+  away to Finder then changes no focus, so the return refetches nothing.
+  Locally the window behind the others got no frames at all until it was
+  activated. The device control is the showcase's, so this is
+  [#109](https://github.com/dualmeta-gmbh/query_kit/issues/109), not a
+  change here.
+
+AP10 changed nothing in the package's `lib/`, so no further AP11 pass is
+owed.

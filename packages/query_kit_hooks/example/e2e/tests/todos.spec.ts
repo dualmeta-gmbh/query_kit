@@ -18,12 +18,44 @@ test.describe('useMutation', () => {
     await todo(page, checklist).click()
     await expect(todo(page, checklist)).toBeChecked()
     await expect(factIn(page, 'activity', 'saving 1')).toBeVisible()
-    expect(write.seen).toBe(1)
+    await expect.poll(() => write.seen).toBe(1)
+    // A todo with a write in flight takes no second one.
+    await expect(todo(page, checklist)).toBeDisabled()
 
     await write.release()
     await expect(factIn(page, 'activity', 'saving 0')).toBeVisible()
     await expect(todo(page, checklist)).toBeChecked()
+    await expect(todo(page, checklist)).toBeEnabled()
     expect((await (await scenario.api('get', '/todos')).json())[0].done).toBe(true)
+  })
+
+  test('a tick answered first leaves another todo’s tick in flight alone', async ({ page, open, scenario }) => {
+    await openTodos(page, open)
+    const slow = holdRequest(page, /\/api\/todos\/3$/)
+    const refetch = holdRequest(page, /\/api\/todos$/)
+    await todo(page, token).click()
+    await todo(page, checklist).click()
+    await expect.poll(() => slow.seen).toBe(1)
+
+    // The other write is answered and settles without a refetch, which would
+    // find the held tick undone. A write that refetched would stay pending on
+    // the held refetch, and this would read "saving 2".
+    await expect.poll(() => scenario.count('PATCH', /^\/api\/todos\/1$/)).toBe(1)
+    await expect(factIn(page, 'activity', 'saving 1')).toBeVisible()
+    expect(refetch.seen).toBe(0)
+    await expect(todo(page, token)).toBeChecked()
+    await expect(factIn(page, 'open todos', '0 open')).toBeVisible()
+
+    // The last write to settle refetches, and the backend agrees.
+    await refetch.release()
+    await slow.release()
+    await expect(factIn(page, 'activity', 'saving 0')).toBeVisible()
+    await expect(todo(page, token)).toBeChecked()
+    await expect(todo(page, checklist)).toBeChecked()
+    expect(refetch.seen).toBe(1)
+    await expect.poll(() => scenario.count('GET', /^\/api\/todos$/)).toBe(2)
+    const stored = await (await scenario.api('get', '/todos')).json()
+    expect(stored.map((todo: { done: boolean }) => todo.done)).toEqual([true, true, true])
   })
 })
 
@@ -63,7 +95,7 @@ test.describe('useIsMutating', () => {
     await todo(page, checklist).click()
     await todo(page, token).click()
     await expect(factIn(page, 'activity', 'saving 2')).toBeVisible()
-    expect(writes.seen).toBe(2)
+    await expect.poll(() => writes.seen).toBe(2)
 
     await writes.release()
     await expect(factIn(page, 'activity', 'saving 0')).toBeVisible()
@@ -88,5 +120,32 @@ test.describe('useTypedMutationState', () => {
     await expect(factIn(page, 'activity', 'saving 0')).toBeVisible()
     expect(await scenario.count('POST', /^\/api\/todos$/)).toBe(1)
     await expect(group(page, 'todos').getByRole('checkbox')).toHaveCount(4)
+  })
+
+  test('every add in flight is a row, and the rows outlive the tab that started them', async ({ page, open, scenario }) => {
+    await openTodos(page, open)
+    const adds = holdRequest(page, /\/api\/todos$/)
+    for (const text of ['Write the README', 'Tag the release']) {
+      await typeInto(page, page.getByRole('textbox', { name: 'New todo' }), text)
+      await page.getByRole('button', { name: 'Add' }).click()
+      await expect(factIn(page, 'todos', `Adding: ${text}`)).toBeVisible()
+    }
+    await expect.poll(() => adds.seen).toBe(2)
+
+    // Away and back: the tab is built anew, and the adds are in the
+    // mutation cache, not in the tab.
+    await page.getByRole('tab', { name: 'Posts' }).click()
+    await expect(group(page, 'todos')).toHaveCount(0)
+    await page.getByRole('tab', { name: 'Todos' }).click()
+    await expect(factIn(page, 'todos', 'Adding: Write the README')).toBeVisible()
+    await expect(factIn(page, 'todos', 'Adding: Tag the release')).toBeVisible()
+    await expect(factIn(page, 'activity', 'saving 2')).toBeVisible()
+
+    await adds.release()
+    await expect(todo(page, 'Write the README')).toBeVisible()
+    await expect(todo(page, 'Tag the release')).toBeVisible()
+    await expect(group(page, 'todos').getByText(/^Adding: /)).toHaveCount(0)
+    await expect(factIn(page, 'open todos', '4 open')).toBeVisible()
+    expect(await scenario.count('POST', /^\/api\/todos$/)).toBe(2)
   })
 })

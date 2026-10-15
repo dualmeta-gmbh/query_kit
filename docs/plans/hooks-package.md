@@ -1155,6 +1155,24 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     `PORTING_NOTES` unter „The example app (AP10)“.
   - `lib/` des Pakets blieb unberührt, deshalb ist kein weiterer
     AP11-Durchgang fällig. Es folgt das Review durch Sol.
+- **Review durch Sol (GPT-6.1-Sol, xhigh):** sechs Befunde, S-1 bis S-6,
+  alle reproduziert und behoben. Die Tabelle steht in den `PORTING_NOTES`
+  unter „The example app (AP10)“, „Second review“.
+  - **S-1 (P1):** Überlappende Häkchen auf der Todo-Liste konnten einander
+    löschen. Jetzt schreibt ein Häkchen nur sein eigenes Todo und nimmt
+    auch nur dieses zurück. Die Liste lädt der letzte Schreibvorgang neu,
+    der sich erledigt (`isMutating == 1`, nach TkDodo). Ein Todo mit
+    laufendem Schreibvorgang nimmt kein zweites Häkchen.
+  - **S-2 bis S-6 (P2):** einfachere Ersatzlösungen, die die Beweise
+    durchließen; der Katalogtest; die native Prefetch-Probe; Zeitfenster;
+    der Vertrag. Jede Mutante und die Fassung vor dem Fix sind jetzt rot.
+  - **Tests danach:** 17 Widget-Tests, 10 Vertragsfälle je Backend,
+    17 Katalogfälle, 18 Playwright-Tests und 17 native Flows mit
+    2 Lebenszyklus-Fällen.
+  - **Offen:** macOS in `native-e2e` ist für beide Suiten rot, weil das
+    App-Fenster nie vorn steht
+    ([#109](https://github.com/dualmeta-gmbh/query_kit/issues/109), die
+    Geräte-Steuerung des Showcase).
 
 ### AP11 — Review-Runde
 

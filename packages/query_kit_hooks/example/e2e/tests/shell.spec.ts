@@ -9,7 +9,7 @@ test.describe('useIsFetching', () => {
     // The projects page answers; the list is still held.
     await expect(factIn(page, 'activity', 'fetching 1')).toBeVisible()
     await expect(page.getByText('Loading posts…', { exact: true })).toBeVisible()
-    expect(posts.seen).toBe(1)
+    await expect.poll(() => posts.seen).toBe(1)
 
     await posts.release()
     await expect(factIn(page, 'activity', 'fetching 0')).toBeVisible()

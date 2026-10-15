@@ -9,12 +9,19 @@
 // the file is already there.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:query_kit_hooks/query_kit_hooks.dart';
+import 'package:query_kit_hooks_example/src/queries.dart';
+import 'package:query_kit_hooks_example/src/todos.dart';
 
 import 'harness.dart';
 
 const String firstPost = 'Local development: setup guide';
 const String secondPost = 'Continuous integration: setup guide';
 const String thirdPost = 'Code review: setup guide';
+const String lastButOnePost = 'Data export: setup guide';
+const String lastPost = 'Analytics events: setup guide';
+const String checklist = 'Update the deploy checklist';
+const String token = 'Replace the expired API token';
 
 void main() {
   group('the shell', () {
@@ -75,6 +82,30 @@ void main() {
       expect(find.text('Post 2'), findsOneWidget);
       expect(run.textsIn('post'), contains(secondPost));
       expect(run.backend.count('GET', '/api/posts/2'), 1);
+    });
+
+    exampleTest(
+        'useCombinedQueries: one post left is an answer of one, and none is '
+        'no answer', (run) async {
+      await run.answer();
+      await run.tester.scrollUntilVisible(
+        find.text(lastButOnePost),
+        300,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('posts')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await run.tapText(lastButOnePost);
+      await run.wait(const Duration(milliseconds: 400));
+      await run.answer();
+      expect(run.textsIn('up next'), ['Up next: $lastPost', 'Next post']);
+
+      await run.tapText('Next post');
+      await run.wait(const Duration(seconds: 1));
+      expect(find.text('Post 30'), findsOneWidget);
+      expect(run.textsIn('post'), contains(lastPost));
+      expect(find.byKey(const ValueKey('up next')), findsNothing);
     });
 
     exampleTest(
@@ -149,16 +180,16 @@ void main() {
         'useMutation: a tick shows before the backend has it, and stays',
         (run) async {
       await openTodos(run);
-      await run.tester.tap(checkbox('Update the deploy checklist'));
+      await run.tester.tap(checkbox(checklist));
       await run.tester.pump();
-      expect(ticked(run, 'Update the deploy checklist'), isTrue);
+      expect(ticked(run, checklist), isTrue);
       expect(run.textsIn('open todos'), ['1 open']);
       expect(run.textsIn('activity'), contains('saving 1'));
 
       // The write, then the refetch its invalidation starts.
       await run.answer();
       await run.answer();
-      expect(ticked(run, 'Update the deploy checklist'), isTrue);
+      expect(ticked(run, checklist), isTrue);
       expect(run.textsIn('activity'), contains('saving 0'));
       expect(run.backend.todos.first['done'], isTrue);
     });
@@ -168,13 +199,13 @@ void main() {
         'and the failure counted', (run) async {
       run.backend.failNext('PATCH', '/api/todos/1');
       await openTodos(run);
-      await run.tester.tap(checkbox('Update the deploy checklist'));
+      await run.tester.tap(checkbox(checklist));
       await run.tester.pump();
-      expect(ticked(run, 'Update the deploy checklist'), isTrue);
+      expect(ticked(run, checklist), isTrue);
 
       // The refusal: `onError` puts the list back at once.
       await run.answer();
-      expect(ticked(run, 'Update the deploy checklist'), isFalse);
+      expect(ticked(run, checklist), isFalse);
       expect(run.textsIn('open todos'), ['2 open']);
       // `onSettled` returns the refetch it starts, so the mutation is pending
       // until the list is reloaded, and counts as failed after.
@@ -188,28 +219,200 @@ void main() {
           'last failure: Scripted failure 500',
         ]),
       );
-      expect(ticked(run, 'Update the deploy checklist'), isFalse);
+      expect(ticked(run, checklist), isFalse);
       expect(run.backend.todos.first['done'], isFalse);
     });
 
     exampleTest(
         'useTypedMutationState and useIsMutating: an added todo shows as '
-        'pending until the list has it', (run) async {
+        'pending until the backend has it, then as a todo', (run) async {
       await openTodos(run);
       await run.tester.enterText(find.byType(TextField), 'Write the README');
       await run.tapText('Add');
       expect(run.textsIn('todos'), contains('Adding: Write the README'));
       expect(run.textsIn('activity'), contains('saving 1'));
 
-      // The write, then the refetch `onSettled` returns: the pending row
-      // stays until the list holds the new one.
-      await run.answer();
-      expect(run.textsIn('todos'), contains('Adding: Write the README'));
+      // The answer goes into the list in the frame the pending row leaves.
       await run.answer();
       expect(run.textsIn('todos'), isNot(contains('Adding: Write the README')));
       expect(run.textsIn('todos'), contains('Write the README'));
       expect(run.textsIn('open todos'), ['3 open']);
       expect(run.textsIn('activity'), contains('saving 0'));
+
+      // The refetch it starts finds the same todo, once.
+      await run.answer();
+      expect(
+        run.textsIn('todos').where((text) => text == 'Write the README'),
+        hasLength(1),
+      );
+      expect(run.backend.count('GET', '/api/todos'), 2);
+    });
+
+    exampleTest(
+        'useTypedMutationState: every add in flight is a row, and the rows '
+        'outlive the screen that started them', (run) async {
+      await openTodos(run);
+      for (final text in ['Write the README', 'Tag the release']) {
+        await run.tester.enterText(find.byType(TextField), text);
+        await run.tapText('Add');
+      }
+      expect(
+        run.textsIn('todos'),
+        containsAll(['Adding: Write the README', 'Adding: Tag the release']),
+      );
+
+      // Away and back: the tab is built anew, and the adds are in the
+      // mutation cache, not in the screen.
+      await run.tapText('Posts');
+      await run.tapText('Todos');
+      expect(
+        run.textsIn('todos'),
+        containsAll(['Adding: Write the README', 'Adding: Tag the release']),
+      );
+      expect(run.textsIn('activity'), contains('saving 2'));
+
+      await run.answer();
+      await run.answer();
+      expect(
+        run.textsIn('todos'),
+        containsAll(['Write the README', 'Tag the release']),
+      );
+      expect(run.textsIn('todos'), everyElement(isNot(startsWith('Adding: '))));
+      expect(run.textsIn('open todos'), ['4 open']);
+    });
+
+    exampleTest(
+        'useSelectQuery: the open count rebuilds when the number moves, not '
+        'for a refetch', (run) async {
+      await openTodos(run);
+      var builds = 0;
+      debugOnRebuildDirtyWidget = (element, _) {
+        if (element.widget is OpenCount) {
+          builds += 1;
+        }
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+      // A refetch the list shows running, and that changes no number.
+      run.client
+          .refetchQueries(filters: QueryFilters(queryKey: Keys.todos))
+          .ignore();
+      await run.tester.pump();
+      expect(run.textsIn('activity'), contains('fetching 1'));
+      await run.answer();
+      expect(run.textsIn('activity'), contains('fetching 0'));
+      expect(run.backend.count('GET', '/api/todos'), 2);
+      expect(builds, 0);
+
+      // A tick moves it.
+      await run.tester.tap(checkbox(checklist));
+      await run.tester.pump();
+      expect(run.textsIn('open todos'), ['1 open']);
+      expect(builds, 1);
+      await run.answer();
+      await run.answer();
+    });
+
+    exampleTest(
+        "useMutation: a tick answered first leaves another todo's tick in "
+        'flight alone', (run) async {
+      await openTodos(run);
+      await run.tester.tap(checkbox(checklist));
+      await run.tester.pump();
+      // The second write is slower than the first.
+      run.backend.latency = const Duration(milliseconds: 900);
+      await run.tester.tap(checkbox(token));
+      await run.tester.pump();
+      run.backend.latency = latency;
+
+      // The first answers. Had it refetched the list, the second tick would
+      // be gone by the time that refetch answered.
+      await run.answer();
+      expect(run.textsIn('activity'), contains('saving 1'));
+      await run.answer();
+      expect(ticked(run, token), isTrue);
+      expect(run.textsIn('open todos'), ['0 open']);
+
+      // The second answers last, and its refetch agrees.
+      await run.answer();
+      await run.answer();
+      expect(run.textsIn('activity'), contains('saving 0'));
+      expect(ticked(run, checklist), isTrue);
+      expect(ticked(run, token), isTrue);
+      expect(run.backend.count('GET', '/api/todos'), 2);
+      expect(
+        [for (final todo in run.backend.todos) todo['done']],
+        everyElement(isTrue),
+      );
+    });
+
+    exampleTest(
+        'useMutation: a todo whose tick is in flight takes no second one',
+        (run) async {
+      await openTodos(run);
+      Checkbox box() => run.tester.widget<Checkbox>(checkbox(checklist));
+      await run.tester.tap(checkbox(checklist));
+      await run.tester.pump();
+      expect(box().onChanged, isNull);
+      await run.tester.tap(checkbox(checklist), warnIfMissed: false);
+      await run.tester.pump();
+      expect(ticked(run, checklist), isTrue);
+      expect(run.textsIn('activity'), contains('saving 1'));
+
+      // The write, then the refetch it starts: the box takes ticks again.
+      await run.answer();
+      await run.answer();
+      expect(box().onChanged, isNotNull);
+      expect(run.backend.count('PATCH', '/api/todos/1'), 1);
+      expect(run.backend.todos.first['done'], isTrue);
+    });
+
+    exampleTest(
+        'useMutation: a refused tick takes back its own todo, and only it',
+        (run) async {
+      run.backend.failNext('PATCH', '/api/todos/1');
+      await openTodos(run);
+      // The refused write starts first, so the list it saw had neither tick.
+      await run.tester.tap(checkbox(checklist));
+      await run.tester.pump();
+      await run.tester.tap(checkbox(token));
+      await run.tester.pump();
+      expect(run.textsIn('open todos'), ['0 open']);
+
+      await run.answer();
+      expect(ticked(run, checklist), isFalse);
+      expect(ticked(run, token), isTrue);
+      expect(run.textsIn('open todos'), ['1 open']);
+      await run.answer();
+      expect(run.textsIn('activity'), containsAll(['saving 0', 'failed 1']));
+      expect(ticked(run, token), isTrue);
+      expect(run.backend.todos.last['done'], isTrue);
+    });
+
+    exampleTest(
+        'useMutation: an add answered while a tick is in flight keeps the '
+        'tick, and shows the todo', (run) async {
+      await openTodos(run);
+      run.backend.latency = const Duration(milliseconds: 900);
+      await run.tester.tap(checkbox(token));
+      await run.tester.pump();
+      run.backend.latency = latency;
+      await run.tester.enterText(find.byType(TextField), 'Write the README');
+      await run.tapText('Add');
+
+      await run.answer();
+      expect(run.textsIn('todos'), contains('Write the README'));
+      expect(run.textsIn('todos'), isNot(contains('Adding: Write the README')));
+      await run.answer();
+      expect(ticked(run, token), isTrue);
+      expect(run.textsIn('open todos'), ['2 open']);
+
+      await run.answer();
+      await run.answer();
+      expect(run.textsIn('activity'), contains('saving 0'));
+      expect(ticked(run, token), isTrue);
+      expect(run.textsIn('todos'), contains('Write the README'));
+      expect(run.backend.todos.last['text'], 'Write the README');
     });
   });
 
