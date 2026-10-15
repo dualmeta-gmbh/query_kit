@@ -14,7 +14,7 @@ void main() {
   hookTest('should be able to reset `data`', (tester, client) async {
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final mutation = useMutation(MutationOptions.simple<String, void>(
           mutationFn: (_) => Future.value('mutation'),
         ));
@@ -63,7 +63,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final state = useMutation(
             MutationOptions<String, String, void>(mutationKey: key));
 
@@ -102,7 +102,7 @@ void main() {
     final mutationKey = queryKey();
     var count = 0;
 
-    final component = HookProbe((context) {
+    final component = HookBuilder(builder: (context) {
       final mutation = useMutation(MutationOptions.simple<int, String>(
         mutationFn: (_) async {
           count++;
@@ -134,7 +134,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final show = useState(true);
         return Column(children: [
           TextButton(

@@ -18,18 +18,18 @@ void main() {
 
     // Functions, not instances: React re-renders a child element created
     // anew in the parent's render, and Flutter does so for a new widget.
-    Widget isFetching() => HookProbe((context) {
+    Widget isFetching() => HookBuilder(builder: (context) {
           isFetchingArray.add(useIsFetching());
           return const SizedBox();
         });
-    Widget firstQuery() => HookProbe((context) {
+    Widget firstQuery() => HookBuilder(builder: (context) {
           useQuery(QueryObserverOptions<String>(
             queryKey: key1,
             queryFn: (_) => sleep(100).then((_) => 'data1'),
           ));
           return const SizedBox();
         });
-    Widget secondQuery() => HookProbe((context) {
+    Widget secondQuery() => HookBuilder(builder: (context) {
           useQuery(QueryObserverOptions<String>(
             queryKey: key2,
             queryFn: (_) => sleep(100).then((_) => 'data2'),
@@ -39,7 +39,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final renderSecond = useState(false);
         useEffect(() {
           final timer = Timer(

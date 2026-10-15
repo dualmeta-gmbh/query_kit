@@ -41,7 +41,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final state = useInfiniteQuery(InfiniteQueryObserverOptions<int, int>(
           queryKey: key,
           pageFn: (context) => sleep(10).then((_) => context.pageParam),
@@ -122,7 +122,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final order = useState('desc');
         final state =
             useInfiniteQuery(InfiniteQueryObserverOptions<String, int>(

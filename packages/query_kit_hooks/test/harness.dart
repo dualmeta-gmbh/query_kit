@@ -1,6 +1,7 @@
 /// The hooks suite's harness: a client per case, the provider around the
-/// widget under test, the ADR-0002 teardown, and [HookProbe] — upstream's
-/// `function Page() { … }` as a widget.
+/// widget under test, the ADR-0002 teardown, and a [Recorder] for what a case
+/// observes. Upstream's `function Page() { … }` is `flutter_hooks`'
+/// `HookBuilder`, not a copy of it (plan, D16).
 library;
 
 import 'dart:async';
@@ -45,22 +46,59 @@ Widget app(QueryClient client, Widget child) => QueryClientProvider(
       child: MaterialApp(home: Scaffold(body: child)),
     );
 
-/// A hook widget whose `build` is [builder] — upstream's `function Page()`.
-class HookProbe extends HookWidget {
-  /// Builds with [builder].
-  const HookProbe(this.builder, {super.key});
+/// Upstream's `const states: Array<…> = []`, and beside it what the frame
+/// hides (plan, D8).
+///
+/// React renders after every timer; Flutter builds once per frame for every
+/// notification before it. [advance] steps one frame per millisecond, so the
+/// two mostly agree, but a frame can still merge two results into one build.
+/// [builds] is what upstream's `states.push(state)` records; [delivered] is
+/// every result the observer handed the hook that differed from the one on
+/// screen — a state the frame merged away is still in it.
+///
+/// ```dart
+/// final state = rec.build(useQuery(options, buildWhen: rec.buildWhen));
+/// ```
+final class Recorder<T> {
+  /// One entry per build: upstream's `states`.
+  final List<T> builds = <T>[];
 
-  /// The body of upstream's component.
-  final Widget Function(BuildContext context) builder;
+  /// One entry per delivered result that differed from the one built last.
+  /// An equal one never reaches a `buildWhen`: the rebuild rule drops it
+  /// first, as it does for every call style.
+  final List<T> delivered = <T>[];
 
-  @override
-  Widget build(BuildContext context) => builder(context);
+  /// Records [value] as built and returns it.
+  T build(T value) {
+    builds.add(value);
+    return value;
+  }
+
+  /// A `buildWhen` that records what it is asked about and rebuilds, which
+  /// is what no `buildWhen` at all does — passing it changes no build.
+  BuildWhen<T> get buildWhen => (previous, current) {
+        delivered.add(current);
+        return true;
+      };
+
+  /// [buildWhen] in front of a case's own predicate [inner].
+  BuildWhen<T> around(BuildWhen<T> inner) => (previous, current) {
+        delivered.add(current);
+        return inner(previous, current);
+      };
 }
 
 int _keyCounter = 0;
 
 /// A key no other case uses — upstream's `queryKey()`.
 QueryKey queryKey() => QueryKey(<Object?>['query_${++_keyCounter}']);
+
+/// How many observers the entry under [key] has; 0 without an entry.
+int observersOf(QueryClient client, QueryKey key) =>
+    client.queryCache
+        .find(filters: QueryFilters(queryKey: key))
+        ?.observersCount ??
+    0;
 
 /// Upstream's `sleep(ms)`.
 Future<void> sleep(int ms) => Future<void>.delayed(Duration(milliseconds: ms));

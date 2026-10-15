@@ -8,12 +8,6 @@ import 'package:query_kit_hooks/query_kit_hooks.dart';
 
 import 'harness.dart';
 
-int observersOf(QueryClient client, QueryKey key) =>
-    client.queryCache
-        .find(filters: QueryFilters(queryKey: key))
-        ?.observersCount ??
-    0;
-
 void main() {
   hookTest(
       'options rebuilt equal on every build neither refetch nor add a build',
@@ -27,7 +21,7 @@ void main() {
       client,
       StatefulBuilder(builder: (context, setState) {
         rebuildParent = () => setState(() {});
-        return HookProbe((context) {
+        return HookBuilder(builder: (context) {
           builds++;
           final result = useQuery(QueryObserverOptions<String>(
             queryKey: QueryKey([...key.parts]),
@@ -63,7 +57,7 @@ void main() {
 
     Widget tree(QueryClient c, String answer) => app(
           c,
-          HookProbe((context) {
+          HookBuilder(builder: (context) {
             final result = useQuery(QueryObserverOptions<String>(
               queryKey: key,
               queryFn: (_) => sleep(5).then((_) => answer),
@@ -92,7 +86,7 @@ void main() {
   hookTest('`client:` works without a provider', (tester, client) async {
     final key = queryKey();
     await tester.pumpWidget(MaterialApp(
-      home: HookProbe((context) {
+      home: HookBuilder(builder: (context) {
         final result = useQuery(
           QueryObserverOptions<String>(
             queryKey: key,
@@ -111,7 +105,7 @@ void main() {
     final key = queryKey();
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         useQuery(QueryObserverOptions<String>(
           queryKey: key,
           queryFn: (_) => 'data',
@@ -132,9 +126,9 @@ void main() {
     final globalKey = GlobalKey();
     var fetches = 0;
 
-    Widget probe() => HookProbe(
+    Widget probe() => HookBuilder(
           key: globalKey,
-          (context) {
+          builder: (context) {
             final result = useQuery(QueryObserverOptions<String>(
               queryKey: key,
               queryFn: (_) {
@@ -172,7 +166,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final result = useQuery(QueryObserverOptions<String>(
           queryKey: key,
           queryFn: (_) {
@@ -189,10 +183,7 @@ void main() {
       }),
     );
     await advance(tester, 0);
-    final observer = client.queryCache
-        .find(filters: QueryFilters(queryKey: key))!
-        .observersCount;
-    expect(observer, 1);
+    expect(observersOf(client, key), 1);
 
     fail = true;
     rebuild();
@@ -216,7 +207,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final toggle = useState(0);
         rebuild = () => toggle.value++;
         if (fail) {
@@ -254,6 +245,152 @@ void main() {
     expect(fetches, 2);
   });
 
+  // D13, with a fetch in flight in every hook whose query function consumed
+  // its signal: such a fetch is cancelled and reverted once its query has no
+  // observer left, so what each case cancels is what it disposed. The hooks
+  // from the one a build was in when it threw — that one included — to the
+  // last go; the hooks before it stay.
+  group('a throw in build, fetches in flight (D13)', () {
+    final fetches = <QueryKey, int>{};
+    final cancels = <QueryKey, int>{};
+    QueryObserverOptions<String> options(QueryKey key) =>
+        QueryObserverOptions<String>(
+          queryKey: key,
+          queryFn: (context) {
+            final n = fetches[key] = (fetches[key] ?? 0) + 1;
+            context.signal
+                .onCancel(() => cancels[key] = (cancels[key] ?? 0) + 1);
+            return sleep(10).then((_) => '${key.parts.single} $n');
+          },
+        );
+    String shown(QueryKey a, int n, QueryKey b, int m) =>
+        '${a.parts.single} $n ${b.parts.single} $m';
+
+    setUp(() {
+      fetches.clear();
+      cancels.clear();
+    });
+
+    hookTest('inside a hook: it and every hook after it go',
+        (tester, client) async {
+      final first = queryKey();
+      final second = queryKey();
+      // Holds an int, so a `useQuery<String>` switching to it throws a
+      // QueryDataTypeError from inside the hook's own build.
+      final wrongType = queryKey();
+      client.setQueryData<int>(wrongType, 1);
+      var fail = false;
+      late void Function() rebuild;
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          final toggle = useState(0);
+          rebuild = () => toggle.value++;
+          final a = useQuery(options(fail ? wrongType : first));
+          final b = useQuery(options(second));
+          return Text('${a.dataOrNull} ${b.dataOrNull}');
+        }),
+      );
+      await advance(tester, 5);
+      expect(fetches, {first: 1, second: 1});
+
+      fail = true;
+      rebuild();
+      await tester.pump();
+      expect(tester.takeException(), isA<QueryDataTypeError>());
+      // The hook threw before it left `first`: both observers are gone,
+      // and both fetches with them.
+      expect(observersOf(client, first), 0);
+      expect(observersOf(client, second), 0);
+      expect(cancels, {first: 1, second: 1});
+      final state = client.getQueryState<String>(first)!;
+      expect(state.status, QueryStatus.pending);
+      expect(state.fetchStatus, FetchStatus.idle);
+
+      // The next build starts over: new observers, new fetches.
+      fail = false;
+      rebuild();
+      await advance(tester, 11);
+      expect(fetches, {first: 2, second: 2});
+      expect(find.text(shown(first, 2, second, 2)), findsOneWidget);
+    });
+
+    hookTest('between hooks: the hooks before it stay', (tester, client) async {
+      final first = queryKey();
+      final second = queryKey();
+      var fail = false;
+      late void Function() rebuild;
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          final toggle = useState(0);
+          rebuild = () => toggle.value++;
+          final a = useQuery(options(first));
+          if (fail) {
+            throw StateError('between the hooks');
+          }
+          final b = useQuery(options(second));
+          return Text('${a.dataOrNull} ${b.dataOrNull}');
+        }),
+      );
+      await advance(tester, 5);
+      expect(fetches, {first: 1, second: 1});
+
+      fail = true;
+      rebuild();
+      await tester.pump();
+      expect(tester.takeException(), isStateError);
+      expect(observersOf(client, first), 1);
+      expect(observersOf(client, second), 0);
+      expect(cancels, {second: 1});
+
+      // `first` finishes the fetch it had; `second` starts over.
+      fail = false;
+      rebuild();
+      await advance(tester, 11);
+      expect(fetches, {first: 1, second: 2});
+      expect(find.text(shown(first, 1, second, 2)), findsOneWidget);
+    });
+
+    hookTest('after the last hook: nothing goes', (tester, client) async {
+      final first = queryKey();
+      final second = queryKey();
+      var fail = false;
+      late void Function() rebuild;
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          final toggle = useState(0);
+          rebuild = () => toggle.value++;
+          final a = useQuery(options(first));
+          final b = useQuery(options(second));
+          if (fail) {
+            throw StateError('after the hooks');
+          }
+          return Text('${a.dataOrNull} ${b.dataOrNull}');
+        }),
+      );
+      await advance(tester, 5);
+
+      fail = true;
+      rebuild();
+      await tester.pump();
+      expect(tester.takeException(), isStateError);
+      expect(observersOf(client, first), 1);
+      expect(observersOf(client, second), 1);
+      expect(cancels, isEmpty);
+
+      fail = false;
+      rebuild();
+      await advance(tester, 6);
+      expect(fetches, {first: 1, second: 1});
+      expect(find.text(shown(first, 1, second, 1)), findsOneWidget);
+    });
+  });
+
   // Review P2-2 (not reproduced): `MutationStateController` takes new
   // filters and a new `select` through `setOptions`, and `useIsFetching`
   // reads the filters of the last build. Neither needs a new subscription
@@ -270,7 +407,7 @@ void main() {
       Column(children: [
         StatefulBuilder(builder: (context, setState) {
           rebuildParent = () => setState(() {});
-          return HookProbe((context) {
+          return HookBuilder(builder: (context) {
             builds++;
             final statuses = useMutationState(
               filters: MutationFilters(mutationKey: mutationKey),
@@ -281,7 +418,7 @@ void main() {
             return const SizedBox();
           });
         }),
-        HookProbe((context) {
+        HookBuilder(builder: (context) {
           final mutation = useMutation(MutationOptions.simple<String, void>(
             mutationKey: mutationKey,
             mutationFn: (_) => sleep(10).then((_) => 'ok'),

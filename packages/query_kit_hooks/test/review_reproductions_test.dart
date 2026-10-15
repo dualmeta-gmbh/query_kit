@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:query_kit_hooks/query_kit_hooks.dart';
 
@@ -25,7 +26,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         builds++;
         final combined = useCombinedQueries(
           [
@@ -102,7 +103,7 @@ void main() {
           // Bounded, so the error widget does not overflow the column.
           SizedBox(
             height: 50,
-            child: HookProbe((context) {
+            child: HookBuilder(builder: (context) {
               builds++;
               if (phase == 1) {
                 throw StateError('before the hook');
@@ -145,7 +146,7 @@ void main() {
       client,
       StatefulBuilder(builder: (context, setState) {
         rebuild = () => setState(() {});
-        return HookProbe((context) {
+        return HookBuilder(builder: (context) {
           if (throwNow) {
             throw StateError('before the hook');
           }
@@ -204,7 +205,7 @@ void main() {
       client,
       StatefulBuilder(builder: (context, setState) {
         rebuild = () => setState(() {});
-        return HookProbe((context) {
+        return HookBuilder(builder: (context) {
           if (throwNow) {
             throw StateError('before the hook');
           }
@@ -251,7 +252,7 @@ void main() {
       client,
       StatefulBuilder(builder: (context, setState) {
         rebuild = () => setState(() {});
-        return HookProbe((context) {
+        return HookBuilder(builder: (context) {
           usePrefetchQuery(QueryOptions<String>(
             queryKey: key,
             queryFn: (_) {
@@ -282,7 +283,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final result = useQuery(QueryObserverOptions<String>(
           queryKey: key,
           queryFn: (_) {

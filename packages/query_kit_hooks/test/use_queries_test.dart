@@ -20,7 +20,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final data = useCombinedQueries(
           [
             QueryObserverOptions<String>(
@@ -64,7 +64,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final n = useState(0);
         final queries = useQueries([
           for (var i = 0; i < n.value; i++)
@@ -120,7 +120,7 @@ void main() {
 
     await tester.pumpApp(
       client,
-      HookProbe((context) {
+      HookBuilder(builder: (context) {
         final queries = useCombinedQueries(
           [
             QueryObserverOptions<String>(

@@ -2,6 +2,7 @@
 // query/packages/react-query/src/__tests__/useMutationState.test.tsx at
 // 50680b98c. Spike selection (AP0 of docs/plans/hooks-package.md).
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:query_kit_hooks/query_kit_hooks.dart';
 
@@ -15,11 +16,11 @@ void main() {
     final key1 = queryKey();
     final key2 = queryKey();
 
-    final isMutating = HookProbe((context) {
+    final isMutating = HookBuilder(builder: (context) {
       isMutatingArray.add(useIsMutating());
       return const SizedBox();
     });
-    final mutations = HookProbe((context) {
+    final mutations = HookBuilder(builder: (context) {
       final mutate1 = useMutation(MutationOptions.simple<String, void>(
         mutationKey: key1,
         mutationFn: (_) => sleep(50).then((_) => 'data'),
