@@ -1,4 +1,4 @@
-# query_kit_flutter: TanStack Query for Flutter
+# TanStack Query for Flutter | query_kit
 
 Cached server state for Flutter, with background refetching, retries,
 mutations and infinite queries, read from your widgets in whichever of four

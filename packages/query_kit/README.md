@@ -1,4 +1,4 @@
-# query_kit: TanStack Query for Dart
+# TanStack Query for Dart | query_kit
 
 A cache for server state that knows when data is stale, refetches it in the
 background, retries, cancels, deduplicates requests, and runs mutations and

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+No change to the code. The README opens with a title a reader searches
+for, "TanStack Query for Dart | query_kit", instead of the package name, which
+pub.dev's own heading above it already shows.
+
 ## 1.0.1
 
 No change to the code. The package page now names the documentation site,
