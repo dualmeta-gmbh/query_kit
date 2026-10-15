@@ -1714,4 +1714,119 @@ void main() {
       expect(seen.last, same(other));
     });
   });
+
+  // The paging flags live on the controller beside the result. `buildWhen`
+  // compares results, as in each of the binding's call styles; a move of the
+  // flags alone rebuilds without asking it (ticket AP4, decision (e)).
+  group('AP4: useInfiniteQuery', () {
+    /// One page each way and back: the first page, `fetchNextPage`, then
+    /// `fetchPreviousPage` cancelling it — a switch of direction that leaves
+    /// the result equal and moves only the flags — and the previous page.
+    /// [reader] is the call style under test; what each build showed comes
+    /// back, and last how often `buildWhen` was asked.
+    Future<List<String>> pageBothWays(
+      WidgetTester tester,
+      QueryClient client,
+      Widget Function(
+        InfiniteQueryObserverOptions<int, int> options,
+        BuildWhen<QueryResult<InfiniteData<int, int>>> buildWhen,
+        void Function(InfiniteQueryController<int, int, InfiniteData<int, int>>)
+            onBuild,
+      ) reader,
+    ) async {
+      final shown = <String>[];
+      var asked = 0;
+      late InfiniteQueryController<int, int, InfiniteData<int, int>> query;
+      final options = InfiniteQueryObserverOptions<int, int>(
+        queryKey: queryKey(),
+        pageFn: (context) => sleep(10).then((_) => context.pageParam),
+        initialPageParam: 0,
+        getNextPageParam: (lastPage, _, __, ___) => lastPage + 1,
+        getPreviousPageParam: (firstPage, _, __, ___) => firstPage - 1,
+      );
+
+      await tester.pumpApp(
+        client,
+        reader(
+          options,
+          (previous, current) {
+            asked++;
+            return previous.isFetching != current.isFetching ||
+                previous.dataOrNull != current.dataOrNull;
+          },
+          (q) {
+            query = q;
+            shown.add('${q.value.dataOrNull?.pages} '
+                'next=${q.isFetchingNextPage} '
+                'prev=${q.isFetchingPreviousPage}');
+          },
+        ),
+      );
+      await advance(tester, 11);
+
+      query.fetchNextPage().ignore();
+      await tester.pump();
+      query.fetchPreviousPage().ignore();
+      await tester.pump();
+      await advance(tester, 11);
+
+      await tester.pumpWidget(const SizedBox());
+      return [...shown, 'asked $asked'];
+    }
+
+    Widget hook(
+      InfiniteQueryObserverOptions<int, int> options,
+      BuildWhen<QueryResult<InfiniteData<int, int>>> buildWhen,
+      void Function(InfiniteQueryController<int, int, InfiniteData<int, int>>)
+          onBuild,
+    ) =>
+        HookBuilder(builder: (context) {
+          onBuild(useInfiniteQuery(options, buildWhen: buildWhen));
+          return const SizedBox();
+        });
+
+    hookTest('a move of the paging flags alone rebuilds, buildWhen unasked',
+        (tester, client) async {
+      expect(await pageBothWays(tester, client, hook), [
+        'null next=false prev=false',
+        '[0] next=false prev=false',
+        '[0] next=true prev=false',
+        // The direction switched, the result did not: no question asked.
+        '[0] next=false prev=true',
+        '[-1, 0] next=false prev=false',
+        'asked 3',
+      ]);
+    });
+
+    hookTest('builds as InfiniteQueryBuilder and context.infiniteQuery do',
+        (tester, client) async {
+      final hooked = await pageBothWays(tester, client, hook);
+
+      final built = await pageBothWays(
+        tester,
+        client,
+        (options, buildWhen, onBuild) => InfiniteQueryBuilder(
+          options: options,
+          buildWhen: buildWhen,
+          builder: (context, q) {
+            onBuild(q);
+            return const SizedBox();
+          },
+        ),
+      );
+
+      final read = await pageBothWays(
+        tester,
+        client,
+        (options, buildWhen, onBuild) => Builder(builder: (context) {
+          onBuild(context.infiniteQuery(options, buildWhen: buildWhen));
+          return const SizedBox();
+        }),
+      );
+
+      expect(hooked, hasLength(6));
+      expect(built, hooked);
+      expect(read, hooked);
+    });
+  });
 }

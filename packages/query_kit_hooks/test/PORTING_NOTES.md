@@ -86,7 +86,7 @@ what every call style does. A case changed only in spelling is **ported**.
 |---|---|---|---|
 | `useQuery.test.tsx`, lines 1–3600 | `use_query_part1_test.dart` | 72 / 78 | done (AP3) |
 | `useQuery.test.tsx`, lines 3601–7096 | `use_query_part2_test.dart` | 63 / 77 | done (AP3) |
-| `useInfiniteQuery.test.tsx` | `use_infinite_query_test.dart` | 2 / 28 | spike selection; AP4 |
+| `useInfiniteQuery.test.tsx` | `use_infinite_query_test.dart` | 28 / 28 | done (AP4) |
 | `useMutation.test.tsx` | `use_mutation_test.dart` | 55 / 61 | done (AP5) |
 | `mutationOptions.test.tsx` | `mutation_options_test.dart` | 12 / 14 | done (AP5) |
 | `useQueries.test.tsx` | `use_queries_test.dart` | 17 / 24 | done (AP6) |
@@ -96,9 +96,8 @@ what every call style does. A case changed only in spelling is **ported**.
 | `usePrefetchQuery.test.tsx` | `use_prefetch_query_test.dart` | 4 / 6 | done (AP8) |
 | `usePrefetchInfiniteQuery.test.tsx` | `use_prefetch_infinite_query_test.dart` | 2 / 3 | done (AP8) |
 
-A row marked done is accounted for in full, every case ported, adapted or
-omitted with its reason in the file's section below. A row that is not is
-still the spike's selection (AP0, `docs/research/hooks-spike.md`).
+Every suite is accounted for in full: each case is ported, adapted or
+omitted with its reason in the file's section below.
 
 ### The package's own files
 
@@ -401,3 +400,72 @@ Sol's sparring agreed with:
 - the comparison with the built count, which builds `[0, 0]` for a `0 → 1 → 0` before the next frame. D5 accepts that one extra build.
 
 It disagreed with listener order as proof of a single subscription (S-4) and with 147 as written (S-2).
+
+## `useInfiniteQuery.test.tsx`
+
+**28 upstream cases: 27 ported, 1 adapted (AP4, #97).** `useInfiniteQuery` returns the `InfiniteQueryController`, as `context.infiniteQuery` does. The pages are in its `value`, and the paging flags beside it. So each case records a snapshot of the controller on every build, `snapshot(controller)`, where upstream records its result object: the flags such as `hasNextPage` and `isFetchingNextPage`, and `isRefetching` and `isRefetchError` from the controller's getters. `result.isRefetching` is true for a page fetch as well, and upstream's infinite result narrows it, as those getters do. Upstream's `toMatchObject` is a file-private `_expectMatch` over a map keyed by upstream's field names, which fails on a key it does not know. No case carries a skip, and the port found no defect in the hooks, the binding or the core. The hook needed no change, only its dartdoc.
+
+In the spelling, none of it changing an assertion:
+
+- `AbortSignal` is `QueryCancelToken`, and `aborted` is `isCancelled` (913, 988, 1733).
+- The Promise in 1733 is a `Completer`.
+- `useRef` and `useCallback` are the hooks of the same name (305, 1477).
+- `Math.random` is `Random` (305).
+- `JSON.stringify` is `jsonEncode` (868).
+- 1207's render stream under real timers is the list of build snapshots under fake time.
+- `isInitialLoading`, an alias upstream deprecates, has no Dart counterpart; `isLoading` itself is asserted (48).
+- **A check straight after a click goes before the click's frame.** 487, 598, 692 and 778 assert `isFetching: false` after a click, before React renders the click's fetch. Each is a `tester.tap` without its frame, then `advance`.
+
+### Adapted (1)
+
+| Line | Case | What changed, and why |
+|---|---|---|
+| 1807 | should not fetch when queryFn is skipToken, and fetch once it is replaced | D14: `skipToken` is out of scope. `queryFn: postId ? fn : skipToken` is a fixed `pageFn` with `enabled` following `postId`, the spelling the core documents for `skipToken`. The assertions are unchanged |
+
+### What the port measured
+
+- **The inventory was too cautious.** It marked 22 cases A, and 21 of them are plain ports: snapshot spelling, `QueryCancelToken`, `Completer`, `useRef`, `useCallback` and `Random`. Its closing line said as much: ten A cases are snapshot-only. 48 keeps its 2 builds under `advance(11)`. 868 needs no extra pump, because `advance(0)` pumps once. 487's check before the frame holds for 598, 692 and 778 too. Correct as it stood:
+  - 180: 6 builds, where the gate on the built state drops one equal delivery.
+  - 1102 is weak: the page function never reads its signal, so the refetch runs on to page 4 after the unmount, as upstream's does.
+  - 1612 needs a frame between the clicks.
+  - 1733 drains its 1000 ms sleep.
+- **What `buildWhen` sees.**
+  - Options:
+    - (A) the binding's `BuildWhen<QueryResult<TData>>`;
+    - (B) a predicate over the result and the flags, a new public type;
+    - (C) no `buildWhen`.
+  - Answer: A, the type `InfiniteQueryBuilder` and `context.infiniteQuery` take. One predicate fits the hook and every call style, and the AP4 group passes the same one to three of them and gets the same builds.
+  - The port cannot tell the three apart. Over the 28 cases, the agent counted the deliveries: 73 moved the result, 1 moved only the flags (868, a direction switch, unasserted), and 2 were equal and dropped. A prototype of B passed all 28 and could not take a predicate written for `InfiniteQueryBuilder`.
+  - The agent's notes held that A never lets a predicate swallow a move of the flags. That is true only for a move of the flags alone, which rebuilds without asking. See the second review's S-1.
+- **The AP4 group** in `hook_specifics_test.dart` holds two cases:
+  - A move of the paging flags alone rebuilds, `buildWhen` unasked.
+  - The hook, `InfiniteQueryBuilder` and `context.infiniteQuery` build alike over the same scenario and predicate.
+- **The suite has teeth.** Two faults in `use_infinite_query.dart`, over the port and the hook specifics (41 cases):
+  - With the controller's value as the observed state, so the rule cannot see the flags, 2 go red: both AP4 cases. No ported case asserts a move of the flags alone.
+  - With `setInfiniteOptions` skipped after the first build, 2 go red: 180 (`placeholderData` across a key change) and 1807 (`enabled` following `postId`), the two cases whose options change between builds.
+
+### Second review
+
+GPT-6.1-Sol (xhigh) ran the suite (188 green) and compared all 28 cases, names, line references, values and counts. It found the 27/1 split justified and no `advance` replaced by one long pump. It reproduced the delivery counts (73, 1, 2).
+
+It added six probes of its own, five of them green:
+
+- a retained `fetchNextPage` after the unmount;
+- a retained one across a key switch;
+- a client switch;
+- a key switch with a late completion;
+- a delivery queued before a D13 disposal.
+
+Two findings, each reproduced:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S-1 (P2) | A predicate that declines a change of the result also holds back a change of the flags made with it. A refetch that keeps the selected data but drops the next page leaves "Load more" on screen while the controller says `hasNextPage == false`: builds stay 1, the predicate is asked twice | Yes, with Sol's probe | The rule's, not the hook's: `RebuildRule` asks `buildWhen` whenever the value moved, so a predicate that never sees the flags can veto them. It is AP6's S-1 for `retry`, and the binding's `InfiniteQueryBuilder` shares it. Worked in its own commit, in the binding |
+| S-2 (P2) | This file still had the spike's `2 / 28` and no account of the suite | — | This section and the status row |
+
+Sol's sparring:
+
+- **E1, A over B.** It agreed with the parity with the binding but not with the safety argument, which is S-1.
+- **The map `_expectMatch`.** It agreed.
+- **The controller's `isRefetching`.** It agreed.
+- **The controller's ownership.** It agreed, and asked that the hook say what a retained `fetchNextPage` does: after a key switch it acts on the new key, and after the unmount it still fetches into the cache, with no observer and no build. That is upstream's behaviour too, since an observer's `fetchNextPage` fetches whether anything listens or not. The hook's dartdoc says so now.

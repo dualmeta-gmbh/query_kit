@@ -9,8 +9,43 @@ import 'controller_hook.dart';
 /// Observes the infinite query [options] describe and returns its
 /// [InfiniteQueryController] — `context.infiniteQuery` as a hook.
 ///
-/// The widget rebuilds when the result changes, as [buildWhen] allows, and
-/// always when only the paging flags moved.
+/// The controller rather than a result, because paging lives on it: the
+/// pages are in its `value`, the flags such as `hasNextPage` and
+/// `isFetchingNextPage` beside it, and `fetchNextPage` loads more.
+///
+/// ```dart
+/// final feed = useInfiniteQuery(feedQuery());
+/// final posts = feed.value.dataOrNull?.flatten<Post>() ?? const <Post>[];
+/// return ListView(
+///   children: [
+///     for (final post in posts) ListTile(title: Text(post.title)),
+///     if (feed.hasNextPage)
+///       TextButton(
+///         onPressed: feed.isFetchingNextPage ? null : feed.fetchNextPage,
+///         child: const Text('Load more'),
+///       ),
+///   ],
+/// );
+/// ```
+///
+/// The controller belongs to this call's position in `build`, and the hook
+/// disposes it; do not dispose it yourself. A different `queryKey` on the
+/// next build switches the same controller to the other query, which is
+/// what lets `placeholderData` keep showing the previous one's pages.
+///
+/// So a `fetchNextPage` held in a callback acts on the query the controller
+/// observes when it is called: after a key change, the new one. Called after
+/// the widget is gone, it still fetches into the cache, as React Query's
+/// does, and nothing rebuilds for it. A callback that can outlive the widget
+/// checks `context.mounted` first.
+///
+/// [buildWhen] compares results, as it does for `context.infiniteQuery` and
+/// `InfiniteQueryBuilder`. A fetch that moves only the paging flags — one
+/// that switches direction leaves the result equal — rebuilds without
+/// asking it: there is nothing in a result for it to compare, and the
+/// widget would go on showing the old flags.
+///
+/// [client] is used instead of the nearest `QueryClientProvider`'s.
 InfiniteQueryController<TPageData, TPageParam, TData>
     useInfiniteQuery<TPageData, TPageParam, TData>(
   InfiniteQueryObserverOptionsBase<TPageData, TPageParam, TData> options, {

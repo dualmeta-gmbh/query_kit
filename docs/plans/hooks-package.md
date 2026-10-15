@@ -914,10 +914,30 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Plan-Kennungen standen in `///` von `controller_hook.dart`; der
     Jargon-Scan kannte sie nicht.
 
-### AP4 — `useInfiniteQuery`
+### AP4 — `useInfiniteQuery` — **erledigt** (#97)
 
 - **Inhalt:** Die 28 Fälle, davon 22 angepasst. Die Tests zeichnen die
   Paging-Flags je Build vom Controller auf, wie 48 und 180 im Spike.
+- **Ergebnis, gemessen:**
+  - **28 Fälle:** 27 portiert, 1 angepasst (1807, D14: `skipToken`). Von
+    den 22 A-Urteilen des Inventars sind 21 reine Schreibweise. Kein
+    Defekt aus der Portierung, kein Fall übersprungen, der Hook nur in
+    der Dartdoc geändert.
+  - `buildWhen` bleibt `BuildWhen<QueryResult<TData>>`, der Typ der
+    Bindung. Gemessen: 73 Zustellungen bewegen das Ergebnis, eine nur die
+    Flags, zwei nichts; die Portierung unterscheidet die drei Optionen
+    nicht.
+  - Gegenprobe: zwei Fehler in `use_infinite_query.dart`, je 2 Tests rot.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** zwei Befunde, beide
+  reproduziert.
+  - Ein `buildWhen`, das eine Änderung des Ergebnisses ablehnt, hält eine
+    gleichzeitige Änderung der Flags zurück: „Load more“ bleibt stehen,
+    obwohl `hasNextPage` falsch ist. Derselbe Fehler der Regel wie bei
+    AP6; eigener Commit in der Bindung.
+  - Der `PORTING_NOTES`-Abschnitt fehlte; er steht jetzt dort.
+  - Aus dem Sparring: Die Dartdoc sagt jetzt, dass ein gehaltenes
+    `fetchNextPage` nach einem Key-Wechsel den neuen Key lädt und nach dem
+    Unmount weiter lädt, wie upstream.
 
 ### AP5 — `useMutation` — **erledigt** (#98)
 
@@ -1071,9 +1091,9 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
 
 **Reihenfolge:**
 
-- AP0, AP1, AP2 und AP3 sind erledigt.
+- AP0 bis AP8 sind erledigt.
 - Die übrigen Hooks bauen auf dem Muster von AP3 auf, auch auf seinem Harness.
-- AP4 bis AP8 sind voneinander unabhängig.
+- AP4 bis AP8 waren voneinander unabhängig.
 - AP9 und AP10, sobald die Hooks stehen.
 - Dann AP11, dann AP12.
 
