@@ -4,8 +4,8 @@ description: >-
   retries, mutations and infinite queries, read in four equal styles.
   AI-coded, not affiliated with TanStack.
 version: 1.0.3
-homepage: https://dualmeta-gmbh.github.io/query_kit/
-documentation: https://dualmeta-gmbh.github.io/query_kit/docs/overview
+homepage: https://query-kit.dualmeta.io/
+documentation: https://query-kit.dualmeta.io/docs/overview
 repository: https://github.com/dualmeta-gmbh/query_kit
 issue_tracker: https://github.com/dualmeta-gmbh/query_kit/issues
 topics:

@@ -196,7 +196,7 @@ backend — read the example's README before touching one; they read Flutter's
 semantics tree, not the canvas, and nothing in them asserts on a clock). The
 showcase leg also runs `backend_contract_test.dart` against the real server.
 **1.0.0 of both packages is published** (2026-09-23), and the site is live
-at <https://dualmeta-gmbh.github.io/query_kit/>. A breaking change is now a
+at <https://query-kit.dualmeta.io/>. A breaking change is now a
 major. How a later release goes — bump, merge, tag; `publish.yml` and
 `pages.yml` do the rest — and the repository settings the deploy needs are in
 [`docs/releasing.md`](docs/releasing.md).

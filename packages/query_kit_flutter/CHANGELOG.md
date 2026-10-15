@@ -2,9 +2,12 @@
 
 ## 1.0.3
 
-No change to the code. The README opens with a title a reader searches
-for, "TanStack Query for Flutter | query_kit", instead of the package name, which
-pub.dev's own heading above it already shows.
+No change to the code. The documentation site moved to its own address,
+<https://query-kit.dualmeta.io/>; the package page's homepage and
+documentation links, the README and the library's dartdoc name it, and the
+former address redirects there. The README opens with a title a reader
+searches for, "TanStack Query for Flutter | query_kit", instead of the package name,
+which pub.dev's own heading above it already shows.
 
 ## 1.0.2
 

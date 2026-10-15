@@ -5,11 +5,11 @@ mutations and infinite queries, read from your widgets in whichever of four
 equal styles suits the screen. **No dependency beyond Flutter** — not
 `flutter_hooks`, not a signals package, not `connectivity_plus`.
 
-**Documentation: [dualmeta-gmbh.github.io/query_kit](https://dualmeta-gmbh.github.io/query_kit/)**, with
+**Documentation: [query-kit.dualmeta.io](https://query-kit.dualmeta.io/)**, with
 guides, a cookbook and live examples.
-[Quick start](https://dualmeta-gmbh.github.io/query_kit/docs/quick-start) ·
-[Four ways to read a query](https://dualmeta-gmbh.github.io/query_kit/docs/guides/reading-queries-in-widgets) ·
-[Examples](https://dualmeta-gmbh.github.io/query_kit/docs/examples) ·
+[Quick start](https://query-kit.dualmeta.io/docs/quick-start) ·
+[Four ways to read a query](https://query-kit.dualmeta.io/docs/guides/reading-queries-in-widgets) ·
+[Examples](https://query-kit.dualmeta.io/docs/examples) ·
 [API reference](https://pub.dev/documentation/query_kit_flutter/latest/)
 
 > **AI-coded.** query_kit is an entirely AI-coded project: all code, tests
@@ -240,24 +240,24 @@ testWidgets('the list loads', (tester) async {
 });
 ```
 
-The [testing guide](https://dualmeta-gmbh.github.io/query_kit/docs/guides/testing)
+The [testing guide](https://query-kit.dualmeta.io/docs/guides/testing)
 wraps these steps once per suite.
 
 ## Learn more
 
-- [Overview](https://dualmeta-gmbh.github.io/query_kit/docs/overview),
-  [quick start](https://dualmeta-gmbh.github.io/query_kit/docs/quick-start) and
-  [important defaults](https://dualmeta-gmbh.github.io/query_kit/docs/important-defaults)
-- [Four ways to read a query](https://dualmeta-gmbh.github.io/query_kit/docs/guides/reading-queries-in-widgets)
-  and [what rebuilds, and when](https://dualmeta-gmbh.github.io/query_kit/docs/guides/render-optimizations)
-- [Mutations](https://dualmeta-gmbh.github.io/query_kit/docs/guides/mutations),
-  [optimistic updates](https://dualmeta-gmbh.github.io/query_kit/docs/guides/optimistic-updates)
-  and [infinite queries](https://dualmeta-gmbh.github.io/query_kit/docs/guides/infinite-queries)
-- [App focus](https://dualmeta-gmbh.github.io/query_kit/docs/guides/window-focus-refetching)
-  and [connectivity](https://dualmeta-gmbh.github.io/query_kit/docs/guides/connectivity)
-- [Testing](https://dualmeta-gmbh.github.io/query_kit/docs/guides/testing)
-- [Coming from React Query](https://dualmeta-gmbh.github.io/query_kit/docs/coming-from-react-query)
-  and [troubleshooting](https://dualmeta-gmbh.github.io/query_kit/docs/reference/troubleshooting)
+- [Overview](https://query-kit.dualmeta.io/docs/overview),
+  [quick start](https://query-kit.dualmeta.io/docs/quick-start) and
+  [important defaults](https://query-kit.dualmeta.io/docs/important-defaults)
+- [Four ways to read a query](https://query-kit.dualmeta.io/docs/guides/reading-queries-in-widgets)
+  and [what rebuilds, and when](https://query-kit.dualmeta.io/docs/guides/render-optimizations)
+- [Mutations](https://query-kit.dualmeta.io/docs/guides/mutations),
+  [optimistic updates](https://query-kit.dualmeta.io/docs/guides/optimistic-updates)
+  and [infinite queries](https://query-kit.dualmeta.io/docs/guides/infinite-queries)
+- [App focus](https://query-kit.dualmeta.io/docs/guides/window-focus-refetching)
+  and [connectivity](https://query-kit.dualmeta.io/docs/guides/connectivity)
+- [Testing](https://query-kit.dualmeta.io/docs/guides/testing)
+- [Coming from React Query](https://query-kit.dualmeta.io/docs/coming-from-react-query)
+  and [troubleshooting](https://query-kit.dualmeta.io/docs/reference/troubleshooting)
 - [API reference](https://pub.dev/documentation/query_kit_flutter/latest/)
 - A runnable one-file tour: [`example/lib/main.dart`](https://github.com/dualmeta-gmbh/query_kit/blob/main/packages/query_kit_flutter/example/lib/main.dart)
 

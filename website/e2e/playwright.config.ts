@@ -23,7 +23,7 @@ export default defineConfig({
   webServer: {
     command: `npx docusaurus serve --dir build --port ${port} --no-open`,
     cwd: '..',
-    url: `http://localhost:${port}/query_kit/`,
+    url: `http://localhost:${port}/`,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },

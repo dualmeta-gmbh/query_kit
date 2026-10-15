@@ -5,14 +5,15 @@ import dartSource from './plugins/dart-source'
 import llmsTxt, { type LlmsTxtOptions } from './plugins/llms-txt'
 import { geist } from './src/prismThemes'
 
-// The live documentation site's GitHub Pages coordinates.
-// The path is the repository's name. It is written once, here, and the
-// Pages project name and every hard-coded link that `baseUrl` does not reach
-// (the announcement bar is raw HTML) are built from it, so renaming the
-// repository is one edit here (plus its GitHub URLs).
+// The live documentation site's coordinates: GitHub Pages under the custom
+// domain query-kit.dualmeta.io, at its root. The repository's name is still
+// the Pages project name. Every hard-coded link that `baseUrl` does not reach
+// (the announcement bar is raw HTML) is built from `baseUrl`, so moving the
+// site is one edit here; the domain itself is a Pages setting
+// (docs/releasing.md, "Documentation site").
 const repository = 'query_kit'
-const baseUrl = `/${repository}/`
-const siteUrl = 'https://dualmeta-gmbh.github.io'
+const baseUrl = '/'
+const siteUrl = 'https://query-kit.dualmeta.io'
 
 // The project's AI disclosure, in the one wording used everywhere a reader
 // can land first.
@@ -75,9 +76,10 @@ const config: Config = {
       tagName: 'link',
       attributes: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: `${baseUrl}llms.txt` },
     },
-    // Ownership proof for the Google Search Console property
-    // `https://dualmeta-gmbh.github.io/query_kit/`. Google re-checks it now
-    // and then; removing it drops the property's verification.
+    // Ownership proof for the Google Search Console property of the site's
+    // former address, `https://dualmeta-gmbh.github.io/query_kit/`, which now
+    // redirects here. The domain property `dualmeta.io` covers the current
+    // address by DNS.
     {
       tagName: 'meta',
       attributes: {

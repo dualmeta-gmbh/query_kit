@@ -6,11 +6,11 @@ infinite queries — with **no Flutter dependency**. In a Flutter app, use
 [`query_kit_flutter`](https://pub.dev/packages/query_kit_flutter), which
 re-exports all of this.
 
-**Documentation: [dualmeta-gmbh.github.io/query_kit](https://dualmeta-gmbh.github.io/query_kit/)**, with
+**Documentation: [query-kit.dualmeta.io](https://query-kit.dualmeta.io/)**, with
 guides, a cookbook and live examples.
-[Quick start](https://dualmeta-gmbh.github.io/query_kit/docs/quick-start) ·
-[Pure Dart](https://dualmeta-gmbh.github.io/query_kit/docs/guides/pure-dart) ·
-[Examples](https://dualmeta-gmbh.github.io/query_kit/docs/examples) ·
+[Quick start](https://query-kit.dualmeta.io/docs/quick-start) ·
+[Pure Dart](https://query-kit.dualmeta.io/docs/guides/pure-dart) ·
+[Examples](https://query-kit.dualmeta.io/docs/examples) ·
 [API reference](https://pub.dev/documentation/query_kit/latest/)
 
 > **AI-coded.** query_kit is an entirely AI-coded project: all code, tests
@@ -159,17 +159,17 @@ rendering and devtools.
 
 ## Learn more
 
-- [Overview](https://dualmeta-gmbh.github.io/query_kit/docs/overview) and
-  [important defaults](https://dualmeta-gmbh.github.io/query_kit/docs/important-defaults)
-- [Using the core without Flutter](https://dualmeta-gmbh.github.io/query_kit/docs/guides/pure-dart)
-- [Queries](https://dualmeta-gmbh.github.io/query_kit/docs/guides/queries),
-  [query keys](https://dualmeta-gmbh.github.io/query_kit/docs/guides/query-keys),
-  [mutations](https://dualmeta-gmbh.github.io/query_kit/docs/guides/mutations)
-  and [infinite queries](https://dualmeta-gmbh.github.io/query_kit/docs/guides/infinite-queries)
-- [Coming from React Query](https://dualmeta-gmbh.github.io/query_kit/docs/coming-from-react-query):
+- [Overview](https://query-kit.dualmeta.io/docs/overview) and
+  [important defaults](https://query-kit.dualmeta.io/docs/important-defaults)
+- [Using the core without Flutter](https://query-kit.dualmeta.io/docs/guides/pure-dart)
+- [Queries](https://query-kit.dualmeta.io/docs/guides/queries),
+  [query keys](https://query-kit.dualmeta.io/docs/guides/query-keys),
+  [mutations](https://query-kit.dualmeta.io/docs/guides/mutations)
+  and [infinite queries](https://query-kit.dualmeta.io/docs/guides/infinite-queries)
+- [Coming from React Query](https://query-kit.dualmeta.io/docs/coming-from-react-query):
   the JavaScript names and their Dart counterparts
-- [Differences from TanStack Query](https://dualmeta-gmbh.github.io/query_kit/docs/reference/differences-from-tanstack)
-- [Troubleshooting](https://dualmeta-gmbh.github.io/query_kit/docs/reference/troubleshooting)
+- [Differences from TanStack Query](https://query-kit.dualmeta.io/docs/reference/differences-from-tanstack)
+- [Troubleshooting](https://query-kit.dualmeta.io/docs/reference/troubleshooting)
 - [API reference](https://pub.dev/documentation/query_kit/latest/)
 - A runnable tour: [`example/example.dart`](https://github.com/dualmeta-gmbh/query_kit/blob/main/packages/query_kit/example/example.dart)
 

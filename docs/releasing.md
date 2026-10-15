@@ -144,7 +144,7 @@ must not go through stage 4, which publishes by hand.
 ## Documentation site
 
 The site under `website/` is deployed to GitHub Pages at
-<https://dualmeta-gmbh.github.io/query_kit/>, live demos included, by
+<https://query-kit.dualmeta.io/>, live demos included, by
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml). What has to be
 true for that, all of it set on 2026-09-23:
 
@@ -165,10 +165,22 @@ true for that, all of it set on 2026-09-23:
   `website` job step for step, demos from `tool/build_demos.sh` included, so
   what CI tested is what ships. A failed deploy is retried with *Re-run
   failed jobs*; the built artifact is kept.
-- **The URL is the repository's name.** `url`, `baseUrl` and
-  `organizationName` come from constants at the top of
-  `website/docusaurus.config.ts`; a rename or transfer is one edit there, and
-  GitHub redirects the old repository URL but not the old Pages URL.
+- **Settings → Pages → Custom domain: `query-kit.dualmeta.io`**, with
+  *Enforce HTTPS* (since 2026-10-15). DNS holds a `CNAME` from
+  `query-kit.dualmeta.io` to `dualmeta-gmbh.github.io`. With an Actions-built
+  site the domain lives only in this setting — a `CNAME` file in the
+  artifact is ignored — and GitHub redirects the former
+  `https://dualmeta-gmbh.github.io/query_kit/` there. From the command line:
+
+  ```bash
+  gh api -X PUT repos/dualmeta-gmbh/query_kit/pages -f cname=query-kit.dualmeta.io
+  gh api -X PUT repos/dualmeta-gmbh/query_kit/pages -F https_enforced=true
+  ```
+
+- **The URL is set once.** `url` and `baseUrl` come from constants at the
+  top of `website/docusaurus.config.ts` (the site sits at the domain's root,
+  `baseUrl: '/'`), and the live demos' base href is derived from them; a
+  move is one edit there plus the setting above.
 
 ## What the archives hold
 

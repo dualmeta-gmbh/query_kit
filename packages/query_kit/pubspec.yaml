@@ -4,8 +4,8 @@ description: >-
   refetching, retries and mutations, no Flutter needed. AI-coded, not
   affiliated with TanStack.
 version: 1.0.2
-homepage: https://dualmeta-gmbh.github.io/query_kit/
-documentation: https://dualmeta-gmbh.github.io/query_kit/docs/overview
+homepage: https://query-kit.dualmeta.io/
+documentation: https://query-kit.dualmeta.io/docs/overview
 repository: https://github.com/dualmeta-gmbh/query_kit
 issue_tracker: https://github.com/dualmeta-gmbh/query_kit/issues
 topics:

@@ -25,6 +25,6 @@
   <path d="M104 534H1096" stroke="#343843"/>
   <g font-family="Arial, Helvetica, sans-serif" fill="#9aa1ad">
     <text x="104" y="582" font-size="19">AI-coded community port · MIT</text>
-    <text x="1096" y="582" font-size="17" text-anchor="end">dualmeta-gmbh.github.io/query_kit/</text>
+    <text x="1096" y="582" font-size="17" text-anchor="end">query-kit.dualmeta.io</text>
   </g>
 </svg>

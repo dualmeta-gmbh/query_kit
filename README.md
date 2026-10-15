@@ -42,8 +42,8 @@ package README has a quick start.
 
 The documentation site — getting started, a guide per concept, examples, the
 JavaScript-to-Dart name map and troubleshooting — is built from
-[`website/`](website). It will be published at
-<https://dualmeta-gmbh.github.io/query_kit/>; until then, run it locally:
+[`website/`](website) and published at <https://query-kit.dualmeta.io/>. To
+run it locally:
 
 ```bash
 cd website && npm ci && npm start

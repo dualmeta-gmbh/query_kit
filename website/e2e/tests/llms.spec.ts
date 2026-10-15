@@ -52,7 +52,7 @@ test('a DartSource excerpt arrives as its code, linked to its lines', async ({ r
     /\[`examples\/showcase\/lib\/features\/offline\/offline_screen\.dart`, lines \d+–\d+\]\(https:\/\/github\.com\/dualmeta-gmbh\/query_kit\/blob\/\w+\/examples\/showcase\/lib\/features\/offline\/offline_screen\.dart#L\d+-L\d+\):\n\n```dart\n/,
   )
   // The live demo is a link to the running app.
-  expect(page).toContain(`](https://dualmeta-gmbh.github.io${BASE}demo/showcase/#/offline)`)
+  expect(page).toContain(`](https://query-kit.dualmeta.io${BASE}demo/showcase/#/offline)`)
 })
 
 test.describe('the Copy page button', () => {

@@ -110,7 +110,7 @@
 /// [OnlineStatus] for connectivity. Nothing here needs a package beyond
 /// Flutter.
 ///
-/// Guides, recipes and the full reference: https://dualmeta-gmbh.github.io/query_kit/
+/// Guides, recipes and the full reference: https://query-kit.dualmeta.io/
 library;
 
 export 'package:query_kit/query_kit.dart';

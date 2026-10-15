@@ -56,7 +56,7 @@ if [[ -n "${SITE_BASE_URL:-}" ]]; then
 else
   base_url="$(config_base_url)"
 fi
-if [[ -z "$base_url" || "$base_url" != /*/ ]]; then
+if [[ -z "$base_url" || ( "$base_url" != / && "$base_url" != /*/ ) ]]; then
   echo "build_demos: could not read baseUrl from website/docusaurus.config.ts (got '$base_url'); set SITE_BASE_URL" >&2
   exit 1
 fi
