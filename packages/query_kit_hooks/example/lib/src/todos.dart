@@ -17,7 +17,7 @@ class TodosTab extends HookWidget {
   Widget build(BuildContext context) {
     final api = ApiScope.of(context);
     final client = useQueryClient();
-    final todos = useQuery(todosQuery(api));
+    final todos = useQuery(todosQuery(api, client));
     final toggle = useMutation(toggleTodoMutation(client, api));
     final add = useMutation(addTodoMutation(client, api));
     // What every pending add was called with: the rows the list shows until
@@ -122,8 +122,9 @@ class OpenCount extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final client = useQueryClient();
     final open = useSelectQuery(
-      openTodosQuery(ApiScope.of(context)),
+      openTodosQuery(ApiScope.of(context), client),
       buildWhen: (previous, current) =>
           previous.dataOrNull != current.dataOrNull,
     );

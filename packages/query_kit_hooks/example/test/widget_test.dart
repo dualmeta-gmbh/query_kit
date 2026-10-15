@@ -203,22 +203,22 @@ void main() {
       await run.tester.pump();
       expect(ticked(run, checklist), isTrue);
 
-      // The refusal: `onError` puts the list back at once.
+      // The refusal: `onError` puts the list back at once, and the failure
+      // counts. `onSettled` starts a refetch and does not wait for it.
       await run.answer();
       expect(ticked(run, checklist), isFalse);
       expect(run.textsIn('open todos'), ['2 open']);
-      // `onSettled` returns the refetch it starts, so the mutation is pending
-      // until the list is reloaded, and counts as failed after.
-      expect(run.textsIn('activity'), containsAll(['saving 1', 'failed 0']));
-      await run.answer();
       expect(
         run.textsIn('activity'),
         containsAll([
+          'fetching 1',
           'saving 0',
           'failed 1',
           'last failure: Scripted failure 500',
         ]),
       );
+      await run.answer();
+      expect(run.textsIn('activity'), contains('fetching 0'));
       expect(ticked(run, checklist), isFalse);
       expect(run.backend.todos.first['done'], isFalse);
     });
@@ -320,23 +320,26 @@ void main() {
       await run.tester.tap(checkbox(checklist));
       await run.tester.pump();
       // The second write is slower than the first.
-      run.backend.latency = const Duration(milliseconds: 900);
-      await run.tester.tap(checkbox(token));
-      await run.tester.pump();
-      run.backend.latency = latency;
+      await run.slowly(const Duration(milliseconds: 900), () async {
+        await run.tester.tap(checkbox(token));
+        await run.tester.pump();
+      });
 
-      // The first answers. Had it refetched the list, the second tick would
-      // be gone by the time that refetch answered.
+      // The first answers, and refetches nothing: the list would come back
+      // without the second tick, which the backend does not have yet.
       await run.answer();
       expect(run.textsIn('activity'), contains('saving 1'));
+      expect(run.backend.count('PATCH', '/api/todos/3'), 0);
+      expect(run.backend.count('GET', '/api/todos'), 1);
       await run.answer();
       expect(ticked(run, token), isTrue);
       expect(run.textsIn('open todos'), ['0 open']);
 
       // The second answers last, and its refetch agrees.
       await run.answer();
+      expect(run.textsIn('activity'), containsAll(['saving 0', 'fetching 1']));
       await run.answer();
-      expect(run.textsIn('activity'), contains('saving 0'));
+      expect(run.textsIn('activity'), contains('fetching 0'));
       expect(ticked(run, checklist), isTrue);
       expect(ticked(run, token), isTrue);
       expect(run.backend.count('GET', '/api/todos'), 2);
@@ -359,10 +362,11 @@ void main() {
       expect(ticked(run, checklist), isTrue);
       expect(run.textsIn('activity'), contains('saving 1'));
 
-      // The write, then the refetch it starts: the box takes ticks again.
-      await run.answer();
+      // The write answers: the box takes ticks again, while the refetch it
+      // started runs.
       await run.answer();
       expect(box().onChanged, isNotNull);
+      await run.answer();
       expect(run.backend.count('PATCH', '/api/todos/1'), 1);
       expect(run.backend.todos.first['done'], isTrue);
     });
@@ -393,14 +397,15 @@ void main() {
         'useMutation: an add answered while a tick is in flight keeps the '
         'tick, and shows the todo', (run) async {
       await openTodos(run);
-      run.backend.latency = const Duration(milliseconds: 900);
-      await run.tester.tap(checkbox(token));
-      await run.tester.pump();
-      run.backend.latency = latency;
+      await run.slowly(const Duration(milliseconds: 900), () async {
+        await run.tester.tap(checkbox(token));
+        await run.tester.pump();
+      });
       await run.tester.enterText(find.byType(TextField), 'Write the README');
       await run.tapText('Add');
 
       await run.answer();
+      expect(run.backend.count('PATCH', '/api/todos/3'), 0);
       expect(run.textsIn('todos'), contains('Write the README'));
       expect(run.textsIn('todos'), isNot(contains('Adding: Write the README')));
       await run.answer();
@@ -413,6 +418,63 @@ void main() {
       expect(ticked(run, token), isTrue);
       expect(run.textsIn('todos'), contains('Write the README'));
       expect(run.backend.todos.last['text'], 'Write the README');
+    });
+
+    exampleTest(
+        'useQuery: a tab change while a tick is in flight reads no list over '
+        'it', (run) async {
+      await openTodos(run);
+      await run.slowly(const Duration(milliseconds: 900), () async {
+        await run.tester.tap(checkbox(token));
+        await run.tester.pump();
+      });
+
+      // Away and back. The list is never fresh, but a read now would answer
+      // before the write, with the todo unticked.
+      await run.tapText('Posts');
+      await run.tapText('Todos');
+      await run.answer();
+      expect(run.backend.count('GET', '/api/todos'), 1);
+      expect(ticked(run, token), isTrue);
+
+      // The write answers, and its refetch is the read.
+      await run.wait(const Duration(milliseconds: 600));
+      expect(run.backend.count('PATCH', '/api/todos/3'), 1);
+      await run.answer();
+      expect(run.backend.count('GET', '/api/todos'), 2);
+      expect(ticked(run, token), isTrue);
+      expect(run.textsIn('activity'), containsAll(['saving 0', 'fetching 0']));
+    });
+
+    exampleTest(
+        'useQuery: a return to the app while a tick is in flight reads no '
+        'list over it', (run) async {
+      await openTodos(run);
+      await run.slowly(const Duration(milliseconds: 900), () async {
+        await run.tester.tap(checkbox(token));
+        await run.tester.pump();
+      });
+
+      // Away and back, through every state between.
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        run.tester.binding.handleAppLifecycleStateChanged(state);
+        await run.tester.pump();
+      }
+      await run.answer();
+      expect(run.backend.count('GET', '/api/todos'), 1);
+      expect(ticked(run, token), isTrue);
+
+      await run.wait(const Duration(milliseconds: 600));
+      await run.answer();
+      expect(run.backend.count('GET', '/api/todos'), 2);
+      expect(ticked(run, token), isTrue);
     });
   });
 

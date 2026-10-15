@@ -38,6 +38,26 @@ class ExampleRun {
   /// Steps one request's latency.
   Future<void> answer() => wait(latency);
 
+  /// Lets what was sent reach the backend, without stepping the clock: a
+  /// mutation's request leaves a timer's turn after the tap, and `pump()`
+  /// runs no timer.
+  Future<void> send() => tester.pump(Duration.zero);
+
+  /// Runs [action] with the requests it sends answering after [duration]
+  /// instead of [latency]. The backend reads its latency when a request
+  /// arrives, so what was sent before arrives first, and what [action]
+  /// sends arrives before the latency goes back.
+  Future<void> slowly(
+    Duration duration,
+    Future<void> Function() action,
+  ) async {
+    await send();
+    backend.latency = duration;
+    await action();
+    await send();
+    backend.latency = latency;
+  }
+
   Future<void> tapText(String text) async {
     await tester.tap(find.text(text));
     await tester.pump();

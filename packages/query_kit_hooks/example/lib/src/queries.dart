@@ -71,23 +71,50 @@ QueryObserverOptions<List<Comment>> commentsQuery(ExampleApi api, int id) =>
     );
 
 /// Todos change under the user's hands, so they are never fresh: a return
-/// to the app refetches them.
-QueryObserverOptions<List<Todo>> todosQuery(ExampleApi api) =>
+/// to the app, or to the tab, refetches them. Not while a todo write is in
+/// flight, though: that read could answer with the list from before the
+/// write and take its tick off the screen. The write that settles with no
+/// other in flight refetches instead.
+QueryObserverOptions<List<Todo>> todosQuery(
+  ExampleApi api,
+  QueryClient client,
+) =>
     QueryObserverOptions<List<Todo>>(
       queryKey: Keys.todos,
       queryFn: (context) => api.todos(signal: context.signal),
+      refetchOnMount: _unlessWriting(client),
+      refetchOnWindowFocus: _unlessWriting(client),
+      refetchOnReconnect: _unlessWriting(client),
     );
 
 /// The same entry as [todosQuery], narrowed to how many are open: a
 /// refetch that changes the list but not that number answers the same.
-QuerySelectOptions<List<Todo>, int> openTodosQuery(ExampleApi api) {
-  final todos = todosQuery(api);
+QuerySelectOptions<List<Todo>, int> openTodosQuery(
+  ExampleApi api,
+  QueryClient client,
+) {
+  final todos = todosQuery(api, client);
   return QuerySelectOptions<List<Todo>, int>(
     queryKey: todos.queryKey,
     queryFn: todos.queryFn,
+    refetchOnMount: todos.refetchOnMount,
+    refetchOnWindowFocus: todos.refetchOnWindowFocus,
+    refetchOnReconnect: todos.refetchOnReconnect,
     select: (todos) => todos.where((todo) => !todo.done).length,
   );
 }
+
+/// [RefetchOn.ifStale] while no todo write is in flight, [RefetchOn.never]
+/// while one is. One rule per client, so the options above compare equal
+/// from one build to the next.
+RefetchOn _unlessWriting(QueryClient client) =>
+    _unlessWritingRules[client] ??= RefetchOn.when(
+      (_) => _todoWritesInFlight(client) == 0
+          ? RefetchOn.ifStale
+          : RefetchOn.never,
+    );
+
+final Expando<RefetchOn> _unlessWritingRules = Expando<RefetchOn>();
 
 InfiniteQueryObserverOptions<ProjectSlice, int> projectsQuery(
   ExampleApi api,
@@ -106,11 +133,21 @@ typedef Toggle = ({int id, bool done});
 /// Ticks a todo in the cache before the backend answers, and puts it back if
 /// the backend refuses: an optimistic update through the cache.
 ///
-/// Todo writes overlap: another todo ticked, one added. So a write touches
-/// only its own todo, and it puts back only that todo. The list is refetched
-/// by the last write to settle, because a refetch while another write is in
-/// flight shows the list without that write. Two writes to one todo never
-/// overlap: the screen takes no tick on a todo whose write is in flight.
+/// Todo writes overlap: another todo ticked, one added. So the rules are
+/// TkDodo's for concurrent optimistic updates, which upstream's guide links
+/// to:
+///
+/// - every write cancels the reads of the list in flight, and no read starts
+///   while one is in flight ([todosQuery]), so no answer from before a write
+///   lands after it;
+/// - a write touches only its own todo: it ticks it, puts the backend's
+///   answer in its place, or puts it back;
+/// - the write that settles while no other is in flight refetches the list,
+///   for what changed elsewhere. It does not wait for that refetch, so the
+///   next write to settle counts it out.
+///
+/// Two writes to one todo never overlap: the screen takes no tick on a todo
+/// whose write is in flight.
 MutationOptions<Todo, Toggle, bool> toggleTodoMutation(
   QueryClient client,
   ExampleApi api,
@@ -119,51 +156,41 @@ MutationOptions<Todo, Toggle, bool> toggleTodoMutation(
       mutationKey: Keys.toggleTodo,
       mutationFn: (toggle) => api.setDone(toggle.id, done: toggle.done),
       onMutate: (toggle) async {
-        // A refetch that answers after the write would overwrite it.
-        await client.cancelQueries(
-          filters: QueryFilters(queryKey: Keys.todos, exact: true),
-        );
+        await _cancelTodoReads(client);
         _setDone(client, toggle.id, done: toggle.done);
         // What the todo was: the box offers the other value.
         return !toggle.done;
       },
+      onSuccess: (todo, _, __) => _putTodo(client, todo),
       onError: (_, __, toggle, before) {
         if (before != null) {
           _setDone(client, toggle.id, done: before);
         }
       },
-      onSettled: (_, __, ___, ____, _____) async {
-        if (_isLastTodoWrite(client)) {
-          await _refetchTodos(client);
-        }
-      },
+      onSettled: (_, __, ___, ____, _____) => _refetchIfLast(client),
     );
 
 /// Adds a todo. The list shows it while it is pending from the mutation's
 /// own variables (`useTypedMutationState`), not from the cache: an
 /// optimistic update through the UI. The todo the backend answers with goes
-/// into the list at once, so the pending row hands over to it without a gap,
-/// and the last todo write to settle refetches the list, as a tick's does.
+/// into the list at once, so the pending row hands over to it without a gap.
+/// It follows the rules of [toggleTodoMutation] for the rest.
 MutationOptions<Todo, String, void> addTodoMutation(
   QueryClient client,
   ExampleApi api,
 ) =>
-    MutationOptions.simple(
+    MutationOptions<Todo, String, void>(
       mutationKey: Keys.addTodo,
       mutationFn: api.addTodo,
-      onSuccess: (added, _, __) {
-        client.updateQueryData<List<Todo>>(
-          Keys.todos,
-          (todos) => todos == null || todos.any((todo) => todo.id == added.id)
-              ? todos
-              : [...todos, added],
-        );
-      },
-      onSettled: (_, __, ___, ____, _____) {
-        if (_isLastTodoWrite(client)) {
-          _refetchTodos(client).ignore();
-        }
-      },
+      onMutate: (_) => _cancelTodoReads(client),
+      onSuccess: (todo, _, __) => _putTodo(client, todo),
+      onSettled: (_, __, ___, ____, _____) => _refetchIfLast(client),
+    );
+
+/// Cancels a read of the list in flight: its answer may be from before the
+/// write that asks.
+Future<void> _cancelTodoReads(QueryClient client) => client.cancelQueries(
+      filters: QueryFilters(queryKey: Keys.todos, exact: true),
     );
 
 void _setDone(QueryClient client, int id, {required bool done}) {
@@ -178,14 +205,31 @@ void _setDone(QueryClient client, int id, {required bool done}) {
   );
 }
 
-/// Whether the write asking, from its `onSettled`, is the only todo write
-/// in flight. It still counts itself there, so the last is a count of one.
-bool _isLastTodoWrite(QueryClient client) =>
-    client.isMutating(
-      filters: MutationFilters(mutationKey: Keys.todoWrites),
-    ) ==
-    1;
+/// The backend's answer for [todo] in the list: in place of the todo with
+/// its id, or at the end for a todo the list does not have yet.
+void _putTodo(QueryClient client, Todo todo) {
+  client.updateQueryData<List<Todo>>(
+    Keys.todos,
+    (todos) => todos == null
+        ? null
+        : todos.any((each) => each.id == todo.id)
+            ? [for (final each in todos) each.id == todo.id ? todo : each]
+            : [...todos, todo],
+  );
+}
 
-Future<void> _refetchTodos(QueryClient client) => client.invalidateQueries(
-      filters: QueryFilters(queryKey: Keys.todos, exact: true),
+int _todoWritesInFlight(QueryClient client) => client.isMutating(
+      filters: MutationFilters(mutationKey: Keys.todoWrites),
     );
+
+/// From a write's `onSettled`, where it still counts itself: refetches the
+/// list if no other todo write is in flight.
+void _refetchIfLast(QueryClient client) {
+  if (_todoWritesInFlight(client) == 1) {
+    client
+        .invalidateQueries(
+          filters: QueryFilters(queryKey: Keys.todos, exact: true),
+        )
+        .ignore();
+  }
+}

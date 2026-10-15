@@ -177,9 +177,9 @@ void main() {
       });
 
       test(
-          'comments: a post\'s three from the seed, every field, in order, '
-          'and none for a post not there', () async {
-        for (final id in [1, 2, 30]) {
+          'comments: every post\'s three from the seed, every field, in '
+          'order, and none for a post not there', () async {
+        for (final id in [for (final post in posts) post['id']! as int]) {
           final expected = [
             for (final comment in comments)
               if (comment['postId'] == id) comment,
@@ -208,7 +208,11 @@ void main() {
           target.api.addTodo('   '),
           _refused('Field "text" is missing or empty'),
         );
-        expect(await target.api.todos(), hasLength(4));
+        // What was stored, not only what was answered.
+        expect(await target.api.todos(), [
+          ...todos,
+          const Todo(id: 4, text: 'Write the README', done: false),
+        ]);
       });
 
       test('todos: done both ways, and a refusal for a todo not there',
@@ -222,10 +226,11 @@ void main() {
           target.api.setDone(999, done: true),
           _refused('Todo not found'),
         );
-        expect(
-          (await target.api.todos()).map((todo) => todo.done),
-          [true, false, false],
-        );
+        expect(await target.api.todos(), [
+          todos[0].copyWith(done: true),
+          todos[1].copyWith(done: false),
+          todos[2],
+        ]);
       });
 
       test('projects: ten at a time from a cursor, a hundred in all', () async {
@@ -277,8 +282,11 @@ void main() {
           _refused('Taken'),
         );
         // Refused ahead of the route, so nothing was written.
-        expect((await target.api.todos()).first.done, isFalse);
-        expect((await target.api.setDone(1, done: true)).done, isTrue);
+        expect(await target.api.todos(), todos);
+        expect(
+          await target.api.setDone(1, done: true),
+          todos[0].copyWith(done: true),
+        );
       });
 
       test('the log: every answered request with its status', () async {

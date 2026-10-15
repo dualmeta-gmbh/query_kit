@@ -1173,6 +1173,27 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     App-Fenster nie vorn steht
     ([#109](https://github.com/dualmeta-gmbh/query_kit/issues/109), die
     Geräte-Steuerung des Showcase).
+- **Verifikation durch Sol:** vier Befunde, V-1 bis V-4, alle reproduziert
+  und behoben. Die Tabelle steht in den `PORTING_NOTES` unter „Third pass“.
+  - **V-1 (vom S-1-Fix eingeführt):** Ein Häkchen wartete in `onSettled`
+    auf sein Neuladen. Ein Todo, das währenddessen hinzukam, verschwand
+    dadurch vom Bildschirm. Jetzt bricht jeder Schreibvorgang laufende
+    Lesevorgänge ab und setzt die Antwort des Backends für sein Todo ein.
+    Wer sich als einziger erledigt, lädt neu, ohne darauf zu warten.
+  - **V-2:** Ein Tab-Wechsel oder die Rückkehr in die App las die Liste,
+    während ein Häkchen lief, und nahm es zurück. Jetzt beginnt kein
+    Lesevorgang der Liste, solange ein Schreibvorgang läuft
+    (`RefetchOn.when`).
+  - **V-3:** Der Katalog-Scanner hatte sechs Lücken. Unter anderem lief
+    seine Interpolation nie.
+  - **V-4:** Der Vertrag prüft jetzt den gespeicherten Zustand nach jedem
+    Schreibvorgang und die Kommentare aller Posts.
+  - **Entschieden:** Zwei Schreibvorgänge, die im selben Turn fertig werden,
+    laden nicht neu. Die Antwort jedes Schreibvorgangs steht trotzdem in der
+    Liste.
+  - **Tests danach:** 19 Widget-Tests, 2 Interleaving-Fälle, 10
+    Vertragsfälle je Backend, 19 Katalogfälle, 19 Playwright-Tests und 18
+    native Flows mit 2 Lebenszyklus-Fällen.
 
 ### AP11 — Review-Runde
 

@@ -38,15 +38,15 @@ test.describe('useMutation', () => {
     await expect.poll(() => slow.seen).toBe(1)
 
     // The other write is answered and settles without a refetch, which would
-    // find the held tick undone. A write that refetched would stay pending on
-    // the held refetch, and this would read "saving 2".
+    // find the held tick undone.
     await expect.poll(() => scenario.count('PATCH', /^\/api\/todos\/1$/)).toBe(1)
     await expect(factIn(page, 'activity', 'saving 1')).toBeVisible()
     expect(refetch.seen).toBe(0)
     await expect(todo(page, token)).toBeChecked()
     await expect(factIn(page, 'open todos', '0 open')).toBeVisible()
 
-    // The last write to settle refetches, and the backend agrees.
+    // The write that settles with no other in flight refetches, and the
+    // backend agrees.
     await refetch.release()
     await slow.release()
     await expect(factIn(page, 'activity', 'saving 0')).toBeVisible()
@@ -56,6 +56,35 @@ test.describe('useMutation', () => {
     await expect.poll(() => scenario.count('GET', /^\/api\/todos$/)).toBe(2)
     const stored = await (await scenario.api('get', '/todos')).json()
     expect(stored.map((todo: { done: boolean }) => todo.done)).toEqual([true, true, true])
+  })
+})
+
+test.describe('useQuery', () => {
+  test('a tab change while a tick is in flight reads no list over it', async ({ page, open, scenario }) => {
+    await openTodos(page, open)
+    const slow = holdRequest(page, /\/api\/todos\/3$/)
+    const reads = holdRequest(page, /\/api\/todos$/)
+    await todo(page, token).click()
+    await expect.poll(() => slow.seen).toBe(1)
+
+    // Away and back. The list is never fresh, but a read now could answer
+    // before the write, with the todo unticked. A read would be held, and
+    // the activity would say so.
+    await page.getByRole('tab', { name: 'Posts' }).click()
+    await expect(group(page, 'todos')).toHaveCount(0)
+    await page.getByRole('tab', { name: 'Todos' }).click()
+    await expect(todo(page, token)).toBeChecked()
+    await expect(factIn(page, 'activity', 'fetching 0')).toBeVisible()
+    expect(reads.seen).toBe(0)
+
+    // The write answers, and its refetch is the read.
+    await slow.release()
+    await expect(factIn(page, 'activity', 'saving 0')).toBeVisible()
+    await expect.poll(() => reads.seen).toBe(1)
+    await reads.release()
+    await expect(factIn(page, 'activity', 'fetching 0')).toBeVisible()
+    await expect(todo(page, token)).toBeChecked()
+    await expect.poll(() => scenario.count('GET', /^\/api\/todos$/)).toBe(2)
   })
 })
 

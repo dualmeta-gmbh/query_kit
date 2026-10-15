@@ -733,11 +733,12 @@ so no further AP11 pass is owed.
 
 | Suite | Where | Cases | Against |
 |---|---|---|---|
-| Widget tests | `test/widget_test.dart` | 17 | the in-memory backend, on the test's fake clock |
+| Widget tests | `test/widget_test.dart` | 19 | the in-memory backend, on the test's fake clock |
+| Interleavings | `test/todo_interleavings_test.dart` | 2 | the Todos tab alone, every todo request held until the case answers it |
 | Backend contract | `test/backend_contract_test.dart` | 10 per backend | the in-memory backend, and the showcase server when `HOOKS_EXAMPLE_SERVER` names it (CI's `e2e` job) |
-| Repository test | `test/repository_test.dart` (not in the archive) | 17 | the seed against the server's; every hook declared in `lib/src/` against the app, `e2e/tests/` and `integration_test/` |
-| Playwright | `e2e/tests/` | 18, one `describe` per hook | the web build and the real server; Chromium in CI, Firefox and WebKit in `native-e2e` |
-| Native | `integration_test/` | 17 flows in one `group` per hook, and 2 lifecycle cases | a device and the real server through the showcase's device control; `native-e2e` runs it after the showcase's suite on every platform |
+| Repository test | `test/repository_test.dart` (not in the archive) | 19 | the seed against the server's; the scanner over the shapes it is known to read; every hook the library exports against the app, `e2e/tests/` and `integration_test/` |
+| Playwright | `e2e/tests/` | 19, one `describe` per hook | the web build and the real server; Chromium in CI, Firefox and WebKit in `native-e2e` |
+| Native | `integration_test/` | 18 flows in one `group` per hook, and 2 lifecycle cases | a device and the real server through the showcase's device control; `native-e2e` runs it after the showcase's suite on every platform |
 
 The repository test reads the hook names from the declarations, so a hook
 added to the package fails it until both suites prove it. It is a
@@ -784,11 +785,12 @@ app built on the hooks, or the next suite, meets it too.
   state makes the engine put its title in `aria-label` and not in the
   node's text. `getByText` misses it, and so does an accessibility snapshot.
   The pending todo row is a plain `Row`: nothing in it can be tapped.
-- **A failed write is counted only after the refetch.** The last todo
-  write to settle returns the list's refetch from `onSettled`, so a failed
-  toggle stays pending until the list is reloaded, and only then counts as
-  `failed`. The rollback in `onError` shows at once. The widget test
-  asserts both moments.
+- **A write that returns its refetch from `onSettled` stays pending until
+  the list is back.** The second review's fix did that for a tick, so a
+  refused tick counted as `failed` only after the reload, and a second
+  write settling meanwhile counted the first as in flight. The third pass
+  found what that cost (V-1, below). No write waits for its refetch now:
+  a failure counts at once, and the refetch shows in `useIsFetching`.
 - **`pushReplacement` keeps two back buttons for a while.** The replaced
   route leaves only when the new route's entrance is over, and that takes
   longer than 400 ms on Flutter 3.41's Android transition. The widget test
@@ -847,7 +849,9 @@ Three decisions were made along the way:
   every write and stops each refetch from overwriting a pending tick. That
   costs a request per write, plus a guard on every read of the list.
   Counting the writes in flight is one line, and it is the pattern TkDodo
-  documents.
+  documents. The third pass narrowed it to the write that settles with no
+  other in flight, and added a guard on the list's own reads after all
+  (V-1, V-2).
 - **An add puts the backend's answer into the list.** The pending row then
   hands over to the todo in the same frame. Waiting for the refetch would
   leave a gap, which the refetch ends a request later.
@@ -878,6 +882,109 @@ CI on the first push ran the native suites on every platform:
   activated. The device control is the showcase's, so this is
   [#109](https://github.com/dualmeta-gmbh/query_kit/issues/109), not a
   change here.
+
+### Third pass (verification of the second review's fixes)
+
+GPT-6.1-Sol (xhigh) verified `ee034bf` against `48e18fe`, the same way as
+before: a snapshot, no device, and Chromium refused by its sandbox again.
+It found four things, and each was reproduced here before anything changed:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| V-1 (P2, introduced by S-1's fix) | A tick awaited its refetch in `onSettled`, so it stayed in flight through it. An add answered meanwhile counted two writes and refetched nothing. The tick's read, from before the add, then took the added row off the screen for good: the backend had the todo, and the screen had neither the row nor a pending mutation. Two writes settling in one turn also each counted the other, and neither refetched | Yes, Sol's `interleavings` mode: the add case red, the same-turn case red at its count of reads | Every write cancels the reads of the list in flight in `onMutate`, the add too, which had no `onMutate` before. In `onSuccess`, each write puts the backend's answer for its own todo into the list. The write that settles with no other in flight refetches without waiting for it, which is TkDodo's recipe to the letter. The same-turn case is decided, not fixed: see below. Held by `todo_interleavings_test.dart` |
+| V-2 (P2, there before) | A read of the list started while a tick was in flight could answer before the write, with the todo unticked. That read comes from the tab built again, the app back in front, or the network back. The box showed unticked and disabled, beside "saving 1" | Yes, Sol's `interleavings` mode: the remount case red | No read of the list starts while a todo write is in flight. `refetchOnMount`, `refetchOnWindowFocus` and `refetchOnReconnect` are a `RefetchOn.when` that answers `never` while `isMutating` counts a todo write. There is one instance per client (an `Expando`): `RefetchOn.when` compares its callback by identity, and the options must stay equal from one build to the next. The write's own refetch is the read. Held by two widget tests (a tab change, a return to the app), a browser case (a tab change, with the read held) and a native case |
+| V-3 (P2) | The catalogue's scanner had six gaps: <br>• a hook after a string whose interpolation holds a quote vanished; <br>• a hook in a `part` file, or declared as a getter, was not found; <br>• a `describe` whose only "test" was the string `'test('` passed; <br>• a TypeScript regular expression with a quote in it swallowed the next `describe`'s test; <br>• `test['skip']()` passed; <br>• an annotation `@useX()` counted as a hook | Yes, Sol's six `catalog-*` modes: all green against the test | The interpolation handling had never run: its loop stopped on the `$`, before it counted the `{`. The scanner now: <br>• reads an interpolation as code, the strings and comments in it included; <br>• reads Dart or TypeScript: in TypeScript only a template literal interpolates, block comments do not nest, and a regular expression is a string; <br>• follows exports and `part`s from the library file; <br>• takes a getter, and leaves an annotation. <br>It looks for a test or a skip where no string is, and a member of `test` reached by index counts as a skip. Four self-tests hold the shapes. Each of Sol's six modes is red now. It is still a scanner, not the analyzer: see below |
+| V-4 (P2, there before) | After a write, the contract compared only how many todos were stored. It compared the comments of three posts | Yes: Sol's `contract-persistence` mode (an add stored as done) and `contract-comments3` mode (post 3's comments wrong) were both green | After every write, the stored todos are compared whole, and the comments of all thirty posts are compared. Both modes are red |
+
+Sol also qualified two records:
+
+- "the last write to settle refetches" was false under V-1;
+- S-5's native windows still decide, so a device slow enough to miss one fails a correct app.
+
+Both are reworded. The rule is now "the write that settles with no other
+in flight", and S-5 is partly fixed, which the native suite's header
+already says.
+
+Found on the way: **the widget test "a tick answered first" never had a
+slow second write.**
+
+- The in-memory backend reads its latency when a request reaches it.
+- A mutation's request leaves a timer's turn after the tap, and `pump()`
+  runs no timer. So the test set the latency back before either request
+  had arrived, and both answered together.
+- It passed because the second write awaited its refetch, which kept
+  "saving 1" on screen.
+
+The harness's `slowly` now lets the requests arrive (`pump(Duration.zero)`)
+before and after it changes the latency. The case now asserts that the
+second write has not been answered. The same held for "an add answered
+while a tick is in flight".
+
+Negative controls:
+
+- **The pre-fix `queries.dart` and `todos.dart` (`ee034bf`).** Six cases go
+  red: the two interleavings, the two gate cases, the refusal case and "a
+  tick answered first".
+- **Three mutants of `queries.dart`:**
+  - no gate: the two gate cases go red, and so do the browser's and the
+    native tab-change cases. The native case's first form passed against
+    it: with one latency for every request, the remount's read answered
+    after the write anyway, and the write's refetch cancelled it. It now
+    gives the write a window of `slow` to reach the backend, then turns
+    every other request fast;
+  - no answer put into the list on a tick: the same-turn case goes red;
+  - the refetch awaited again: four go red, the add interleaving among them.
+- **Sol's modes.** `interleavings` stays red only on two count assertions,
+  which the fix changes on purpose:
+  - the add case makes three reads, not two, because the add refetches;
+  - the same-turn case makes two reads, not three, which is the decision
+    below.
+
+  With those two assertions changed, all four of its cases pass.
+
+Decisions:
+
+- **Two writes settling in one turn refetch nothing, and that stays.** Each
+  counts the other in its `onSettled`, so `isMutating == 1` is true for
+  neither.
+  - Each write's own answer is already in the list. What is missed is the
+    refresh for changes made elsewhere, until the next read.
+  - Real responses arrive in separate events. Only a test that completes
+    two futures in one turn gets there.
+  - The alternatives cost more than they buy. A check a timer later, after
+    both have left `pending`, is no longer TkDodo's recipe and adds a timer
+    to the example. A listener on the mutation cache is more machinery than
+    the example teaches.
+
+  The case is held as it is, so changing it is a decision.
+- **A gate on the reads, not a merge of pending writes into every answer.**
+  Sol offered both.
+  - A merge needs every read to know the writes in flight and their values:
+    a `select` over the mutation cache, in an example about hooks.
+  - The gate is three options and one callback, and the refetch after the
+    last write brings what was skipped.
+- **A scanner still, not the analyzer.** The analyzer would read the
+  declarations and the export namespace exactly. But:
+  - it is not a dependency of the example, only a transitive one of the
+    workspace, and the example ships;
+  - the test is a catalogue, and whether the hooks work is for the suites.
+
+  The test's header says what the scanner reads, and its self-tests hold
+  the shapes.
+
+Runs after the fixes:
+
+- **Widget, interleavings, contract and repository:** 60 of 60 with the
+  showcase server on 5178 (19 + 2 + 20 + 19).
+- **Playwright in Chromium:** each test three times, 57 of 57.
+- **Native on an iOS 26 simulator (iPhone 17 Pro):** the flows, 18 of 18.
+- **Gates:** the analyzer, the formatter and `tsc` are clean.
+
+CI on `ee034bf` (`ci` and `native-e2e`):
+
+- green on every leg but macOS;
+- iOS, which the log reader had stopped, was green when run again;
+- macOS is #109.
 
 AP10 changed nothing in the package's `lib/`, so no further AP11 pass is
 owed.

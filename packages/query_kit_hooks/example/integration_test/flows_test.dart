@@ -7,7 +7,10 @@
 /// request is in flight is read inside the backend's latency: [slow], long
 /// enough that a slow device still reads it. An order the app must keep is
 /// proven where it does not hang on a window: by a failure that stops a
-/// waterfall here, and by a held request in the browser.
+/// waterfall here, and by a held request in the browser. One case is the
+/// exception: a tick's write gets [slow] to reach the backend before every
+/// later request turns fast, because the backend reads its latency when a
+/// request arrives. A device slower than that fails it.
 library;
 
 import 'package:flutter/material.dart';
@@ -67,6 +70,36 @@ void main() {
       expect(find.text('Post 1'), findsOneWidget);
       expect(await h.requests('GET', '/api/posts'), 1);
       expect(await h.requests('GET', '/api/posts/1'), 1);
+    });
+
+    nativeTest('a tab change while a tick is in flight reads no list over it',
+        (tester, h) async {
+      await openTodos(tester, h);
+      // The write slow, and given a window to reach the backend, which
+      // reads the latency when a request arrives. Then every other request
+      // fast: a read of the list now would answer long before the write,
+      // with the todo unticked.
+      await h.configure(latencyMs: 4 * slow);
+      await tapOn(tester, todoBox(token));
+      await waitFor(tester, lockedBox(token));
+      await settleFor(tester, const Duration(milliseconds: slow));
+      await h.configure(latencyMs: 0);
+
+      await tapOn(tester, find.text('Posts'));
+      await waitForCount(tester, groupNamed('todos'), 0);
+      await tapOn(tester, find.text('Todos'));
+      await waitFor(tester, lockedBox(token));
+      await waitForFact(tester, 'activity', 'fetching 0');
+      expect(ticked(tester, token), isTrue);
+      expect(await h.requests('GET', '/api/todos'), 1);
+
+      // The write answers, and its refetch is the only read since the first.
+      await waitForFact(tester, 'activity', 'saving 0');
+      await h.waitForRequests(tester, 'GET', '/api/todos', 2);
+      await waitForFact(tester, 'activity', 'fetching 0');
+      expect(ticked(tester, token), isTrue);
+      expect(await h.requests('PATCH', '/api/todos/3'), 1);
+      expect(await h.requests('GET', '/api/todos'), 2);
     });
   });
 
