@@ -105,7 +105,7 @@ Where it differs:
 | React Query | `query_kit_hooks` |
 |---|---|
 | `notifyOnChangeProps` and tracked result properties | `buildWhen` on the hooks that read one result: `useQuery`, `useSelectQuery`, `useInfiniteQuery`, `useMutation`, `useCombinedQueries`. `useQueries` takes none, as `QueriesBuilder` takes none, so a refetch's fetching state costs it a build of its own |
-| a component renders after every timer | a widget builds once per frame, for every notification before it, so a build count can be lower |
+| a component renders each change it is notified of on its own, a batch of notifications through `notifyManager` as one | a widget builds once per frame, for every notification before it, so two changes React renders apart can be one build |
 | `useQueries({ queries, combine })` | `useCombinedQueries(queries, combiner, keys: …)`, which returns a `CombinedResult`: pending until every query has data, with the combiner run over the values rather than the results. It runs again when a value or a key changes, not on every build, so what it captures goes in `keys:` where React wraps it in `useCallback`. There is no raw `combine` |
 | `useInfiniteQuery` returns a result with `hasNextPage`, `fetchNextPage`, … | it returns the `InfiniteQueryController`: the result in `value`, the paging flags and `fetchNextPage` beside it |
 | `useMutation` returns a result with `mutate`, `mutateAsync`, `reset` | it returns the `MutationController`: the result in `value`, `mutate`, `mutateAsync` and `reset` its members |

@@ -403,7 +403,7 @@ disposed:
 
 | What | After the throw |
 |---|---|
-| The query's cache entry | Stays for its `gcTime`, like any query nobody observes; with a `gcTime` of zero it is gone |
+| The query's cache entry | Stays for its `gcTime`, like any query nobody observes. Only an idle query is collected: a fetch that runs on, as in the next row, keeps it past its `gcTime`, zero included, and its end starts the `gcTime` again |
 | A fetch in flight | Once the query has no observer left: cancelled, and the query back where it was before the fetch, if the query function used `context.signal` or the fetch was paused before the query had data. Otherwise the request runs on and its result is cached, with no retry unless an observer comes back. The new hook joins a fetch still running, or fetches again if the data is stale |
 | What the observer remembered | Gone: `keepPrevious` placeholder data has no previous data to show, and `select` runs afresh |
 | A mutation in flight | Runs on, and the callbacks in its options run |

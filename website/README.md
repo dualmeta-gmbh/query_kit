@@ -160,6 +160,13 @@ serve` has it all.
   of that page and of the hooks README equal to them, by the same three
   forms (`twin="excerpt: …"`, `twin="prose-only: …"`).
 
+  Both checks read one spelling of a fence: three backticks and `dart`, its
+  attributes in double quotes, and for the site's check at the start of the
+  line. Markdown takes others — tildes, more backticks, single quotes, and
+  for the site's check an indented fence — and both tests refuse them rather
+  than skip them, because a sample neither reads would be neither compiled
+  nor compared.
+
   Two things the same pass turned up, both fixed rather than declared
   excerpts: `the-query-client.md` called an `api.get` that does not exist, and
   `mutations.md` showed a closure this repository's own lints reject

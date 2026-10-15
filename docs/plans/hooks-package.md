@@ -1056,7 +1056,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   Assertion. Behalten als Verschärfung wie 4189, weil upstreams eigene
   Assertion dort nichts prüft.
 
-### AP9 — Doku
+### AP9 — Doku — **erledigt** (#102)
 
 - **Inhalt:**
   - Das, was D15 aufzählt.
@@ -1074,6 +1074,23 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     neu, ohne dass `buildWhen` gefragt wird.
 - **Akzeptanz:** Der Site-Build, die Fences beider Orte und `doc_snippets`
   sind grün.
+- **Ergebnis, gemessen:**
+  - `guides/hooks.md` neu, mit 15 Dart-Fences, jede ein Zwilling in
+    `test/doc_twins/`. Dazu ein Abschnitt `## Hooks` in den Unterschieden
+    zu TanStack, eine dritte Spalte in `coming-from-react-query.md`, ein
+    Absatz in `installation.md` und die README des Pakets.
+  - Der Fence-Test des Pakets bleibt per `.pubignore` aus dem Archiv,
+    weil er `website/` liest; die Zwillinge werden ausgeliefert und laufen.
+  - Hooks 328 Tests, `doc_snippets` 48.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** drei Befunde, alle reproduziert
+  und behoben.
+  - Die Zeile zu `gcTime: 0` nach einem Wurf stimmte nur für eine Abfrage
+    ohne laufenden Fetch.
+  - Beide Fence-Tests übersahen andere Schreibweisen still: Tilden, vier
+    Backticks, Attribute ohne doppelte Anführungszeichen. Beide lehnen sie
+    jetzt ab, mit Negativkontrollen.
+  - Die Zeile „React rendert nach jedem Timer“ war falsch; React rendert
+    jede gemeldete Änderung für sich.
 
 ### AP10 — Beispiel-App, mit End-to-End-Tests
 

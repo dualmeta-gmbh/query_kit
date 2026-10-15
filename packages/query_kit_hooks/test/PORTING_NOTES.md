@@ -122,7 +122,27 @@ They count in no column above.
   so it is skipped in the browser and kept out of the archive by
   `.pubignore`; the twins ship and run. Negative control: one token changed
   in a guide fence, and separately in a README fence, turns it red with "has
-  drifted".
+  drifted". It refuses a fence or an attribute it cannot read, as below.
+
+### The docs' second review
+
+GPT-6.1-Sol (xhigh) reviewed AP9: the hooks guide, the README, the new
+`## Hooks` rows of the differences page, and the fence test. It ran the suite
+(327 green), the fence tests of both places and the site build. Three
+findings, each reproduced:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S-1 (P2) | The guide's "When a build throws" table said a query with a `gcTime` of zero is gone after the throw. Collection needs a query nobody observes and that is not fetching. A fetch that did not use `context.signal` runs on past the disposal, so the entry stays past its zero `gcTime`, and the new hook joins that fetch | Yes, with Sol's probe: no observer, the entry still fetching after the timer, one fetch in all | The row now says that only an idle query is collected, and that the end of a fetch that runs on starts the `gcTime` again (`Query`'s settle path schedules collection when nobody observes) |
+| S-2 (P2) | Both fence tests read only a fence opened at the margin with three backticks and `dart`, and only an attribute in double quotes. A `~~~dart` fence of invalid Dart with an unknown `twin=`, or a `twin='…'` in single quotes, left every check green, though the site renders both as Dart | Yes, with Sol's script: both green | Both tests refuse what they cannot read rather than skip it: "no fence or attribute is spelled in a way this check cannot read". This one refuses a `twin=` or `snippet=` without double quotes on any site page, and a fence of tildes, of four or more backticks, or with a space before its info string in the guide or the README. `site_fences_test.dart` refuses the same on every page and README it reads, an indented `dart` fence too, and now reads `.mdx` pages as well. Negative controls, each red: a tilde fence, an unknown twin in double and in single quotes, a four-backtick fence and a space before `dart` in the guide, and the guide missing, here; a tilde fence and an indented one, in the site's test |
+| S-3 (P2) | The differences page said a React component renders after every timer. At the pin it renders through `useSyncExternalStore` when the observer notifies, and the observer notifies only for a tracked property that changed | Yes, with Sol's Node probe against the pinned source: a completed timer and a refetch that returned the same data, one render in all | The row now says what differs: React renders each notified change on its own, a `notifyManager` batch as one; Flutter builds once per frame for every notification before it. The filtering is the row above it |
+
+Sol's sparring agreed with all ten decisions of the docs agent's notes, the
+package-local twins, the `.pubignore` entry, `.ignore()` in the installation
+page and one optional hooks column in the React mapping among them. On the
+fence test it agreed with the two attributes but not with their claimed
+completeness, which is S-2. It found no page that ranks the add-on above or
+below the four call styles.
 
 ## `useQuery.test.tsx`
 

@@ -95,6 +95,21 @@ void main() {
         reason: 'no snippet regions found in the twin files');
   });
 
+  // This file reads a fence opened at the margin with three backticks and
+  // `dart`, and a `snippet=` in double quotes. Markdown takes more spellings
+  // than that, and a sample written in one of them would not be read at all
+  // — neither compiled nor compared — so the others are refused rather than
+  // skipped.
+  test('no fence or attribute is spelled in a way this check cannot read', () {
+    final List<String> unread = _unreadSpellings(repo);
+    expect(
+      unread,
+      isEmpty,
+      reason: 'Write these fences as ```dart at the start of the line, and '
+          'their attributes in double quotes:\n  ${unread.join('\n  ')}',
+    );
+  });
+
   test(
       'every dart fence on the site names a snippet region, or says why it '
       'has none', () {
@@ -363,13 +378,47 @@ const List<String> _readmes = <String>[
   'packages/query_kit_flutter/README.md',
 ];
 
+/// The site's pages, `.md` and `.mdx`, in path order.
+List<File> _pagesOf(Directory docs) => docs
+    .listSync(recursive: true)
+    .whereType<File>()
+    .where((File f) => f.path.endsWith('.md') || f.path.endsWith('.mdx'))
+    .toList()
+  ..sort((File a, File b) => a.path.compareTo(b.path));
+
+/// A fence opening this file does not read: indented, tildes, four or more
+/// backticks, or an info string after a space.
+final RegExp _unreadFence =
+    RegExp(r'^([ \t]+```[ \t]*dart|~{3,}|`{4,}|```[ \t]+\S)');
+
+/// A `snippet=` whose value is not in double quotes.
+final RegExp _unreadAttribute = RegExp(r'\bsnippet=(?!")');
+
+/// Where a site page or a published README opens a fence this file would not
+/// read, or spells `snippet=` without double quotes, as `<page>:<line>`.
+List<String> _unreadSpellings(Directory repo) {
+  final Directory docs = Directory('${repo.path}/website/docs');
+  return <String>[
+    for (final (File, String) page in <(File, String)>[
+      for (final File page in _pagesOf(docs))
+        (
+          page,
+          page.path
+              .substring(docs.path.length + 1)
+              .replaceAll(Platform.pathSeparator, '/'),
+        ),
+      for (final String readme in _readmes)
+        (File('${repo.path}/$readme'), readme),
+    ])
+      for (final (int, String) line in page.$1.readAsLinesSync().indexed)
+        if (_unreadFence.hasMatch(line.$2) ||
+            _unreadAttribute.hasMatch(line.$2))
+          '${page.$2}:${line.$1 + 1}',
+  ];
+}
+
 List<_Fence> _fencesOf(Directory docs) {
-  final List<File> pages = docs
-      .listSync(recursive: true)
-      .whereType<File>()
-      .where((File f) => f.path.endsWith('.md'))
-      .toList()
-    ..sort((File a, File b) => a.path.compareTo(b.path));
+  final List<File> pages = _pagesOf(docs);
 
   return <_Fence>[
     for (final File page in pages)

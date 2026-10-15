@@ -68,10 +68,12 @@ void main() {
     late Map<String, _Region> regions;
     late List<String> duplicateRegionIds;
     late Set<String> hooks;
+    late List<String> unread;
 
     setUpAll(() {
       final repo = _repoRoot();
       fences = _fencesOf(repo);
+      unread = _unreadSpellings(repo);
       final (found, duplicates) = _regionsOf(repo);
       regions = found;
       duplicateRegionIds = duplicates;
@@ -89,6 +91,20 @@ void main() {
           reason: 'no regions found under test/doc_twins/');
       expect(hooks, contains('useQuery'),
           reason: 'no exported hooks found under lib/src/');
+    });
+
+    // The parser reads a fence opened with three backticks and `dart`, and
+    // attributes in double quotes. Markdown takes more spellings than that,
+    // and a sample written in one of them would not be read at all, so the
+    // others are refused rather than skipped.
+    test('no fence or attribute is spelled in a way this check cannot read',
+        () {
+      expect(
+        unread,
+        isEmpty,
+        reason: 'Write these fences as ```dart at the start of the line, and '
+            'their attributes in double quotes:\n  ${unread.join('\n  ')}',
+      );
     });
 
     test('every dart fence names a twin region, or says why it has none', () {
@@ -372,6 +388,39 @@ List<_Fence> _fencesOf(Directory repo) {
               .replaceAll(Platform.pathSeparator, '/')))
         if (fence.page == _guide || fence.hasTwin) fence,
     ..._fencesOfPage(File('${repo.path}/$_readme'), _readme),
+  ];
+}
+
+/// A fence opening this check does not read: tildes, four or more
+/// backticks, or an info string after a space.
+final RegExp _unreadFence = RegExp(r'^(~{3,}|`{4,}|```[ \t]+\S)');
+
+/// A `twin=` or `snippet=` whose value is not in double quotes.
+final RegExp _unreadAttribute = RegExp(r'\b(twin|snippet)=(?!")');
+
+/// Where the guide or the README opens a fence this check would not read,
+/// and where any site page spells `twin=` or `snippet=` without double
+/// quotes, as `<page>:<line>`.
+List<String> _unreadSpellings(Directory repo) {
+  final docs = Directory('${repo.path}/website/docs');
+  final pages = <(File, String)>[
+    for (final page in docs.listSync(recursive: true).whereType<File>())
+      if (page.path.endsWith('.md') || page.path.endsWith('.mdx'))
+        (
+          page,
+          page.path
+              .substring(docs.path.length + 1)
+              .replaceAll(Platform.pathSeparator, '/'),
+        ),
+    (File('${repo.path}/$_readme'), _readme),
+  ]..sort((a, b) => a.$2.compareTo(b.$2));
+  return [
+    for (final (page, rel) in pages)
+      for (final (i, line) in page.readAsLinesSync().indexed)
+        if (_unreadAttribute.hasMatch(line) ||
+            ((rel == _guide || rel == _readme) &&
+                _unreadFence.hasMatch(line.trimLeft())))
+          '$rel:${i + 1}',
   ];
 }
 
