@@ -87,7 +87,8 @@ what every call style does. A case changed only in spelling is **ported**.
 | `useQuery.test.tsx`, lines 1–3600 | `use_query_part1_test.dart` | 72 / 78 | done (AP3) |
 | `useQuery.test.tsx`, lines 3601–7096 | `use_query_part2_test.dart` | 63 / 77 | done (AP3) |
 | `useInfiniteQuery.test.tsx` | `use_infinite_query_test.dart` | 2 / 28 | spike selection; AP4 |
-| `useMutation.test.tsx` | `use_mutation_test.dart` | 3 / 61 | spike selection; AP5 |
+| `useMutation.test.tsx` | `use_mutation_test.dart` | 55 / 61 | done (AP5) |
+| `mutationOptions.test.tsx` | `mutation_options_test.dart` | 12 / 14 | done (AP5) |
 | `useQueries.test.tsx` | `use_queries_test.dart` | 17 / 24 | done (AP6) |
 | `useIsFetching.test.tsx` | `use_is_fetching_test.dart` | 1 / 5 | spike selection; AP7 |
 | `useMutationState.test.tsx` | `use_mutation_state_test.dart` | 1 / 5 | spike selection; AP7 |
@@ -274,3 +275,53 @@ GPT-6.1-Sol (xhigh) ran the suite (174 green), reproduced the notes' controls (n
 | Id | Finding | Reproduced | Outcome |
 |---|---|---|---|
 | S-1 (P2) | 66 adds `client.isFetching() == 0`, an assertion upstream does not have, outside D8, D10 and D14 | It is there | Kept, as 4189's strengthening: upstream's own assertion there matches nothing in either framework, which is the case this file allows a strengthening for. The row above says so |
+
+## `useMutation.test.tsx` and `mutationOptions.test.tsx`
+
+**75 upstream cases (61 and 14): 61 ported, 6 adapted, 8 omitted (AP5, #98).** `useMutation` returns the `MutationController`, so `mutate`, `mutateAsync`, `reset` and the result are its members. `mutationOptions()` is a TypeScript identity, so its file's cases pass a `MutationOptions` value straight to `useIsMutating`, `useMutationState` or `client.isMutating`. The port forced no change to the hook, only its dartdoc: what a build, an unmount and a throw before the call do. No case carries a skip, and the port found no defect in the hooks, the binding or the core.
+
+Three driver mappings run through both files, none of them an adaptation:
+
+- **The online spy.** Upstream's `vi.spyOn(onlineManager, 'isOnline')` is a file-private `OnlineManager` whose `isOnline()` answers a mocked value with no event (1063, 1117, 1176, 1231). So nothing resumes until the case's own `resumePaused()`: one resume, as upstream. `setOnline(false/true)` would emit an event and a mounted client would resume by itself.
+- **Clicks with no time between share a frame.** React renders a notification only when the notify manager's `setTimeout(0)` runs, so two synchronous `fireEvent.click`s render nothing between them. Every tap goes in first, then one `pump()`. That applies to useMutation 428, 529, 1301, 1578 and 1650, and to mutationOptions 128, 180, 297, 335, 444 and 486. It is load-bearing in three: with a pump per click, 128 and 297 see 1 mutating where upstream sees 2, and 335 sees 1 where upstream sees 0.
+- **`process.on('unhandledRejection')` is a zone around the tap** that starts the mutation (1796, 1841). It takes the callback's own rejection and nothing else; upstream asserts nothing on it, nor does the port.
+
+### Adapted (6)
+
+| File:line | Case | What changed, and why |
+|---|---|---|
+| useMutation:1117 | should call onMutate even if paused | D14: `onMutate` is told the variables only, so upstream's assertion on its second argument, the mutation callback context, is dropped |
+| useMutation:1176 | should optimistically go to paused state if offline | **Strengthened, by D8's frame.** Upstream's two build assertions hold as written. A frame could merge an intermediate `pending, false` into build 1, which upstream's assertion exists to rule out, so the controller's first delivery after the tap (`rec.delivered.first`) is asserted as `pending, true` too |
+| useMutation:1650 | should call mutate callbacks only for the last observer | D14: the callbacks' fourth argument, the mutation callback context, is dropped from the four `toHaveBeenCalledWith`. Data, variables, `onMutateResult` and error are asserted |
+| useMutation:1761 | should go to error state if onSuccess callback errors | D14: `onError`'s fourth argument is dropped, as 1650 |
+| useMutation:1841 | should go to error state if onSettled callback errors | D14: `onError`'s fourth argument is dropped, as 1650. The zone is 1796's |
+| useMutation:2479 | should pass a non-undefined onMutateResult alongside context to onSuccess | D14: the three `context.client`, `context.meta` and `context.mutationKey` assertions are dropped. Data, variables and `onMutateResult` are asserted |
+
+The rest are ported. In the spelling: 999 keys its effect on `mutate`, as upstream; 1494 and 1535 get their own client through `createClient:`; 1893 runs without a provider, with `client:` on the hook; 2267's updater `setQueryData` is `updateQueryData`, and its rollback writes only a snapshot that exists (upstream's `undefined` write does nothing); `Promise.all` is `Future.wait(eagerError: true)` (2339, 2378) and `Promise.allSettled` a file-private `_allSettled` (2426); upstream's two-argument `mutationFn` is `mutationFnWithContext` (2507); `useMutationState`'s default `select`, `(m) => m.state`, is written out, because the hook requires one (mutationOptions 375–486, plan D9); and `isMutating(mutationOpts)` is `isMutating(filters: MutationFilters(mutationKey: …))` (mutationOptions 234).
+
+### Omitted (8)
+
+| File:line | Category | Why |
+|---|---|---|
+| useMutation:1321, 1366 | `throwOnError` and error boundaries (D14) | Errors are data in the result |
+| useMutation:1417, 1443 | `throwOnError` (D14) | There is no option to set to `false`; without it the case is 1469, which is ported |
+| useMutation:2533, 2555 | Mutation callback context (D14) | Divergence #14/#83: the callbacks get no `MutationFunctionContext`. 2555 exists to avoid a closure over the client, so a rewrite over `useQueryClient()` would defeat it |
+| mutationOptions:20, 29 | TypeScript | `mutationOptions()` returns its argument for type inference; a Dart options value is the thing itself |
+
+### What the port measured
+
+- **The inventory was too cautious.** It marked 17 useMutation cases A, and 11 of them are plain ports (999, 1063, 1231, 1301, 1578, 1796, 1893, 2339, 2378, 2426, 2507); so is mutationOptions 234. Every P verdict passed as written. Its two worries did not arise: 999 needs no split of `advance(21)`, because the stepped `advance` keeps all three builds; and 1578's unmount lands before the 10 ms, because `click` and `advance` each build a frame before any time passes.
+- **The tear-offs are stable.** `controller.mutate` and `controller.mutateAsync` of one controller are `==`, so every effect upstream keys on them (136 and the like) runs once, as React's stable callbacks do.
+- **No upstream case catches a hook that skips `setOptions` on later builds.** 2148 and 2205 click once, with the first build's options. The AP5 group in `hook_specifics_test.dart` holds it: a run in flight calls the latest build's callbacks, a new `mutationKey` starts over at idle, and new options add no build. It also holds D13's mutation rows each as a test of its own: after a throw before the hook the run goes on and its options' callbacks run, `mutate`'s per-call callbacks are dropped, the replacement starts idle while the old run is still pending, and a throw after the last hook disposes nothing. And unmounting does not cancel a running mutation: its cancel token is never cancelled, `mutateAsync` still completes.
+- **The suite has teeth.** Three faults in `use_mutation.dart`, over the two files, the AP5 group and `review_reproductions_test.dart` (93 tests): `setOptions` skipped on later builds turns 2 red (both AP5 cases, no upstream one), cancelling the run on dispose 5 (1578, three AP5 cases and H-04), `buildWhen` not passed on 2 (1176 through its strengthened delivery, and the AP5 case).
+
+### Second review
+
+GPT-6.1-Sol (xhigh) ran the suite (233 green), compared all 75 upstream cases against the Dart ones, names, steps and assertions, and added three probes of its own, all green: a delivery queued after disposal, a client switch, and two mutations a frame apart. It reproduced the `setOptions` control. Two findings, each reproduced:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S-1 (P2) | The zone for 1796 and 1841 swallowed every error, where upstream's handler catches only unhandled rejections: a timer throwing inside the tap left both cases green | Yes: a throwing `Timer` beside the tap, green before | The zone takes only the callback's own error and hands anything else to the zone around the case, which fails it. With the same `Timer` both cases now go red |
+| S-2 (P2) | This file still had the spike's `3 / 61` and no account of either suite | — | This section and the status rows; the porting agent's notes were outside the repository by design |
+
+Sol's sparring agreed with the online spy, the shared frame, the written-out `select`, 1176's strengthening, the own clients, the effect keyed on `mutate`, the conditional rollback, the AP5 group, the D13 tests and the D14 exclusions. It disagreed only with the zone as it was built, which is S-1.

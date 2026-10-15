@@ -919,7 +919,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
 - **Inhalt:** Die 28 Fälle, davon 22 angepasst. Die Tests zeichnen die
   Paging-Flags je Build vom Controller auf, wie 48 und 180 im Spike.
 
-### AP5 — `useMutation`
+### AP5 — `useMutation` — **erledigt** (#98)
 
 - **Inhalt:** 61 Fälle aus `useMutation.test.tsx` und 14 aus
   `mutationOptions.test.tsx`.
@@ -928,6 +928,24 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Ein Test belegt, dass `dispose` eine laufende Mutation nicht abbricht.
   - Ein Test belegt die Mutations-Zeilen aus D13: Die Per-Call-Callbacks
     fallen weg, und der Ersatz-Hook beginnt `idle`.
+- **Ergebnis, gemessen:**
+  - **75 Fälle:** 61 portiert, 6 angepasst (D14, der Callback-Kontext:
+    1117, 1650, 1761, 1841, 2479; 1176 verschärft), 8 ausgelassen
+    (`throwOnError` ×4, 2533 und 2555 als Divergenz #14/#83,
+    `mutationOptions` 20 und 29 als TypeScript). Kein Defekt aus der
+    Portierung, kein Fall übersprungen, der Hook nur in der Dartdoc
+    geändert.
+  - Alle drei Akzeptanzkriterien als Tests in `hook_specifics_test.dart`,
+    dazu `setOptions` bei jedem Build: Kein upstream-Fall fängt einen Hook,
+    der es auslässt.
+  - Klicks ohne Zeit dazwischen teilen sich einen Frame, wie Reacts
+    Benachrichtigungen per `setTimeout(0)`; in drei Fällen tragend.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** zwei Befunde, beide
+  reproduziert.
+  - Die Zone um den Tap in 1796 und 1841 schluckte jeden Fehler, auch
+    einen werfenden Timer. Jetzt nimmt sie nur den erwarteten
+    Callback-Fehler; alles andere lässt den Fall rot werden.
+  - Der `PORTING_NOTES`-Abschnitt fehlte; er steht jetzt dort.
 
 ### AP6 — `useQueries` und `useCombinedQueries` — **erledigt** (#99)
 

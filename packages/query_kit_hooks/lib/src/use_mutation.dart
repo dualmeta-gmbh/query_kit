@@ -9,9 +9,22 @@ import 'controller_hook.dart';
 /// A mutation owned by this call's position in `build`, as a
 /// [MutationController] — `context.mutation` as a hook.
 ///
-/// The widget rebuilds when the mutation's result changes. Unmounting does
-/// not cancel a running mutation: it settles, and its cache-level callbacks
-/// run.
+/// The widget rebuilds when the mutation's result changes, and only when
+/// [buildWhen], if given, agrees. [client] is used instead of the nearest
+/// `QueryClientProvider`'s.
+///
+/// Every build hands [options] to the controller, so a run still in flight
+/// calls the callbacks of the latest build — they may close over that
+/// build's state — and a different `mutationKey` starts over at idle.
+/// Options that are new on every build add no build.
+///
+/// Unmounting does not cancel a running mutation: it settles, the callbacks
+/// in [options] and the cache's run, and a `mutateAsync` future completes.
+/// The callbacks handed to a single `mutate` or `mutateAsync` call are
+/// dropped, because the widget they were meant for is gone. The same holds
+/// when a build throws before this call: `flutter_hooks` then disposes this
+/// hook, and the one that takes its place on the next build starts idle,
+/// even while the earlier run is still going.
 MutationController<TData, TVariables, TOnMutateResult>
     useMutation<TData, TVariables, TOnMutateResult>(
   MutationOptions<TData, TVariables, TOnMutateResult> options, {

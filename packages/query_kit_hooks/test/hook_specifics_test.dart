@@ -952,4 +952,369 @@ void main() {
       });
     }
   });
+
+  // AP5 (map #92): `useMutation`. D13's mutation rows — a throw before the
+  // hook disposes its controller, and a disposed controller does not cancel
+  // — then D9's "dispose does not cancel" on an unmount, and the options
+  // the controller takes on every build.
+  group('AP5: useMutation', () {
+    final events = <String>[];
+    final signals = <QueryCancelToken>[];
+    final results = <MutationResult<String, String>>[];
+    var throwBefore = false;
+    var throwAfter = false;
+    late void Function() rebuild;
+    Future<String>? running;
+
+    setUp(() {
+      events.clear();
+      signals.clear();
+      results.clear();
+      throwBefore = false;
+      throwAfter = false;
+      running = null;
+    });
+
+    MutationOptions<String, String, void> options({QueryKey? key}) =>
+        MutationOptions.simple<String, String>(
+          mutationKey: key,
+          mutationFnWithContext: (text, context) {
+            signals.add(context.signal);
+            return sleep(10)
+                .then((_) => text == 'fail' ? throw StateError('oops') : text);
+          },
+          onSuccess: (data, _, __) => events.add('options.onSuccess $data'),
+          onError: (_, __, ___, ____) => events.add('options.onError'),
+          onSettled: (_, __, ___, ____, _____) =>
+              events.add('options.onSettled'),
+        );
+
+    MutateCallbacks<String, String, void> perCall() => MutateCallbacks(
+          onSuccess: (data, _, __) => events.add('mutate.onSuccess $data'),
+          onError: (_, __, ___, ____) => events.add('mutate.onError'),
+          onSettled: (_, __, ___, ____, _____) =>
+              events.add('mutate.onSettled'),
+        );
+
+    // A build that throws before its `useMutation` while `throwBefore` is
+    // set, and after it while `throwAfter` is; `rebuild` goes through a
+    // hook ahead of both, which a throw does not dispose.
+    Widget page({QueryKey? key}) => HookBuilder(builder: (context) {
+          final toggle = useState(0);
+          rebuild = () => toggle.value++;
+          if (throwBefore) {
+            throw StateError('before the hook');
+          }
+          final mutation = useMutation(options(key: key));
+          if (throwAfter) {
+            throw StateError('after the hook');
+          }
+          results.add(mutation.value);
+          return Column(children: [
+            TextButton(
+              onPressed: () => mutation.mutate('todo', callbacks: perCall()),
+              child: const Text('mutate'),
+            ),
+            TextButton(
+              onPressed: () => mutation.mutate('fail', callbacks: perCall()),
+              child: const Text('fail'),
+            ),
+            TextButton(
+              onPressed: () {
+                running = mutation.mutateAsync('todo', callbacks: perCall());
+              },
+              child: const Text('mutateAsync'),
+            ),
+          ]);
+        });
+
+    Future<void> throwInBuild(WidgetTester tester) async {
+      rebuild();
+      await tester.pump();
+      expect(tester.takeException(), isStateError);
+    }
+
+    Future<void> recover(WidgetTester tester) async {
+      throwBefore = false;
+      throwAfter = false;
+      rebuild();
+      await tester.pump();
+    }
+
+    hookTest(
+        "a throw before useMutation: the run goes on, and its options' "
+        'callbacks run', (tester, client) async {
+      await tester.pumpApp(client, page());
+      await click(tester, 'mutate');
+      await advance(tester, 5);
+
+      throwBefore = true;
+      await throwInBuild(tester);
+      final mutation = client.mutationCache.mutations.single;
+      expect(mutation.state.status, MutationStatus.pending);
+      expect(signals.single.isCancelled, isFalse);
+
+      await advance(tester, 6);
+      expect(mutation.state.status, MutationStatus.success);
+      expect(mutation.state.data, 'todo');
+      expect(signals.single.isCancelled, isFalse);
+      expect(events, ['options.onSuccess todo', 'options.onSettled']);
+    });
+
+    hookTest(
+        'a throw before useMutation: the per-call callbacks of mutate are '
+        'dropped', (tester, client) async {
+      await tester.pumpApp(client, page());
+      await click(tester, 'fail');
+      await advance(tester, 5);
+
+      throwBefore = true;
+      await throwInBuild(tester);
+      await advance(tester, 6);
+      expect(client.mutationCache.mutations.single.state.status,
+          MutationStatus.error);
+      expect(events, ['options.onError', 'options.onSettled']);
+
+      // The control: the hook in its place gets the per-call callbacks of
+      // a run of its own.
+      await recover(tester);
+      events.clear();
+      await click(tester, 'fail');
+      await advance(tester, 11);
+      expect(events, [
+        'options.onError',
+        'options.onSettled',
+        'mutate.onError',
+        'mutate.onSettled',
+      ]);
+    });
+
+    hookTest(
+        'a throw before useMutation: the replacement starts idle while the '
+        'old run goes on', (tester, client) async {
+      final key = queryKey();
+      await tester.pumpApp(client, page(key: key));
+      await click(tester, 'mutate');
+      await advance(tester, 5);
+      expect(results.last.isPending, isTrue);
+
+      throwBefore = true;
+      await throwInBuild(tester);
+      await recover(tester);
+
+      // The old run is still going, and its key finds it…
+      final old = client.mutationCache
+          .findAll(filters: MutationFilters(mutationKey: key));
+      expect(old.single.state.status, MutationStatus.pending);
+      // …but the hook in its place does not: it starts idle.
+      expect(results.last.isIdle, isTrue);
+      expect(results.last.variables, isNull);
+      final builds = results.length;
+
+      await advance(tester, 6);
+      expect(old.single.state.status, MutationStatus.success);
+      // It never watched the old run, so the old run's end builds nothing.
+      expect(results.length, builds);
+      expect(results.last.isIdle, isTrue);
+      expect(events, ['options.onSuccess todo', 'options.onSettled']);
+    });
+
+    hookTest('a throw after useMutation keeps the controller and the run',
+        (tester, client) async {
+      await tester.pumpApp(client, page());
+      await click(tester, 'mutate');
+      await advance(tester, 5);
+
+      throwAfter = true;
+      await throwInBuild(tester);
+      await recover(tester);
+      expect(results.last.isPending, isTrue);
+      expect(results.last.variables, 'todo');
+
+      await advance(tester, 6);
+      expect(results.last.dataOrNull, 'todo');
+      expect(events, [
+        'options.onSuccess todo',
+        'options.onSettled',
+        'mutate.onSuccess todo',
+        'mutate.onSettled',
+      ]);
+    });
+
+    hookTest('unmounting does not cancel a running mutation',
+        (tester, client) async {
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          final show = useState(true);
+          return Column(children: [
+            TextButton(
+              onPressed: () => show.value = false,
+              child: const Text('hide'),
+            ),
+            if (show.value) page(),
+          ]);
+        }),
+      );
+      await click(tester, 'mutateAsync');
+      await advance(tester, 5);
+
+      await click(tester, 'hide');
+      expect(find.text('mutateAsync'), findsNothing);
+      final mutation = client.mutationCache.mutations.single;
+      expect(mutation.state.status, MutationStatus.pending);
+      expect(signals.single.isCancelled, isFalse);
+
+      await advance(tester, 6);
+      expect(signals.single.isCancelled, isFalse);
+      expect(mutation.state.status, MutationStatus.success);
+      expect(await running!, 'todo');
+      // The options' callbacks run; the per-call ones went with the widget.
+      expect(events, ['options.onSuccess todo', 'options.onSettled']);
+    });
+
+    hookTest('a run in flight calls the callbacks of the latest build',
+        (tester, client) async {
+      final calls = <String>[];
+      late void Function() next;
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          final generation = useState(1);
+          next = () => generation.value++;
+          final label = 'build ${generation.value}';
+          final mutation = useMutation(MutationOptions.simple<String, String>(
+            mutationFn: (text) => sleep(10).then((_) => text),
+            onSuccess: (_, __, ___) => calls.add('onSuccess of $label'),
+            onSettled: (_, __, ___, ____, _____) =>
+                calls.add('onSettled of $label'),
+          ));
+          return TextButton(
+            onPressed: () => mutation.mutate('todo'),
+            child: const Text('mutate'),
+          );
+        }),
+      );
+      await click(tester, 'mutate');
+      await advance(tester, 5);
+
+      next();
+      await tester.pump();
+      await advance(tester, 6);
+      expect(calls, ['onSuccess of build 2', 'onSettled of build 2']);
+    });
+
+    // No `keys` (D6): a different `mutationKey` is `setOptions` on the same
+    // controller, which starts over at idle, as upstream's observer does.
+    hookTest('a new mutationKey on a later build starts over at idle',
+        (tester, client) async {
+      final first = queryKey();
+      final second = queryKey();
+      var key = first;
+      late void Function() next;
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          final toggle = useState(0);
+          next = () => toggle.value++;
+          final mutation = useMutation(MutationOptions.simple<String, String>(
+            mutationKey: key,
+            mutationFn: (text) => sleep(10).then((_) => text),
+          ));
+          results.add(mutation.value);
+          return TextButton(
+            onPressed: () => mutation.mutate('todo'),
+            child: const Text('mutate'),
+          );
+        }),
+      );
+      await click(tester, 'mutate');
+      await advance(tester, 11);
+      expect(results.last.dataOrNull, 'todo');
+
+      key = second;
+      next();
+      await tester.pump();
+      expect(results.last.isIdle, isTrue);
+
+      await click(tester, 'mutate');
+      await advance(tester, 11);
+      expect(results.last.dataOrNull, 'todo');
+      expect(
+        client.mutationCache
+            .findAll(filters: MutationFilters(mutationKey: second))
+            .single
+            .state
+            .data,
+        'todo',
+      );
+    });
+
+    hookTest('options new on every build add no build', (tester, client) async {
+      var builds = 0;
+      late void Function() rebuildParent;
+
+      await tester.pumpApp(
+        client,
+        StatefulBuilder(builder: (context, setState) {
+          rebuildParent = () => setState(() {});
+          return HookBuilder(builder: (context) {
+            builds++;
+            final mutation = useMutation(options());
+            return TextButton(
+              onPressed: () => mutation.mutate('todo'),
+              child: Text(mutation.value.status.name),
+            );
+          });
+        }),
+      );
+      expect(builds, 1);
+
+      for (var i = 0; i < 3; i++) {
+        rebuildParent();
+        await tester.pump();
+      }
+      expect(builds, 4); // one of its own, three from the parent
+
+      await click(tester, 'idle');
+      await advance(tester, 11);
+      expect(find.text('success'), findsOneWidget);
+      expect(builds, 6);
+    });
+
+    hookTest('buildWhen decides which result changes rebuild',
+        (tester, client) async {
+      final built = <String>[];
+      var attempts = 0;
+
+      await tester.pumpApp(
+        client,
+        HookBuilder(builder: (context) {
+          final mutation = useMutation(
+            MutationOptions.simple<String, String>(
+              mutationFn: (text) => sleep(2).then(
+                  (_) => ++attempts == 1 ? throw StateError('oops') : text),
+              retry: const RetryPolicy.times(1),
+              retryDelay: const RetryDelay.fixed(Duration(milliseconds: 5)),
+            ),
+            buildWhen: (previous, current) => previous.status != current.status,
+          );
+          final result = mutation.value;
+          built.add('${result.status.name} ${result.failureCount}');
+          return TextButton(
+            onPressed: () => mutation.mutate('todo'),
+            child: const Text('mutate'),
+          );
+        }),
+      );
+      await click(tester, 'mutate');
+      await advance(tester, 10);
+
+      expect(attempts, 2);
+      // The failed first attempt changed the failure count, not the status.
+      expect(built, ['idle 0', 'pending 0', 'success 0']);
+    });
+  });
 }
