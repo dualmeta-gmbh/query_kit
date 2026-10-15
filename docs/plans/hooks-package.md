@@ -1064,14 +1064,50 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Der Fence-Test im Hook-Paket über README und `guides/hooks.md` (D15).
   - Ein Eintrag in den Unterschieden zu TanStack.
   - Die Folgen aus D13 auf der Hooks-Seite.
+- **Mitgenommen aus AP4 bis AP8:**
+  - Die README sagt „Every hook that reads a result takes a `buildWhen`“.
+    `useQueries` nimmt keins, wie `QueriesBuilder`. Den Satz entsprechend
+    einschränken.
+  - Die Falle `unawaited(client.query(options))` aus AP8 kommt auf die
+    Hooks-Seite.
+  - Die Regel zu `beside`: Paging-Flags und die Ziele von `retry` bauen
+    neu, ohne dass `buildWhen` gefragt wird.
 - **Akzeptanz:** Der Site-Build, die Fences beider Orte und `doc_snippets`
   sind grün.
 
-### AP10 — Beispiel-App
+### AP10 — Beispiel-App, mit End-to-End-Tests
 
-- **Inhalt:** Wie D18 beschreibt.
-- **Akzeptanz:** Das Beispiel lebt im veröffentlichten Archiv und läuft dort
-  mit `flutter test`.
+- **Inhalt:**
+  - Die App, wie D18 sie beschreibt.
+  - **End-to-End-Tests (Christian, 2026-10-15: „Alles muss dann mit E2E
+    Tests abgesichert [sein], wie auf dem Branch, der parallel läuft“).**
+    Sie nutzen die Infrastruktur des Branches `e2e-coverage`, statt eine
+    eigene zu bauen:
+    - Playwright gegen den Web-Build, in jeder Engine, über den
+      Semantik-Baum und ohne Uhr in einer Assertion, wie
+      `examples/showcase/e2e/`;
+    - eine native Suite über `integration_test`, mit `run.sh` und dem
+      nativen Harness des Showcase als Vorlage;
+    - je ein Bein in `ci.yml` (`e2e`) und `native-e2e.yml`.
+- **Wartet auf** den Merge von `e2e-coverage` nach `main`. Danach wird
+  dieser Branch darauf rebased. Erwartete Konflikte:
+  - Die Bindung (1.0.3/1.0.4) ändert `query_builder.dart`,
+    `query_context.dart` und `query_mixin.dart`, die auch
+    `RebuildRule.beside` berührt.
+  - Die native Suite des Showcase braucht vielleicht dieselbe Zählung für
+    `Load next` wie `build_when_test.dart`.
+- **Entscheidet AP10:**
+  - wo die E2E-Dateien liegen, im veröffentlichten Archiv oder per
+    `.pubignore` draußen (D18: das Beispiel wird mitveröffentlicht);
+  - gegen welches Backend sie laufen: ein kleiner Server mit Vertragstest
+    wie bei `task_manager`, oder ein Fake in der App.
+- **Akzeptanz:**
+  - Das Beispiel lebt im veröffentlichten Archiv und läuft dort mit
+    `flutter test`.
+  - Jeder exportierte Hook wird von mindestens einem E2E-Schritt erreicht.
+    Ein Test vergleicht die Exporte mit den Specs, wie `catalogue_test.dart`
+    im Showcase.
+  - Beide E2E-Beine sind in CI grün.
 
 ### AP11 — Review-Runde
 
@@ -1102,7 +1138,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
 - AP0 bis AP8 sind erledigt.
 - Die übrigen Hooks bauen auf dem Muster von AP3 auf, auch auf seinem Harness.
 - AP4 bis AP8 waren voneinander unabhängig.
-- AP9 und AP10, sobald die Hooks stehen.
+- AP9, sobald die Hooks stehen. AP10, sobald `e2e-coverage` in `main` ist.
 - Dann AP11, dann AP12.
 
 ---
