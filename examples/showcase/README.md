@@ -302,8 +302,10 @@ and `reveal` for a phone that shows a fraction of each screen. Time is real
 there, so it waits by polling the tree — and the one place it measures a
 window is a background trip, bounded by the app's own `paused` and the moment
 it is focused again — its return asked for, or sooner when an emulator under
-load shows it again by itself — never by a guessed duration. A test that needs a
-device skips itself on the web; one that needs Android skips on iOS. A
+load shows it again by itself — never by a guessed duration, and the polls it
+looks for in that window are stamped by the app as they begin, on the same
+clock: the backend's log is the host's, which an emulator's is not. A test
+that needs a device skips itself on the web; one that needs Android skips on iOS. A
 desktop app is never `paused`: with another app in front it is `inactive`,
 which a desktop counts as unfocused, so the lifecycle cases wait for that
 there (`isDesktop`), and a case that leaves the app skips only where nothing

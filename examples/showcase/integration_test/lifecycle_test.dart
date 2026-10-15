@@ -8,6 +8,8 @@ library;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:query_kit_flutter/query_kit_flutter.dart';
+import 'package:showcase/features/auto_refetching/auto_refetching_screen.dart';
 
 import 'native_harness.dart';
 
@@ -113,6 +115,18 @@ void main() {
         onStateChange: (state) => states.add((DateTime.now().toUtc(), state)),
       );
       addTearDown(listener.dispose);
+      // When each poll began, on the same clock as the lifecycle: the
+      // backend's log is stamped by the host, and an emulator's clock is not
+      // the host's — a poll begun before the stop was once logged inside
+      // the window.
+      final polls = <DateTime>[];
+      addTearDown(h.client.queryCache.subscribe((event) {
+        if (event is QueryUpdated &&
+            event.action is QueryFetchAction &&
+            event.query.queryKey == ticksKey) {
+          polls.add(DateTime.now().toUtc());
+        }
+      }));
 
       final absence = await Device.background(away);
 
@@ -129,23 +143,23 @@ void main() {
               entry.$1.isAfter(stopped) && focusedAgain.contains(entry.$2))
           .map((entry) => entry.$1)
           .fold(absence.back, (end, at) => at.isBefore(end) ? at : end);
-      // A poll already in flight at the stop may still be answered.
-      final during = await h.answered(
-        'GET',
-        ticks,
-        after: stopped.add(const Duration(milliseconds: 600)),
-        before: returned,
-      );
+      // A poll begun before the stop may still be answered after it; none
+      // may begin while the app is away.
+      final during = polls
+          .where((at) => at.isAfter(stopped) && at.isBefore(returned))
+          .toList();
       expect(during, isEmpty,
           reason: 'stopped at $stopped, back at $returned (asked for at '
               '${absence.back}); lifecycle: $states');
       expect(
           returned.difference(stopped), greaterThan(const Duration(seconds: 1)),
           reason: 'the window must be long enough to hold polls');
-      // And it starts again once the app is back.
+      // And it starts again once the app is back — seen by the listener
+      // too, so its silence above was not deafness.
       await settleFor(tester, const Duration(seconds: 2));
       expect(await h.requests('GET', ticks, after: absence.back),
           greaterThanOrEqualTo(2));
+      expect(polls.where((at) => at.isAfter(returned)), isNotEmpty);
     }, skip: !canLeave);
 
     nativeTest('refetchIntervalInBackground: what the platform allows',

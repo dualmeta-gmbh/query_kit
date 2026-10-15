@@ -6838,3 +6838,9 @@ manager 30).
   chromedriver set up beside it; `run.sh` passes `CHROME_EXECUTABLE` on as
   `--chrome-binary`. Two task-manager names drawn in the same millisecond
   could collide; they carry a random suffix.
+- **Two clocks in one window.** The native interval case bounded its window
+  with the app's lifecycle, stamped by the device, and looked for polls in
+  the backend's log, stamped by the host. On the Android runner a poll begun
+  before `paused` was logged inside the window. The case now stamps each
+  poll as it begins, from the client's query cache, on the device's clock,
+  and asserts it hears the polls after the return.
