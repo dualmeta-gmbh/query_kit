@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- A new library, `package:query_kit_flutter/adapter.dart`, exports
+  `RebuildRule`: the decision every call style makes about whether a
+  notification is worth a rebuild, for packages that read queries in a shape
+  of their own, such as `query_kit_hooks`. It owns no controller and
+  listens to nothing. Apps do not need it, and the main library is
+  unchanged.
+- The four call styles now make that decision through `RebuildRule`. Their
+  behaviour does not change.
+
 ## 1.0.3
 
 No change to the code. The documentation site moved to its own address,

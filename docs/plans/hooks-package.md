@@ -809,7 +809,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     - späte Zustellung nach dem Entsorgen
     - Erholung nach einem Wurf vor, zwischen und nach Hooks
 
-### AP1 — `RebuildRule` in `query_kit_flutter` (`adapter.dart`)
+### AP1 — `RebuildRule` in `query_kit_flutter` (`adapter.dart`) — **erledigt** (#94)
 
 - **Inhalt:**
   - Die neue Bibliothek `lib/adapter.dart` exportiert `RebuildRule<T>`, in
@@ -823,8 +823,9 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - CHANGELOG-Eintrag unter „Unreleased“. Die Version wird erst in AP12
     gesetzt (D17).
 - **Akzeptanz:**
-  - Die Barrel-Datei bleibt unverändert, und alle 349 Tests der Bindung
-    bleiben grün.
+  - Die Barrel-Datei bleibt unverändert, und alle Tests der Bindung bleiben
+    grün: 299 auf diesem Zweig (`859fbdc`, Bindung 1.0.3), 349 mit der
+    1.0.4-Arbeit aus dem Haupt-Checkout.
   - Ein neuer Test importiert nur `adapter.dart`. Er prüft die drei Zweige
     der Regel: gleich, nur die Nebenhälfte bewegt, `buildWhen`.
   - `dart doc` und die Probeläufe fürs Publish sind grün. pana bleibt bei
@@ -946,7 +947,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
 
 **Reihenfolge:**
 
-- AP0 ist erledigt.
+- AP0 und AP1 sind erledigt.
 - Danach AP1 und AP2.
 - Danach AP3. Die übrigen Hooks bauen auf seinem Muster auf.
 - AP4 bis AP8 sind voneinander unabhängig.

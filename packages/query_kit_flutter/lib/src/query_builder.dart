@@ -14,8 +14,9 @@ import 'package:query_kit/query_kit.dart';
 import 'query_client_provider.dart';
 import 'query_controller.dart';
 import 'read_entry.dart';
+import 'rebuild_rule.dart';
 
-export 'read_entry.dart' show BuildWhen;
+export 'rebuild_rule.dart' show BuildWhen;
 
 /// What every builder widget here declares, and all a [_ControllerBuilderState]
 /// needs from the widget it is the state of.

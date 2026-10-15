@@ -41,6 +41,7 @@ import 'package:query_kit/query_kit.dart';
 
 import 'query_controller.dart';
 import 'read_entry.dart';
+import 'rebuild_rule.dart';
 import 'repeat_read.dart';
 
 /// One controller a reader holds — a query's or a mutation's — and the value

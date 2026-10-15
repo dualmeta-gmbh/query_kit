@@ -6672,3 +6672,44 @@ where the comment promised the measured figure rounded down.
 **Counts after:** core **1157** VM / **1153** browser (826 and 822, plus
 331 each), binding **299** VM / **298** browser (the `vm-only` case). All
 green.
+
+## The hooks add-on (map #92)
+
+[Map #92](https://github.com/dualmeta-gmbh/query_kit/issues/92) builds
+`query_kit_hooks`, React Query's hooks on `flutter_hooks`, as a package of its
+own; its ported suites keep their own `PORTING_NOTES` in that package. What
+the map changes in the binding is recorded here, one row per ticket. The plan
+is `docs/plans/hooks-package.md`, and ADR-0004 holds its two lasting
+decisions.
+
+### AP1 — `RebuildRule` in `adapter.dart` (#94)
+
+**What.** The rebuild decision every call style makes — skip a notification
+whose observed state equals the one built, rebuild when only the half beside
+the value moved, otherwise ask `buildWhen` — moves out of `ReadEntry` into
+`RebuildRule<T>` (`lib/src/rebuild_rule.dart`), which a new library,
+`lib/adapter.dart`, exports alone. `ReadEntry` keeps the subscription and the
+controller's ownership and delegates the decision. `BuildWhen` moves with the
+rule; the barrel still exports it through `query_builder.dart` and is itself
+unchanged.
+
+**Options** (plan D4): rebuild the rule in the hooks package on public API
+(the spike's path, two copies that drift); export `ReadEntry`,
+`ObservedState` and `observedStateOf` (unsound — `ReadEntry` casts any
+`ValueListenable` to `ChangeNotifier` and disposes it, Astra H-06); move the
+rule into the core (Flutter's notion of a rebuild in a core without Flutter);
+or **an ownership-free rule the binding itself uses**. Chosen: the last. The
+spike measured that this one rule of 32 code lines carries every hook, and
+that no hook needs `ObservedState` or `observedStateOf`.
+
+**Evidence.** No binding test changed; the 299 at `859fbdc` are green as they
+were. `adapter_test.dart` (9 cases, VM and browser) imports nothing of the
+package but `adapter.dart` and holds every branch: nothing read, equal
+observed state with `buildWhen` unasked, a value moved and back, only the side
+half moved with `buildWhen` unasked, a moved value with and without
+`buildWhen`, a declined change compared against what is still shown, and a
+read recording both halves anew. The spike's hooks, switched from their own
+copy to `adapter.dart`, stay 45 of 45 green. Binding line coverage 99.77 %
+(862 / 864), above its floor.
+
+**Counts after:** binding **308** VM.

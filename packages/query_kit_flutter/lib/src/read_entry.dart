@@ -1,12 +1,9 @@
-/// The rebuild decision: one controller a reader watches, the value its last
-/// build read, and whether a notification is worth a frame.
+/// One controller a reader watches, owned by the entry that watches it.
 ///
-/// "Read the value and its `observedStateOf`, rebuild only if it moved, then
-/// ask `buildWhen`" is one decision shared by every call style, because each
-/// owes a reader the same guarantee: nothing rebuilds for a notification
-/// carrying what the reader is already showing.
-///
-/// What the owners differ in, and therefore what stays outside:
+/// Whether a notification is worth a frame is [RebuildRule]'s decision, the
+/// one every call style shares (and an adapter package with them). What an
+/// entry adds is what the rule leaves to its caller, and what the owners
+/// differ in stays outside both:
 ///
 /// * **Who is told, and whether the reader is still there.** [ReadEntry.new]
 ///   takes the callback: `setState` behind `mounted` for a `State`,
@@ -20,27 +17,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 import 'query_controller.dart';
-
-/// Whether a reader should rebuild for a change from [previous] to [current]
-/// — the `buildWhen` every call style takes.
-///
-/// It is asked only when the value really changed: a notification carrying
-/// what the reader is already showing never rebuilds, predicate or not. When
-/// it returns `false`, the reader keeps showing [previous] — unless something
-/// else rebuilds it — and the next change is compared against what it
-/// shows.
-///
-/// ```dart
-/// // Rebuild only when the task's name changes:
-/// final task = context.query(
-///   taskQuery(id),
-///   buildWhen: (previous, current) =>
-///       previous.dataOrNull?.name != current.dataOrNull?.name,
-/// );
-/// ```
-///
-/// {@category Reading queries}
-typedef BuildWhen<T> = bool Function(T previous, T current);
+import 'rebuild_rule.dart';
 
 /// One controller a reader watches, and what its last build read from it.
 ///
@@ -66,17 +43,13 @@ class ReadEntry<T> {
   /// Called for a notification that moved something the reader can see.
   final VoidCallback rebuild;
 
-  /// The value the last build read, valid while [_recorded].
-  late T _built;
-
-  /// Whether a build has read this entry yet. Nothing built means anything
-  /// the controller says is news.
-  bool _recorded = false;
-
-  /// What [observedStateOf] said when [_built] was recorded: the result for
-  /// every controller but an infinite query's, which keeps its paging flags
-  /// beside the result.
-  Object? _builtState;
+  /// The decision, over the controller's value and [observedStateOf] it: the
+  /// result for every controller but an infinite query's, which keeps its
+  /// paging flags beside the result.
+  late final RebuildRule<T> _rule = RebuildRule(
+    value: () => controller.value,
+    observedState: () => observedStateOf(controller),
+  );
 
   /// The predicate the last build handed over, asked once the value is known
   /// to have moved.
@@ -89,39 +62,11 @@ class ReadEntry<T> {
   /// builds; a reader with no predicate simply leaves it out.
   T read({BuildWhen<T>? buildWhen}) {
     _buildWhen = buildWhen;
-    _builtState = observedStateOf(controller);
-    _recorded = true;
-    return _built = controller.value;
-  }
-
-  /// Whether what the controller says now is worth a frame, given what
-  /// [read] last recorded.
-  ///
-  /// A value equal to the one last built is skipped before [BuildWhen] is
-  /// even asked: the first build reads the result straight after the
-  /// subscribe started the fetch, and the observer's notification about that
-  /// very fetch arrives after the frame — a rebuild with nothing new in it.
-  /// Results carry value equality, so "nothing new" is `==`.
-  bool _shouldRebuild() {
-    if (!_recorded) {
-      return true;
-    }
-    if (observedStateOf(controller) == _builtState) {
-      return false;
-    }
-    final current = controller.value;
-    if (current == _built) {
-      // Only the half that lives beside the result moved — the paging flags
-      // of an infinite query. There is nothing for [BuildWhen] to compare,
-      // and the reader is showing the stale half right now.
-      return true;
-    }
-    final buildWhen = _buildWhen;
-    return buildWhen == null || buildWhen(_built, current);
+    return _rule.read();
   }
 
   void _onChanged() {
-    if (_shouldRebuild()) {
+    if (_rule.shouldRebuild(_buildWhen)) {
       rebuild();
     }
   }
