@@ -13,24 +13,20 @@
 // suites themselves, which CI runs. And it reads the source with a scanner,
 // not a parser: comments, strings with their interpolations, and
 // TypeScript's regular expressions are told apart from code, and the cases
-// at the top of `main` are the shapes it is known to read. A test must be
-// written in its `describe` or `group` itself: one a helper registers is not
-// seen, and the hook fails here rather than passing unproven.
+// at the top of `main` are the shapes it is known to read. Where a scanner
+// cannot tell, it fails rather than guess: a `/` that only a parser could
+// call a division or a regular expression, and a test a helper registers,
+// which is not seen, so its hook fails here rather than passing unproven.
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// [source] with its comments blanked out and, unless [keepStrings], its
-/// string literals too: Dart's, or TypeScript's when [typescript], where a
-/// regular-expression literal counts as a string. Every other character
-/// stays where it was, so a position in one is the same position in the
-/// other.
-String _code(
-  String source, {
-  bool keepStrings = false,
-  bool typescript = false,
-}) {
+/// [source], Dart, with its comments blanked out and, unless [keepStrings],
+/// the text of its string literals too. The code in an interpolation is code,
+/// and stays. Every other character stays where it was, so a position in one
+/// is the same position in the other.
+String _code(String source, {bool keepStrings = false}) {
   final out = StringBuffer();
   var i = 0;
   void copy(int end, {required bool keep}) {
@@ -39,52 +35,221 @@ String _code(
     }
   }
 
-  // For each open parenthesis, whether it holds the condition of `if`,
-  // `while`, `for` or `with`; and whether the code so far ends with one
-  // closed. A `/` after that starts a regular expression, after any other
-  // `)` it divides.
-  final conditions = <bool>[];
-  var afterCondition = false;
+  // For each open brace, the closing quote of the string whose
+  // interpolation it opened, or null.
+  final braces = <String?>[];
+  // A string's text from [i]: to and past its closing [quote], or to and
+  // past the next `${`.
+  void text(String quote, {required bool raw}) {
+    var j = i;
+    while (j < source.length && !source.startsWith(quote, j)) {
+      if (!raw && source[j] == r'\') {
+        j += 2;
+      } else if (!raw && source.startsWith(r'${', j)) {
+        copy(j + 2, keep: keepStrings);
+        braces.add(quote);
+        return;
+      } else {
+        j += 1;
+      }
+    }
+    copy(j + quote.length, keep: keepStrings);
+  }
+
   while (i < source.length) {
-    if (_commentEnd(source, i, typescript: typescript) case final end?) {
+    final quote = _dartQuote.matchAsPrefix(source, i);
+    if (_commentEnd(source, i, typescript: false) case final end?) {
       copy(end, keep: false);
-    } else if (_stringEnd(source, i, typescript: typescript) case final end?) {
-      copy(end, keep: keepStrings);
-      afterCondition = false;
-    } else if ((typescript
-            ? _regExpEnd(source, i, afterCondition: afterCondition)
-            : null)
-        case final end?) {
-      copy(end, keep: keepStrings);
-      afterCondition = false;
+    } else if (quote != null &&
+        (i == 0 || !RegExp(r'[\w$]').hasMatch(source[i - 1]))) {
+      copy(quote.end, keep: keepStrings);
+      text(quote.group(1)!, raw: quote.group(0)!.startsWith('r'));
+    } else if (source[i] == '}' && braces.isNotEmpty && braces.last != null) {
+      copy(i + 1, keep: keepStrings);
+      text(braces.removeLast()!, raw: false);
     } else {
-      final char = source[i];
-      if (char == '(') {
-        conditions
-            .add(_condition.hasMatch(source.substring(max(0, i - 32), i)));
-      }
-      if (char.trim().isNotEmpty) {
-        afterCondition =
-            char == ')' && conditions.isNotEmpty && conditions.removeLast();
-      }
-      out.write(char);
-      i += 1;
+      if (source[i] == '{') braces.add(null);
+      if (source[i] == '}' && braces.isNotEmpty) braces.removeLast();
+      copy(i + 1, keep: true);
     }
   }
   return out.toString();
 }
 
-/// Code that a condition's `(` follows.
-final RegExp _condition = RegExp(r'(?<![\w$.])(if|while|for|with)\s*$');
+final RegExp _dartQuote = RegExp("r?('''|\"\"\"|'|\")");
 
-/// Code after which a `/` starts a regular expression: an opening bracket,
-/// a closing brace, a comma, an operator, or a keyword that an expression
-/// follows.
-final RegExp _expressionStart = RegExp(
-  r'([(\[{},;:=!&|?+\-*%<>~^]|(?<![\w$.])'
-  r'(return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|'
-  r'yield|await))\s*$',
+/// What a `/` is after the TypeScript read so far.
+enum _Slash { regExp, division, unknown }
+
+/// [source], TypeScript, as [_code] has it for Dart: comments blanked out
+/// and, unless [keepStrings], the text of strings, templates and regular
+/// expressions too.
+///
+/// It reads the code token by token, because the token before a `/` is what
+/// tells a regular expression from a division. After a name, a literal, `]`,
+/// `)` or a non-null `!` it divides; after an operator, an opening bracket,
+/// a keyword that an expression follows or the `)` of a condition, a regular
+/// expression starts. After `}`, `.`, `++`, `--`, `>` or `of` only a parser
+/// could tell, and it throws: the catalogue fails rather than misread.
+String _typeScriptCode(String source, {bool keepStrings = false}) {
+  final out = StringBuffer();
+  var i = 0;
+  void copy(int end, {required bool keep}) {
+    for (; i < end && i < source.length; i++) {
+      out.write(keep || source[i] == '\n' ? source[i] : ' ');
+    }
+  }
+
+  Never unreadable(String what) {
+    final line = '\n'.allMatches(source.substring(0, i)).length + 1;
+    throw StateError('line $line: $what, which this test does not read');
+  }
+
+  var slash = _Slash.regExp;
+  // The last two tokens, a member's name with its dot; and whether a line
+  // ended since the last.
+  var last = '';
+  var beforeLast = '';
+  var lineBreak = false;
+  // For each open parenthesis, whether it holds a condition; for each open
+  // brace, whether it opened a template's interpolation.
+  final parens = <bool>[];
+  final braces = <bool>[];
+  // A template's text from [i]: to and past its closing backtick, or to and
+  // past the next `${`.
+  void template() {
+    var j = i;
+    while (j < source.length && source[j] != '`') {
+      if (source[j] == r'\') {
+        j += 2;
+      } else if (source.startsWith(r'${', j)) {
+        copy(j + 2, keep: keepStrings);
+        braces.add(true);
+        slash = _Slash.regExp;
+        return;
+      } else {
+        j += 1;
+      }
+    }
+    if (j >= source.length) unreadable('a template that does not end');
+    copy(j + 1, keep: keepStrings);
+    slash = _Slash.division;
+  }
+
+  while (i < source.length) {
+    final char = source[i];
+    if (_commentEnd(source, i, typescript: true) case final end?) {
+      lineBreak = lineBreak || source.substring(i, end).contains('\n');
+      copy(end, keep: false);
+      continue;
+    }
+    if (char.trim().isEmpty) {
+      lineBreak = lineBreak || char == '\n';
+      copy(i + 1, keep: true);
+      continue;
+    }
+    final start = i;
+    final member = last == '.' || last == '?.';
+    final postfix = slash == _Slash.division && !lineBreak;
+    lineBreak = false;
+    if (char == '/') {
+      switch (slash) {
+        case _Slash.regExp:
+          final end = _regExpEnd(source, i) ??
+              unreadable('a regular expression that does not end');
+          copy(end, keep: keepStrings);
+          slash = _Slash.division;
+        case _Slash.division:
+          copy(i + (source.startsWith('/=', i) ? 2 : 1), keep: true);
+          slash = _Slash.regExp;
+        case _Slash.unknown:
+          unreadable('a / after `$last`, a division or a regular expression');
+      }
+    } else if (char == "'" || char == '"') {
+      var j = i + 1;
+      while (j < source.length && source[j] != char && source[j] != '\n') {
+        j += source[j] == r'\' ? 2 : 1;
+      }
+      if (j >= source.length || source[j] != char) {
+        unreadable('a string that does not end');
+      }
+      copy(j + 1, keep: keepStrings);
+      slash = _Slash.division;
+    } else if (char == '`') {
+      copy(i + 1, keep: keepStrings);
+      template();
+    } else if (char == '}' && braces.isNotEmpty && braces.last) {
+      braces.removeLast();
+      copy(i + 1, keep: keepStrings);
+      template();
+    } else if (_word.matchAsPrefix(source, i) case final word?) {
+      copy(word.end, keep: true);
+      slash = member
+          ? _Slash.division
+          : _expressionKeywords.contains(word[0])
+              ? _Slash.regExp
+              : word[0] == 'of'
+                  ? _Slash.unknown
+                  : _Slash.division;
+    } else if (_punctuator.matchAsPrefix(source, i) case final punctuator?) {
+      copy(punctuator.end, keep: true);
+      switch (punctuator[0]!) {
+        case '(':
+          parens.add(_conditions.contains(last) ||
+              (last == 'await' && beforeLast == 'for'));
+          slash = _Slash.regExp;
+        case ')':
+          slash = parens.isNotEmpty && parens.removeLast()
+              ? _Slash.regExp
+              : _Slash.division;
+        case ']':
+          slash = _Slash.division;
+        case '{':
+          braces.add(false);
+          slash = _Slash.regExp;
+        case '}':
+          if (braces.isNotEmpty) braces.removeLast();
+          slash = _Slash.unknown;
+        case '!':
+          slash = postfix ? _Slash.division : _Slash.regExp;
+        case '.' || '?.' || '++' || '--' || '>' || '>>' || '>>>':
+          slash = _Slash.unknown;
+        default:
+          slash = _Slash.regExp;
+      }
+    } else {
+      copy(i + 1, keep: true);
+      slash = _Slash.unknown;
+    }
+    beforeLast = last;
+    last = (member && _word.hasMatch(source[start]) ? '.' : '') +
+        source.substring(start, i);
+  }
+  return out.toString();
+}
+
+/// A name, a keyword or a number, as far as telling a `/` needs: a number's
+/// fraction is a member, and divides the same.
+final RegExp _word = RegExp(r'[\w$#\u0080-￿]+');
+
+/// TypeScript's operators and brackets, the longest first. A `/` is not
+/// one: what it is depends on what precedes it.
+final RegExp _punctuator = RegExp(
+  r'>>>=|\.\.\.|===|!==|\*\*=|<<=|>>=|>>>|&&=|\|\|=|\?\?=|=>|==|!=|<=|>=|'
+  r'&&|\|\||\?\?|\?\.(?!\d)|\+\+|--|\+=|-=|\*=|%=|&=|\|=|\^=|\*\*|<<|>>|'
+  r'[{}()\[\];,<>+\-*%&|^!~?:=.@]',
 );
+
+/// The keywords that an expression follows, so a `/` after them starts a
+/// regular expression.
+const Set<String> _expressionKeywords = {
+  'await', 'case', 'default', 'delete', 'do', 'else', 'in', //
+  'instanceof', 'new', 'return', 'throw', 'typeof', 'void', 'yield',
+};
+
+/// The keywords whose `(` holds a condition, so a `/` after its `)` starts a
+/// regular expression.
+const Set<String> _conditions = {'if', 'while', 'for', 'with'};
 
 /// Where the comment that starts at [i] ends, if one does. Dart's block
 /// comments nest; TypeScript's do not.
@@ -116,76 +281,9 @@ int? _commentEnd(String source, int i, {required bool typescript}) {
   return j;
 }
 
-final RegExp _dartQuote = RegExp("r?('''|\"\"\"|'|\")");
-final RegExp _typeScriptQuote = RegExp("['\"`]");
-
-/// Where the string literal that starts at [i] ends, if one does: past its
-/// closing quote, and past every interpolation in it on the way, the
-/// strings and comments in those included. Every Dart string but a raw one
-/// interpolates; in TypeScript only a template literal does.
-int? _stringEnd(String source, int i, {required bool typescript}) {
-  final match =
-      (typescript ? _typeScriptQuote : _dartQuote).matchAsPrefix(source, i);
-  if (match == null || (i > 0 && RegExp(r'[\w$]').hasMatch(source[i - 1]))) {
-    return null;
-  }
-  final raw = match.group(0)!.startsWith('r');
-  final delimiter = typescript ? match.group(0)! : match.group(1)!;
-  final interpolates = typescript ? delimiter == '`' : !raw;
-  var j = match.end;
-  while (j < source.length && !source.startsWith(delimiter, j)) {
-    if (!raw && source[j] == r'\') {
-      j += 2;
-    } else if (interpolates && source.startsWith(r'${', j)) {
-      j = _interpolationEnd(source, j + 2, typescript: typescript);
-    } else {
-      j += 1;
-    }
-  }
-  return min(j + delimiter.length, source.length);
-}
-
-/// Where the code of an interpolation, from [i] just after its `${`, ends:
-/// past the `}` that closes it.
-int _interpolationEnd(String source, int i, {required bool typescript}) {
-  var depth = 1;
-  var j = i;
-  while (j < source.length) {
-    if (_commentEnd(source, j, typescript: typescript) case final end?) {
-      j = end;
-    } else if (_stringEnd(source, j, typescript: typescript) case final end?) {
-      j = end;
-    } else {
-      if (source[j] == '{') depth += 1;
-      if (source[j] == '}') depth -= 1;
-      j += 1;
-      if (depth == 0) {
-        return j;
-      }
-    }
-  }
-  return j;
-}
-
-/// Where the TypeScript regular-expression literal that starts at [i]
-/// ends, if one does. A `/` starts one where an expression can start: first
-/// in the file, after [_expressionStart], or [afterCondition]; after a name,
-/// a number or any other `)` or `]` it divides.
-int? _regExpEnd(String source, int i, {required bool afterCondition}) {
-  if (source[i] != '/' ||
-      source.startsWith('//', i) ||
-      source.startsWith('/*', i)) {
-    return null;
-  }
-  var k = i - 1;
-  while (k >= 0 && source[k].trim().isEmpty) {
-    k -= 1;
-  }
-  if (!afterCondition &&
-      k >= 0 &&
-      !_expressionStart.hasMatch(source.substring(max(0, k - 16), k + 1))) {
-    return null;
-  }
+/// Where the regular-expression literal that starts at [i] ends, past its
+/// flags; null if the line ends first.
+int? _regExpEnd(String source, int i) {
   var j = i + 1;
   var inClass = false;
   while (j < source.length && source[j] != '\n') {
@@ -200,7 +298,7 @@ int? _regExpEnd(String source, int i, {required bool afterCondition}) {
       inClass = false;
     } else if (char == '/' && !inClass) {
       j += 1;
-      while (j < source.length && RegExp(r'\w').hasMatch(source[j])) {
+      while (j < source.length && RegExp(r'[\w$]').hasMatch(source[j])) {
         j += 1;
       }
       return j;
@@ -270,9 +368,10 @@ Set<String> _declaredHooks(String source) {
   return hooks;
 }
 
-/// The files of [library], in [package], whose declarations it exports: the
-/// files it exports from its own package, whole, by a relative URI or a
-/// `package:` one, the files those export in turn, and every file's parts.
+/// The files of [library], in [package], whose declarations it exports:
+/// itself, the files it exports from its own package, whole, by a relative
+/// URI or a `package:` one, the files those export in turn, and every file's
+/// parts.
 /// An export with `show`, `hide` or a condition would make the declarations
 /// a wrong answer, so it fails here, whatever URI it names. An export of
 /// another package (the binding) is not read: it declares no hook.
@@ -305,6 +404,7 @@ List<File> _librarySources(File library, {required String package}) {
     }
   }
 
+  files[library.absolute.path] = library;
   visit(library);
   return files.values.toList();
 }
@@ -323,8 +423,15 @@ Map<String, List<_Call>> _calls(Iterable<File> files, RegExp opening) {
     final typescript = file.path.endsWith('.ts');
     // The name is a string, so it is read from the kept text; where the call
     // ends is read from the bare text, where no bracket is quoted.
-    final kept = _code(source, keepStrings: true, typescript: typescript);
-    final bare = _code(source, typescript: typescript);
+    final read = typescript ? _typeScriptCode : _code;
+    final String kept;
+    final String bare;
+    try {
+      kept = read(source, keepStrings: true);
+      bare = read(source);
+    } on StateError catch (error) {
+      throw StateError('${file.path}, ${error.message}');
+    }
     for (final match in opening.allMatches(bare)) {
       var depth = 0;
       var j = match.end - 1;
@@ -356,18 +463,23 @@ String _read(Iterable<File> files) =>
     files.map((file) => _code(file.readAsStringSync())).join('\n');
 
 /// A test call in a `test.describe`'s bare text: `test(`, not a member
-/// such as a regular expression's `.test(`.
-final RegExp _browserTest = RegExp(r'(?<![\w$.])test\s*\(');
+/// such as a regular expression's `.test(`, whatever space is before it.
+final RegExp _browserTest = RegExp(r'(?<![\w$#])(?<!\.\s*)test\s*\(');
 
-/// A run narrowed or skipped in a `test.describe`'s bare text: a modifier
-/// by name, or any member of `test` reached by index, which is how one
-/// would hide a modifier from the name.
-final RegExp _browserSkip =
-    RegExp(r'\.\s*(skip|fixme|fail|only)\b|\btest(\s*\.\s*\w+)*\s*\[');
+/// A run narrowed or skipped in a `test.describe`'s bare text: a modifier's
+/// name, however it is reached; or `test` neither called nor followed by a
+/// member's name, which is how one would reach a modifier without it.
+final RegExp _browserSkip = RegExp(
+  r'(?<![\w$#])(skip|fixme|fail|only)(?![\w$])|'
+  r'(?<![\w$#])(?<!\.\s*)test(?![\w$])(?!\s*(\(|\.\s*[\w$]))',
+);
 
-/// A test call in a `group`'s bare text, and a skip.
-final RegExp _nativeTest = RegExp(r'(?<![\w$.])(nativeTest|testWidgets)\s*\(');
-final RegExp _nativeSkip = RegExp(r'\bskip\s*:');
+/// A test call in a `group`'s bare text, and a skip: the argument, or
+/// the call that skips from inside a test.
+final RegExp _nativeTest =
+    RegExp(r'(?<![\w$])(?<!\.\s*)(nativeTest|testWidgets)\s*\(');
+final RegExp _nativeSkip =
+    RegExp(r'(?<![\w$])(skip\s*:|markTestSkipped(?![\w$]))');
 
 /// [contents] as a file of its own, named [name].
 File _scratch(String name, String contents) =>
@@ -435,14 +547,14 @@ void useT(void Function(int) callback, {int count = 1}) {}
     final library = File('${root.path}/library.dart')
       ..writeAsStringSync(
         "export 'package:other/other.dart';\nexport 'src/a.dart';\n"
-        "export 'package:self/src/d.dart';\n",
+        "export 'package:self/src/d.dart';\nvoid useRoot() {}\n",
       );
     expect(
       {
         for (final file in _librarySources(library, package: 'self'))
           ..._declaredHooks(file.readAsStringSync()),
       },
-      {'useA', 'useB', 'useC', 'useD'},
+      {'useA', 'useB', 'useC', 'useD', 'useRoot'},
     );
 
     for (final directive in [
@@ -493,31 +605,64 @@ test.describe('shell', () => { test('not a hook', () => {}); });
     final file = _scratch('b.spec.ts', r'''
 test.describe('useA', () => {
   if (ready) /["(]/.test('x');
+  if /* a comment */ (ready) /["]/.test('x');
+  for await (const line of lines) /["]/.test(line);
   test('after a condition', () => {});
 });
 test.describe('useB', () => {
-  test('after a name that ends in a keyword', () => {
-    const ratio = myreturn / 2; test.skip(); /abc/.test('abc');
+  test('after a name, a member, a bracket or a non-null', () => {
+    const ratio = myreturn / items[0] / (count) / total! / page.size / 2;
+    test.skip(); /abc/.test('abc');
   });
 });
-test.describe('useC', () => { /abc/.test('abc'); });
+test.describe('useC', () => { /a/.test('a'); /b/. test('b'); c?.test(1); });
 function proof() { test('in a helper', () => {}); }
 test.describe('useD', () => { proof(); });
 test.describe('useE', () => {
-  const block = () => {}
-  /["]/.test('x');
-  test('after a closing brace', () => {});
+  const label = `${ /}/.test(x) ? '`' : `${'}'}` }`;
+  test('after a template', () => {});
 });
 ''');
     final calls = _calls([file], RegExp(r'\btest\.describe(\.\w+)?\s*\('));
     expect(calls.keys, ['useA', 'useB', 'useC', 'useD', 'useE']);
     expect(calls['useA']!.single.bare, matches(_browserTest));
+    expect(calls['useA']!.single.bare, isNot(matches(_browserSkip)));
     expect(calls['useB']!.single.bare, matches(_browserSkip));
     // A member called `test` is not a test.
     expect(calls['useC']!.single.bare, isNot(matches(_browserTest)));
     // Nor is a helper's: the hook fails here rather than pass unproven.
     expect(calls['useD']!.single.bare, isNot(matches(_browserTest)));
     expect(calls['useE']!.single.bare, matches(_browserTest));
+
+    // Where the tokens before a `/` cannot tell, nothing is read.
+    for (final source in [
+      'const block = () => {}\n/["]/.test(x);',
+      'const ratio = <any>{valueOf: () => 4} / 2;',
+      'i++ / 2;',
+      'const n = x as Array<number> / 2;',
+      'for (const x of /re/.exec(y)) {}',
+      'const half = 1./2;',
+      'const open = /abc',
+      "const text = 'abc",
+      'const text = `abc',
+    ]) {
+      expect(() => _typeScriptCode(source), throwsStateError, reason: source);
+    }
+  });
+
+  test('a skip is seen however it is spelled', () {
+    final file = _scratch('c.spec.ts', r'''
+test.describe('useA', () => { test(`${test.skip()}`, () => {}); });
+test.describe('useB', () => { const { skip } = test; skip(); });
+test.describe('useC', () => { const t = test; t('aliased', () => {}); });
+test.describe('useD', () => { test('d', (_, info) => { info.fixme(); }); });
+test.describe('useE', () => { test('e', () => {}); test.step; });
+''');
+    final calls = _calls([file], RegExp(r'\btest\.describe(\.\w+)?\s*\('));
+    for (final hook in ['useA', 'useB', 'useC', 'useD']) {
+      expect(calls[hook]!.single.bare, matches(_browserSkip), reason: hook);
+    }
+    expect(calls['useE']!.single.bare, isNot(matches(_browserSkip)));
   });
 
   test('a group is read to its closing parenthesis, past interpolations', () {
@@ -531,14 +676,21 @@ group('useD', () {
   final text = '${identity(')')}';
   nativeTest('d', (tester, h) async {});
 });
+group('useE', () {
+  nativeTest('${markTestSkipped('e')}', (tester, h) async {});
+});
+group('useF', () { h. nativeTest('f', (tester, h) async {}); });
 ''');
     final calls = _calls([file], RegExp(r'\bgroup\s*\('));
-    expect(calls.keys, ['useA', 'useB', 'useC', 'useD']);
+    expect(calls.keys, ['useA', 'useB', 'useC', 'useD', 'useE', 'useF']);
     expect(calls['useA']!.single.bare, matches(_nativeTest));
     expect(calls['useB']!.single.bare, isNot(matches(_nativeTest)));
     expect(calls['useC']!.single.bare, matches(_nativeSkip));
     expect(calls['useD']!.single.kept, endsWith('});\n})'));
     expect(calls['useD']!.single.bare, matches(_nativeTest));
+    // The code in an interpolation is code.
+    expect(calls['useE']!.single.bare, matches(_nativeSkip));
+    expect(calls['useF']!.single.bare, isNot(matches(_nativeTest)));
   });
 
   group('every exported hook', () {

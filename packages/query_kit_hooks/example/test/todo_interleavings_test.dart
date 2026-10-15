@@ -90,7 +90,7 @@ Future<void> settle(WidgetTester tester) => tester.pump(Duration.zero);
 void main() {
   heldTest(
       'an add answered while a refetch is in flight stays on the screen: '
-      'its refetch cancels that read', (tester, api, client) async {
+      'it cancels that read before it goes in', (tester, api, client) async {
     api.reads.single.complete(seeded);
     await settle(tester);
 
@@ -128,6 +128,46 @@ void main() {
   });
 
   heldTest(
+      'a read answered in the turn an add is, just after it, does not take '
+      'the add off the screen', (tester, api, client) async {
+    api.reads.single.complete(seeded);
+    await settle(tester);
+    // A read the screen did not start, from before either add.
+    client
+        .refetchQueries(
+          filters: QueryFilters(queryKey: Keys.todos, exact: true),
+        )
+        .ignore();
+    await settle(tester);
+    for (final text in ['A', 'B']) {
+      await tester.enterText(find.byType(TextField), text);
+      await tester.tap(find.text('Add'));
+      await settle(tester);
+    }
+
+    // A's answer, and that read's on its heels, with the list from before.
+    unawaited(api.adds['A']!.future.then((_) => api.reads[1].complete(seeded)));
+    api.adds['A']!.complete(const Todo(id: 4, text: 'A', done: false));
+    await settle(tester);
+    expect(writing(client), 1);
+    expect(find.text('Adding: A'), findsNothing);
+    expect(find.text('Adding: B'), findsOneWidget);
+    expect(find.text('A'), findsOneWidget);
+
+    api.adds['B']!.complete(const Todo(id: 5, text: 'B', done: false));
+    await settle(tester);
+    expect(api.reads, hasLength(3));
+    api.reads[2].complete([
+      ...seeded,
+      const Todo(id: 4, text: 'A', done: false),
+      const Todo(id: 5, text: 'B', done: false),
+    ]);
+    await settle(tester);
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('B'), findsOneWidget);
+  });
+
+  heldTest(
       'a tick made while a refetch is in flight cancels it: the read from '
       'before would take the tick back', (tester, api, client) async {
     api.reads.single.complete(seeded);
@@ -159,6 +199,47 @@ void main() {
     await settle(tester);
     expect(ticked(tester, checklist), isTrue);
     expect(ticked(tester, token), isTrue);
+  });
+
+  heldTest(
+      'a first load answered in the turn a tick is, just after it, never '
+      'shows the list without the tick', (tester, api, client) async {
+    api.reads.single.complete(seeded);
+    await settle(tester);
+    await tester.tap(box(checklist));
+    await settle(tester);
+
+    // The tab goes while the tick is in flight, its list is collected, and
+    // the tab comes back: a list with no data loads, writes or not.
+    Widget tab(Widget body) => QueryClientProvider(
+          client: client,
+          child: ApiScope(
+            api: api,
+            child: MaterialApp(home: Scaffold(body: body)),
+          ),
+        );
+    await tester.pumpWidget(tab(const SizedBox()));
+    client.removeQueries(
+      filters: QueryFilters(queryKey: Keys.todos, exact: true),
+    );
+    await tester.pumpWidget(tab(const TodosTab()));
+    await settle(tester);
+    expect(api.reads, hasLength(2));
+
+    // Served before the tick was stored, and answered on the heels of its
+    // answer.
+    unawaited(api.ticks[1]!.future.then((_) => api.reads[1].complete(seeded)));
+    api.ticks[1]!.complete(seeded.first.copyWith(done: true));
+    await settle(tester);
+    expect(writing(client), 0);
+    // Cancelled before it answered, or answered before the tick went in.
+    final todos = client.getQueryData<List<Todo>>(Keys.todos);
+    expect(todos == null || todos.first.done, isTrue);
+
+    expect(api.reads, hasLength(3));
+    api.reads[2].complete([seeded.first.copyWith(done: true), seeded.last]);
+    await settle(tester);
+    expect(ticked(tester, checklist), isTrue);
   });
 
   heldTest(
@@ -272,6 +353,39 @@ void main() {
     expect(client.getQueryData<List<Todo>>(Keys.todos), isNull);
     expect(find.text('Loading todos…'), findsOneWidget);
     expect(api.reads, hasLength(1));
+
+    api.adds['B']!.complete(const Todo(id: 5, text: 'B', done: false));
+    await settle(tester);
+    expect(api.reads, hasLength(2));
+    api.reads[1].complete([
+      ...seeded,
+      const Todo(id: 4, text: 'A', done: false),
+      const Todo(id: 5, text: 'B', done: false),
+    ]);
+    await settle(tester);
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('B'), findsOneWidget);
+  });
+
+  heldTest(
+      'a first load answered in the turn an add is, just after it, never '
+      'shows a list without the add', (tester, api, client) async {
+    for (final text in ['A', 'B']) {
+      await tester.enterText(find.byType(TextField), text);
+      await tester.tap(find.text('Add'));
+      await settle(tester);
+    }
+
+    // Served before A was stored, and answered on the heels of A's answer.
+    unawaited(
+        api.adds['A']!.future.then((_) => api.reads.first.complete(seeded)));
+    api.adds['A']!.complete(const Todo(id: 4, text: 'A', done: false));
+    await settle(tester);
+    expect(writing(client), 1);
+    expect(api.reads, hasLength(1));
+    // Cancelled before it answered, or answered before A went in.
+    final todos = client.getQueryData<List<Todo>>(Keys.todos);
+    expect(todos == null || todos.any((todo) => todo.id == 4), isTrue);
 
     api.adds['B']!.complete(const Todo(id: 5, text: 'B', done: false));
     await settle(tester);

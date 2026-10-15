@@ -734,9 +734,9 @@ so no further AP11 pass is owed.
 | Suite | Where | Cases | Against |
 |---|---|---|---|
 | Widget tests | `test/widget_test.dart` | 19 | the in-memory backend, on the test's fake clock |
-| Interleavings | `test/todo_interleavings_test.dart` | 8 | the Todos tab alone, every todo request held until the case answers it |
+| Interleavings | `test/todo_interleavings_test.dart` | 11 | the Todos tab alone, every todo request held until the case answers it |
 | Backend contract | `test/backend_contract_test.dart` | 10 per backend | the in-memory backend, and the showcase server when `HOOKS_EXAMPLE_SERVER` names it (CI's `e2e` job) |
-| Repository test | `test/repository_test.dart` (not in the archive) | 20 | the seed against the server's; the scanner over the shapes it is known to read; every hook the library exports against the app, `e2e/tests/` and `integration_test/` |
+| Repository test | `test/repository_test.dart` (not in the archive) | 21 | the seed against the server's; the scanner over the shapes it is known to read; every hook the library exports against the app, `e2e/tests/` and `integration_test/` |
 | Playwright | `e2e/tests/` | 19, one `describe` per hook | the web build and the real server; Chromium in CI, Firefox and WebKit in `native-e2e` |
 | Native | `integration_test/` | 18 flows in one `group` per hook, and 2 lifecycle cases | a device and the real server through the showcase's device control; `native-e2e` runs it after the showcase's suite on every platform |
 
@@ -1063,7 +1063,7 @@ Decisions:
     why it is not `isMutating`.
 - **A first load during a write ends in loading, not in a list that lacks
   the write.** When a write settles while another is in flight, it cancels
-  the first load. The screen then shows "Loading todos…" until the last
+  the first load. (The fifth pass moves that cancel to the write's answer.) The screen then shows "Loading todos…" until the last
   write reads the list.
   - The alternative, letting the load land, shows a list without a todo the
     backend has already stored. That is the kind of state the reviews have
@@ -1079,4 +1079,87 @@ Runs after the fixes:
   showcase server on 5178 (19 + 8 + 20 + 20). Without it, 57 pass and 10
   skip.
 - **Playwright in Chromium:** each test three times, 57 of 57.
+- **Native on an iOS 26 simulator (iPhone 17 Pro):** the flows, 18 of 18.
+
+### Fifth pass (verification of the fourth pass's fixes)
+
+GPT-6.1-Sol (xhigh) verified `b25a1a3` against `8e4f68a`, the same way as
+before: a snapshot, no device and no browser. It found three things. Each
+was reproduced here with Sol's own modes before anything changed:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| X-1 (P2, introduced by W-1's fix) | Once an add no longer cancelled anything in `onMutate`, a read still in flight when the add was answered could land between the add's `onSuccess` and its `onSettled`. A refetch from before the add, answered right after it, took the accepted todo off the screen. A second add in flight then held back the refetch that would have brought it back. A first load answered the same way showed a list without the add | Yes, Sol's `runtime-gap` mode: both cases red. Both pass against `8e4f68a`'s `queries.dart`, and with a cancel placed before the answer goes in | Every write now cancels the list's reads when its answer arrives, before the answer goes in. An add does it in `onSuccess`. A tick does it in `onSuccess` too, as well as in `onMutate`. A read still out at that moment may have been sent before the write was stored. `_settled` no longer cancels, because any read in flight there was sent after every answer that went in, so the last write's refetch may join it. `_settled` is also synchronous now, which removes the gap the brief asked about, between the count and a cancel. Three interleavings hold this: Sol's two cases, adapted, and the same case for a tick on a list the cache dropped while the tick was in flight |
+| X-2 (P2, one introduced, two there before) | The scanner took the `/` after an object literal's `}` for a regular expression, under W-3's rule, and that hid a `test.skip()`. It took `/abc/. test(` for a test, because it looked only at the character before `test`. And a comment between `if` and its `(` turned the condition's regular expression into a division, so a correct suite failed | Yes, Sol's three `catalog-*` modes: two green that should fail, one red on a correct suite | The end-to-end suites are now read by a tokenizer, `_typeScriptCode`, which knows the token before each `/`. After a name, a literal, `]`, `)` or a non-null `!`, the `/` divides. After an operator, an opening bracket, a keyword that an expression follows, or a condition's `)`, a regular expression starts. Comments are not tokens, so the condition's `(` is found past one. After `}`, `.`, `++`, `--`, `>` or `of`, only a parser could tell, so the test fails and names the file and the line (decided below). The code in a template's interpolation is read as code, and the code in a Dart string's interpolation too. `test(` after a `.` and any space is a member. A skip is seen by the modifier's name however it is reached, or by `test` used without being called or followed by a member. Natively, `markTestSkipped` counts as a skip. Two self-tests hold all of this: the nine refused shapes, and five spellings of a skip |
+| X-3 (P2, there before) | A hook declared in the library file itself, rather than in a file it exports, escaped the catalogue | Yes, Sol's `catalog-root-declaration` mode: 20 of 20 green | `_librarySources` returns the library together with its exports. The self-test declares `useRoot` in the library file |
+
+Sol also said that two assurances were still too strong, and both are now corrected:
+
+- **The scanner.** The header now says where the scanner fails rather than
+  guessing.
+- **The add's handover.** Its doc now says the pending row hands over
+  without a gap only to a list that is on the screen.
+
+**Coverage after the fix.** Once every write cancels when its answer
+arrives, no case needed the cancel as a write settles any more: both of its
+mutants went green. It was removed rather than kept unproven.
+
+Negative controls:
+
+- **`b25a1a3`'s `queries.dart`.** Three cases go red, the three new gap
+  cases.
+- **Seven mutants of `queries.dart`.** Each goes red in its own cases:
+  - `isMutating == 1` in `onSettled`: the two same-turn cases;
+  - an add's answer replacing its row: the two late-add cases;
+  - no gate: the two widget gate cases;
+  - no cancel in a tick's `onMutate`: the refetch-during-a-tick case;
+  - no cancel when an add's answer arrives: six cases, among them all four
+    first-load cases and Sol's gap case;
+  - no cancel when a tick's answer arrives: the new tick gap case;
+  - no refetch from the last write: sixteen cases.
+- **Sol's modes.**
+  - Red:
+    - `catalog-object-division`: the file fails to load, naming
+      `shell.spec.ts` line 7;
+    - `catalog-spaced-property`;
+    - `catalog-root-declaration`;
+    - `catalog-multiline-export`, red as before: the hook is found and has
+      no tests.
+  - Green, all of them correct suites: `catalog-comment-condition`,
+    `catalog-else-regex`, `catalog-template-condition`, `catalog-case-regex`
+    and `catalog-interpolation-regex`.
+  - Pass against the fix: `runtime-gap` (both cases) and `runtime-edges`
+    (four cases).
+
+Decisions:
+
+- **A write's answer cancels the reads, not its settling.** This replaces
+  the fourth pass's "every write cancels them as it settles". The answer is
+  the moment a read from before the write becomes wrong. Settling comes
+  after `onSuccess`, and a read can land in between. The fourth pass's
+  decision that a first load during a write ends in loading still holds; the
+  write's answer is now what cancels that load.
+- **The scanner fails where it cannot tell, rather than guess.** Three
+  passes in a row found a hole in a rule that guessed.
+  - A parser is out of reach for a Dart test here. TypeScript 7 exposes its
+    syntax tree only through an API it marks unstable. Playwright's `--list`
+    needs node modules that a plain `flutter test` does not have, and it
+    does not see a skip called inside a test.
+  - A tokenizer that refuses the positions only a parser could settle can
+    be pushed only into failing, never into passing a suite it misread.
+  - None of the suites' five files uses one of those positions. A test
+    author meets the refusal as a failing test that names the line, and
+    writes the expression another way.
+- **This is the last full verification pass of AP10.** Each round has found
+  less, and only in the example and its catalogue, never in the package. The
+  next pass verifies this diff alone. Anything it finds that these fixes
+  did not introduce goes to the record, not into another round.
+
+Runs after the fixes:
+
+- **Widget, interleavings, contract and repository:** 71 of 71 with the
+  showcase server on 5178 (19 + 11 + 20 + 21). Without it, 61 pass and 10
+  skip.
+- **Playwright in Chromium:** 57 of 57, each test three times, against a
+  web build made with Flutter 3.38.8.
 - **Native on an iOS 26 simulator (iPhone 17 Pro):** the flows, 18 of 18.

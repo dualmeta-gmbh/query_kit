@@ -1216,6 +1216,26 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - **Tests danach:** 19 Widget-Tests, 8 Interleaving-Fälle, 10
     Vertragsfälle je Backend, 20 Katalogfälle, 19 Playwright-Tests und 18
     native Flows mit 2 Lebenszyklus-Fällen.
+- **Dritte Verifikation durch Sol:** drei Befunde, X-1 bis X-3, alle
+  reproduziert und behoben. Die Tabelle steht in den `PORTING_NOTES` unter
+  „Fifth pass“.
+  - **X-1 (vom W-1-Fix eingeführt):** Ein Lesevorgang, der direkt nach der
+    Antwort auf eine Hinzufügung ankam, nahm das Todo wieder vom
+    Bildschirm. Jetzt bricht jeder Schreibvorgang die laufenden
+    Lesevorgänge ab, wenn seine Antwort eintrifft, bevor er sie einsetzt.
+    Beim Erledigen bricht er nichts mehr ab.
+  - **X-2:** Der Scanner hatte drei weitere Lücken. Er liest die
+    End-to-End-Suiten jetzt Token für Token. Wo nur ein Parser zwischen
+    Division und regulärem Ausdruck unterscheiden könnte, schlägt er fehl,
+    statt zu raten.
+  - **X-3:** Ein Hook, der direkt in der Bibliotheksdatei steht, entging
+    dem Katalog. Jetzt wird die Datei mitgelesen.
+  - **Entschieden:** Das ist der letzte volle Verifikationsdurchgang von
+    AP10. Der nächste prüft nur diesen Diff. Was die Fixes nicht selbst
+    eingeführt haben, wird nur festgehalten.
+  - **Tests danach:** 19 Widget-Tests, 11 Interleaving-Fälle, 10
+    Vertragsfälle je Backend, 21 Katalogfälle, 19 Playwright-Tests und 18
+    native Flows mit 2 Lebenszyklus-Fällen.
 
 ### AP11 — Review-Runde
 

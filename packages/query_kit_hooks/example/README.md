@@ -12,8 +12,8 @@ calls every hook the package exports, each where an app would call it:
 | `useInfiniteQuery` | Projects tab | projects, a page at a time |
 | `usePrefetchQuery` | post screen | a post's comments, asked for beside the post instead of after it |
 | `usePrefetchInfiniteQuery` | the shell | the first page of projects, before its tab is opened |
-| `useMutation` | Todos tab | ticking a todo, optimistic, and only that todo taken back if the backend refuses; adding one. Writes on different todos overlap: each puts the backend's answer for its todo into the list, the last one to settle refetches it, and no other refetch of the list starts while a write is in flight |
-| `useQueryClient` | Todos tab | the tick's write to the cache, its rollback, the backend's answers put into the list, and the reads of the list a write cancels before it refetches |
+| `useMutation` | Todos tab | ticking a todo, optimistic, and only that todo taken back if the backend refuses; adding one. Writes on different todos overlap: each cancels the list's reads in flight and then puts the backend's answer for its todo into it, the last one to settle refetches it, and no other refetch of the list starts while a write is in flight |
+| `useQueryClient` | Todos tab | the tick's write to the cache, its rollback, the backend's answers put into the list, and the reads of the list a write cancels before its answer goes in |
 | `useIsFetching` | the shell | how many queries are fetching, app-wide |
 | `useIsMutating` | the shell | how many todo writes are in flight |
 | `useMutationState` | the shell | the todo writes that failed, and the last reason |
