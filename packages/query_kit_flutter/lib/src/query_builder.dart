@@ -482,7 +482,17 @@ abstract class _ControllerBuilderState<W extends _BuilderWidget<T>, T,
 
   /// Records what this build shows — the value and the state observed beside
   /// it — and returns it. What the next notification is compared against.
-  T record() => _read.read(buildWhen: widget.buildWhen);
+  ///
+  /// Brings the controller up to date first ([_reconcile]); every subclass's
+  /// `build` starts here.
+  T record() {
+    _reconcile();
+    return _read.read(buildWhen: widget.buildWhen);
+  }
+
+  /// Whether the parent handed this state a new widget whose options have not
+  /// been applied yet.
+  bool _updated = false;
 
   void _rebuild() {
     if (mounted) {
@@ -491,39 +501,56 @@ abstract class _ControllerBuilderState<W extends _BuilderWidget<T>, T,
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // The provider above handed out a different client: everything this
-    // widget observes belongs to the old one.
-    if (_entry != null && _controllerClient != _client) {
-      _disposeController();
-    }
-  }
-
-  @override
   void didUpdateWidget(W oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Applied in `build`, not here. Resolving the client and applying the
+    // options can both throw — no provider above, a seed whose
+    // `InitialData.compute` throws — and an exception out of
+    // `didUpdateWidget` leaves the element to whatever its parent does with
+    // it: Flutter's own elements drop it for an error widget without ever
+    // calling `dispose`, so the controller, a `refetchInterval` among what it
+    // holds, ran on with nobody left to show it. Thrown from `build`, it is
+    // Flutter's ordinary build error: this state stays, shows the error
+    // widget, and is disposed as usual — or recovers, controller, running
+    // mutation and all, when its next options apply.
+    _updated = true;
+  }
+
+  /// What `didChangeDependencies` and `didUpdateWidget` used to do, run at
+  /// the top of `build`, where both have already run.
+  ///
+  /// The client is the one this widget resolves to *now*: `null` and the
+  /// provider's own client are the same client, and a provider that swapped
+  /// its client in this frame is seen here whichever callback it arrived
+  /// through — the old order (`didUpdateWidget` before
+  /// `didChangeDependencies`) handed the new options to an observer on the
+  /// old client, which fetched there. A different client throws the
+  /// controller away and [_read] makes a new one on the new client, with the
+  /// widget's current options.
+  ///
+  /// Otherwise new options are applied on every update from the parent, as
+  /// TanStack Query's `useBaseQuery` re-applies them on every render and the
+  /// keyless reads do: options kept in a field are the *same* object on
+  /// every build, and skipping them skipped re-evaluating an `Enabled.when`
+  /// over outside state. The observer compares the defaulted options by
+  /// value, so an unchanged set costs one defaulting pass. A changed key
+  /// switches the observed query in place; the observer is never recreated.
+  /// Options that throw stay pending, so the next build tries them again
+  /// rather than showing the old ones as if they were current.
+  void _reconcile() {
     if (_entry == null) {
+      _updated = false;
       return;
     }
-    // The client this widget resolves to *now*, not the field: `null` and
-    // the provider's own client are the same client, and a provider
-    // that swapped its client in this very frame has not told
-    // `didChangeDependencies` yet — it runs after this — so comparing the
-    // fields would hand the new options to an observer on the old client,
-    // which fetched there.
     if (_controllerClient != _client) {
       _disposeController();
+      _updated = false;
       return;
     }
-    // Every build, as TanStack Query's `useBaseQuery` re-applies options on
-    // every render and the keyless reads do: options kept in a field are the
-    // *same* object on every build, and skipping them skipped re-evaluating an
-    // `Enabled.when` over outside state. The observer compares the defaulted
-    // options by value, so an unchanged set costs one defaulting pass. A
-    // changed key switches the observed query in place; the observer is never
-    // recreated.
-    applyOptions();
+    if (_updated) {
+      applyOptions();
+      _updated = false;
+    }
   }
 
   void _disposeController() {
