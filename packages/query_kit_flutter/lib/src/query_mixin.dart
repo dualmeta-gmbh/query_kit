@@ -82,11 +82,21 @@ import 'read_set.dart';
 /// callback stops reading (the layout that was left, the rows scrolled away)
 /// stays subscribed until an own `build` of this `State` that reads, or its
 /// disposal. A `build` that reads nothing itself, leaving every read to a
-/// nested builder, never starts over: those keys stay until the parent
-/// rebuilds this `State`'s widget or it is disposed. Nothing shown in this
-/// `State`'s subtree ever loses its subscription this way. Where the cost
-/// matters — a long list above all, or a key that depends on constraints —
-/// give the nested part, or each row, a widget of its own.
+/// nested builder, releases nothing, and neither does a new widget from the
+/// parent on its own: the first read after it — a nested builder's
+/// included — counts as that own build.
+///
+/// An own `build` that reads keeps only what it reads, and a nested builder
+/// it re-runs reads again in the same frame. One it does not re-run — a
+/// builder widget kept in a field, handed over unchanged — reads nothing
+/// then, so its keys are released after that frame while it still shows
+/// them: its poll stops, and the cache may drop the entry, until it runs
+/// again and reads. (Flutter does not re-run it when this `State` rebuilds,
+/// so it shows a change only when it runs again anyway.) Give the nested
+/// part a widget of its own:
+/// then its reads live and go with it. That is also the fix where the
+/// cost of additive reads matters — a long list above all, or a key that
+/// depends on constraints.
 ///
 /// A read belongs to this `State` and rebuilds it, whoever made it: a dialog
 /// or sheet builder calling [watchQuery] is not rebuilt by a change, and its

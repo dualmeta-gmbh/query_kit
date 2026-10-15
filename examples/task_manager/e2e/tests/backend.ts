@@ -16,8 +16,10 @@ export type Task = {
 let counter = 0
 
 /// A name no other test and no earlier run can have produced.
+// The counter is per worker, and workers — three browsers running one test
+// at once, say — can share a millisecond: a random part keeps them apart.
 export const uniqueName = (prefix: string) =>
-  `${prefix} ${Date.now().toString(36)}${(counter++).toString(36)}`
+  `${prefix} ${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
 export async function createTask(request: APIRequestContext, name: string): Promise<Task> {
   const response = await request.post(`${BACKEND}/tasks`, { data: { name, project: 'Inbox' } })

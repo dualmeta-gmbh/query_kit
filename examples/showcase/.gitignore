@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# The native end-to-end runner's logs.
+/e2e-native/.logs/

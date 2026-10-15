@@ -525,6 +525,7 @@ final class DefaultedMutationOptions<TData, TVariables, TOnMutateResult> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is DefaultedMutationOptions<TData, TVariables, TOnMutateResult> &&
+          other.runtimeType == runtimeType &&
           other.mutationKey == mutationKey &&
           other.mutationFn == mutationFn &&
           other.mutationFnWithContext == mutationFnWithContext &&

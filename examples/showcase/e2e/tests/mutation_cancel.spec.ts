@@ -1,4 +1,4 @@
-import { expect, fact, factIn, test, type Page } from './fixtures'
+import { expect, fact, factIn, test, type Page, typeInto } from './fixtures'
 
 // The rename card with its facts, the strip and the list: taller than the
 // default viewport, and the scaffold's list builds only what is in view.
@@ -59,9 +59,7 @@ function abortedRequests(page: Page, fragment: string) {
 
 /// Types `text` into the field and presses `Rename`.
 async function rename(page: Page, text: string) {
-  const field = page.getByRole('textbox')
-  await field.click()
-  await field.fill(text)
+  await typeInto(page, page.getByRole('textbox'), text)
   await button(page, 'Rename').click()
 }
 

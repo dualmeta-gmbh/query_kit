@@ -18,6 +18,13 @@
 /// against, read through a `QueryBuilder<int>`; the function-less mutation is
 /// a `context.mutation`.
 ///
+/// The same error from a build: a second `QueryBuilder<int>` whose key a
+/// knob moves onto an entry that holds a `String`. Its observer refuses the
+/// options — `setOptions` throws, and the core's update is atomic — so the
+/// builder's build fails: an ordinary build error, the app's error widget in
+/// its place, its state and its observer on the counter kept. Moved back,
+/// it builds again on what it held, without a request.
+///
 /// Proofs (widget tests in `test/features/diagnostics_test.dart`, end-to-end
 /// in `e2e/tests/diagnostics.spec.ts`): a read as `int` answers the cached
 /// value and a read as `String` throws `QueryDataTypeError` naming `String`
@@ -25,7 +32,10 @@
 /// was, `updates=1`; a mutation without a function ends in `status=error`
 /// with `MissingMutationFunctionError` and sends nothing; and once a default
 /// `mutationFn` is registered for its key the same mutation succeeds with
-/// `data=1`, one `POST`.
+/// `data=1`, one `POST`. The builder moved onto the `String` entry shows the
+/// error widget naming `QueryDataTypeError` while the counter keeps both its
+/// observers; moved back, it shows the counter again with no new request; and
+/// leaving the screen releases its observer like any other.
 library;
 
 import 'package:flutter/material.dart';
@@ -61,6 +71,11 @@ QueryObserverOptions<int> counterQuery(ShowcaseApi api) =>
       queryKey: diagnosticsCounterKey,
       queryFn: (context) => api.counter(signal: context.signal),
     );
+
+/// An entry that holds a `String`, seeded by the screen: what the keyed
+/// reader's knob moves it onto.
+QueryKey get diagnosticsLabelKey =>
+    QueryKey(const <Object?>['diagnostics', 'label']);
 
 /// A mutation with a key and no function. `retry: never` is a mutation's
 /// default anyway, and the library forces it while the function is missing.
@@ -198,6 +213,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
             onRegisterDefault: _registerDefault,
           ),
         ),
+        SectionCard(
+          title: 'Options that throw in a build',
+          child: _KeyedReaderCard(api: api),
+        ),
       ],
     );
   }
@@ -270,4 +289,71 @@ class _NoFunctionCard extends StatelessWidget {
       ],
     );
   }
+}
+
+/// A `QueryBuilder<int>` and the knob that moves its key.
+class _KeyedReaderCard extends StatefulWidget {
+  const _KeyedReaderCard({required this.api});
+
+  final ShowcaseApi api;
+
+  @override
+  State<_KeyedReaderCard> createState() => _KeyedReaderCardState();
+}
+
+class _KeyedReaderCardState extends State<_KeyedReaderCard> {
+  bool _onLabel = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final client = QueryClientProvider.of(context);
+    if (client.getQueryState<String>(diagnosticsLabelKey) == null) {
+      client.setQueryData<String>(diagnosticsLabelKey, 'a label');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'A QueryBuilder<int> on the counter. Moved onto the entry that '
+            'holds a String, its observer refuses the options and its build '
+            'throws QueryDataTypeError: the app shows its error widget '
+            'there and nothing else breaks. Moved back, it recovers.',
+          ),
+          const SizedBox(height: 12),
+          knob<bool>(
+            context,
+            title: 'The reader reads',
+            name: 'keyed knob',
+            choices: const <(String, bool)>[
+              ('the counter', false),
+              ('the String entry', true),
+            ],
+            selected: _onLabel,
+            onChanged: (value) => setState(() => _onLabel = value),
+          ),
+          const SizedBox(height: 8),
+          // A height of its own: an error widget takes all it is given.
+          SizedBox(
+            height: 72,
+            child: QueryBuilder<int>(
+              options: QueryObserverOptions<int>(
+                queryKey:
+                    _onLabel ? diagnosticsLabelKey : diagnosticsCounterKey,
+                queryFn: (context) =>
+                    widget.api.counter(signal: context.signal),
+              ),
+              builder: (context, counter) => FactGroup(
+                name: 'facts keyed',
+                facts: <String>[
+                  'value=${counter.dataOrNull ?? 'none'}',
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
 }

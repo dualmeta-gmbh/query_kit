@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, group, test } from './fixtures'
+import { expect, fact, group, test, typeInto } from './fixtures'
 
 // The connection card, the strip, the add card, the list and the three
 // explanations are taller than the default viewport, and the scaffold's list
@@ -32,9 +32,7 @@ const pick = (page: Page, knob: 'network-mode' | 'on-reconnect', label: string) 
 const pickMode = (page: Page, mode: string) => pick(page, 'network-mode', mode)
 
 async function addTodo(page: Page, text: string) {
-  const field = page.getByRole('textbox')
-  await field.click()
-  await field.fill(text)
+  await typeInto(page, page.getByRole('textbox'), text)
   await button(page, 'Add todo').click()
 }
 

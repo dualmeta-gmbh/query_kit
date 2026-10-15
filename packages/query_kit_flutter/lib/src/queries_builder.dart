@@ -82,13 +82,12 @@ class QueriesBuilder<TQueryData, TData> extends StatefulWidget {
       _QueriesBuilderState<TQueryData, TData>();
 }
 
-/// The lifetime the other four builders keep in `didUpdateWidget` and
-/// `didChangeDependencies`, kept here too: a controller created
-/// on the first build, thrown away when the client it belongs to changes —
-/// whether it was passed in or came from the provider above — and given the
-/// new list in place otherwise. Reconciling outside `build` means a rebuild
-/// caused by a notification does not re-apply the same list to the
-/// observer.
+/// The lifetime the other four builders keep, kept here too: a controller
+/// created on the first build, thrown away when the client it belongs to
+/// changes — whether it was passed in or came from the provider above — and
+/// given the new list in place otherwise. Reconciled at the top of `build`,
+/// and the list only after an update from the parent, so a rebuild caused by
+/// a notification does not re-apply the same list to the observer.
 ///
 /// It is *not* the builders' shared state class (`query_builder.dart`'s
 /// `_ControllerBuilderState`) for a reason
@@ -121,8 +120,8 @@ class _QueriesBuilderState<TQueryData, TData>
   }
 
   /// What the last build showed, with each result's refetch target — the
-  /// same pairs the controller's gate compares. A list change re-applied in
-  /// [didUpdateWidget] is read by the build that follows it, and the
+  /// same pairs the controller's gate compares. A list change re-applied at
+  /// the top of `build` is read by that build, and the
   /// notification the change provoked arrives after that build; the gate
   /// cannot know the build already showed it, so this state does. The gate
   /// itself is left alone: another
@@ -143,41 +142,50 @@ class _QueriesBuilderState<TQueryData, TData>
     setState(() {});
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // The provider above handed out a different client: every observer in the
-    // collection belongs to the old one.
-    if (_controller != null && _controllerClient != _client) {
-      _disposeController();
-    }
-  }
+  /// Whether the parent handed this state a new widget whose list has not
+  /// been applied yet.
+  bool _updated = false;
 
   @override
   void didUpdateWidget(QueriesBuilder<TQueryData, TData> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Applied in `build`, as the single-query builders apply their options:
+    // resolving the client and applying the list can throw, and an exception
+    // out of `didUpdateWidget` leaves this element to its parent, which in
+    // Flutter's own elements drops it without `dispose` — the collection's
+    // observers ran on. Thrown from `build`, this state stays and is disposed
+    // as usual, or recovers when the next list applies.
+    _updated = true;
+  }
+
+  /// The single-query builders' `_reconcile`: the client resolved now, in
+  /// `build`, after `didChangeDependencies` and `didUpdateWidget` have both
+  /// run, so a provider swap in this frame is seen whichever way it came;
+  /// then the list. Re-applied on every update from the parent: a `List`
+  /// compares by identity, so a caller who fills the same list object again
+  /// would silently stop being heard. The observer reuses what it can by key
+  /// occurrence, and re-applying an unchanged list moves nothing. A list that
+  /// throws stays pending for the next build.
+  void _reconcile() {
     final controller = _controller;
     if (controller == null) {
+      _updated = false;
       return;
     }
-    // The client resolved now, not the field — see the single-query builders'
-    // `didUpdateWidget`: `null` and the provider's own client are one client,
-    // and a provider swap in this frame reaches `didChangeDependencies` only
-    // after this.
     if (_controllerClient != _client) {
       _disposeController();
+      _updated = false;
       return;
     }
-    // Unconditionally, as the single-query builders re-apply their options:
-    // a `List` compares by identity, so a caller who fills the same list
-    // object again would silently stop being heard. The observer reuses what
-    // it can by key occurrence and re-applying an unchanged list moves
-    // nothing.
-    controller.setQueries(widget.queries);
+    if (_updated) {
+      controller.setQueries(widget.queries);
+      _updated = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    _reconcile();
     final results = _collection.value;
     _shown = _pairs(results);
     return widget.builder(context, results);

@@ -76,7 +76,9 @@ typedef _MutationShape = (
 /// outside the reader's own build is *additive*: it joins whatever the
 /// reader holds and releases nothing, and what such a callback stops reading
 /// is released at the reader's next own build that reads through it, or at
-/// unmount — a build that reads nothing opens no generation.
+/// unmount — a build that reads nothing opens no generation. A new widget
+/// from the parent is remembered as a proof until a read uses it: the first
+/// read after it, whatever runs it, opens that generation.
 /// [beginBuild] tells the two apart.
 ///
 /// **One rule for every reader.** A read is an own build only when that is
@@ -104,7 +106,9 @@ typedef _MutationShape = (
 /// neither changes the constraints nor is asked to rebuild by this set.
 ///
 /// What an additive read holds goes at the reader's next own build, and at
-/// unmount. Nothing is released by a *partial* re-run. The one rebuild left
+/// unmount. A *partial* re-run releases nothing, unless it is the first read
+/// since the parent's new widget — it then carries that proof, and its
+/// generation keeps only what it reads. The one rebuild left
 /// without a proof is a `LayoutBuilder` rebuilt by an `InheritedWidget` it
 /// depends on: Flutter marks it through `didChangeDependencies`, which no
 /// read can see, so a key picked from an inherited value stays subscribed

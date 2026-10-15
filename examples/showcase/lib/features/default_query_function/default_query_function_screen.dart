@@ -247,21 +247,28 @@ class _DefaultQueryFunctionScreenState extends State<DefaultQueryFunctionScreen>
         ),
         SectionCard(
           title: 'A key with no post behind it',
-          trailing: Tooltip(
-            message: 'Fetch a missing post',
-            child: OutlinedButton(
-              onPressed: _fetchMissing
-                  ? null
-                  : () => setState(() => _fetchMissing = true),
-              child: const Text('Fetch a missing post'),
-            ),
-          ),
-          child: missing == null
-              ? const Text(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Tooltip(
+                message: 'Fetch a missing post',
+                child: OutlinedButton(
+                  onPressed: _fetchMissing
+                      ? null
+                      : () => setState(() => _fetchMissing = true),
+                  child: const Text('Fetch a missing post'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (missing == null)
+                const Text(
                   "['api', '/posts/999'] goes through the same default; "
                   'the backend decides what it answers.',
                 )
-              : _view<Post>(missing, (data) => Text(data.title)),
+              else
+                _view<Post>(missing, (data) => Text(data.title)),
+            ],
+          ),
         ),
         QueryDebugStrip(queryKey: apiKey('/posts/999'), label: 'post-999'),
         SectionCard(

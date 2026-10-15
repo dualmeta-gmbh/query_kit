@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'routes.dart';
+import 'shared/chrome.dart';
 import 'shared/scope.dart';
 
 /// The app's name: the home screen's title, the browser tab's, and what the
@@ -20,16 +21,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text(showcaseTitle),
         actions: <Widget>[
-          if (label != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Center(
-                child: Text(
-                  label,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-            ),
+          if (label != null) BackendLabel(label),
         ],
       ),
       body: Center(

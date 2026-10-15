@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, group, test } from './fixtures'
+import { expect, fact, factIn, group, test, type Scenario } from './fixtures'
 
 // Three entries, two strips and five knobs on one screen; entry C sits at the
 // bottom, and the scaffold's list only builds — and the semantics tree only
@@ -44,19 +44,27 @@ async function reattachB(page: Page) {
   await expect(reader(page, 'reader-b', 'reader=attached')).toBeVisible()
 }
 
+const TIME = /^\/api\/time$/
+
 // The screen as it opens: both entries fetched once, thirty seconds of stale
-// time, so the data is fresh and only `always` can move it.
-async function openFresh(page: Page, open: (route: string) => Promise<void>) {
+// time, so the data is fresh and only `always` can move it. Answers with how
+// many requests the server saw for the two: entries A and B ask for the same
+// URL in the same instant, and WebKit sends two identical requests in flight
+// as one — both entries get the one answer, and the server sees one request
+// where Chromium and Firefox send two. Every count after this is taken
+// against it, so what is counted is what a focus or a mount added.
+async function openFresh(page: Page, open: (route: string) => Promise<void>, scenario: Scenario) {
   await open('/focus-refetch')
   await expect(fact(page, 'focus-a', 'fetches=1')).toBeVisible()
   await expect(fact(page, 'focus-b', 'fetches=1')).toBeVisible()
   await expect(reader(page, 'reader-a', 'isStale=false')).toBeVisible()
   await expect(reader(page, 'reader-b', 'isStale=false')).toBeVisible()
+  return scenario.count('GET', TIME)
 }
 
 test('always: a focus refetches although the data is fresh', async ({ page, open, scenario }) => {
   await scenario.config({ latency: 0 })
-  await openFresh(page, open)
+  const mounted = await openFresh(page, open, scenario)
   await pick(page, 'on-focus-a', 'always')
 
   await focusCycle(page)
@@ -67,12 +75,12 @@ test('always: a focus refetches although the data is fresh', async ({ page, open
   // Entry B kept the default `ifStale` and its data is fresh, so the same
   // event left it alone.
   await expect(fact(page, 'focus-b', 'fetches=1')).toBeVisible()
-  expect(await scenario.count('GET', /^\/api\/time$/)).toBe(3)
+  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted + 1)
 })
 
 test('never: no focus refetch, stale data included', async ({ page, open, scenario }) => {
   await scenario.config({ latency: 0 })
-  await openFresh(page, open)
+  const mounted = await openFresh(page, open, scenario)
   await pick(page, 'on-focus-a', 'never')
   await pick(page, 'stale-time', '0')
   await expect(reader(page, 'reader-a', 'isStale=true')).toBeVisible()
@@ -83,12 +91,12 @@ test('never: no focus refetch, stale data included', async ({ page, open, scenar
   // proves the event reached the cache at all rather than being swallowed.
   await expect(fact(page, 'focus-b', 'fetches=2')).toBeVisible()
   await expect(fact(page, 'focus-a', 'fetches=1')).toBeVisible()
-  expect(await scenario.count('GET', /^\/api\/time$/)).toBe(3)
+  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted + 1)
 })
 
 test('ifStale: nothing while fresh, a refetch once the stale time says so', async ({ page, open, scenario }) => {
   await scenario.config({ latency: 0 })
-  await openFresh(page, open)
+  const mounted = await openFresh(page, open, scenario)
   // `ifStale` is the default on both entries, so nothing is picked here.
   await pick(page, 'on-focus-b', 'never')
 
@@ -104,7 +112,7 @@ test('ifStale: nothing while fresh, a refetch once the stale time says so', asyn
 
   await focusCycle(page)
   await expect(fact(page, 'focus-a', 'fetches=2')).toBeVisible()
-  expect(await scenario.count('GET', /^\/api\/time$/)).toBe(3)
+  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted + 1)
 })
 
 test('when: a focus while the data is young does nothing, one past ten seconds refetches', async ({
@@ -113,7 +121,7 @@ test('when: a focus while the data is young does nothing, one past ten seconds r
   scenario,
 }) => {
   await scenario.config({ latency: 0 })
-  await openFresh(page, open)
+  const mounted = await openFresh(page, open, scenario)
   await pick(page, 'on-focus-a', 'when')
   // Silenced, so every request below belongs to entry A.
   await pick(page, 'on-focus-b', 'never')
@@ -130,7 +138,7 @@ test('when: a focus while the data is young does nothing, one past ten seconds r
   await expect(fact(page, 'focus-a', 'fetches=2')).toBeVisible()
   // Still fresh by the thirty-second stale time: only the `when` rule decided.
   await expect(reader(page, 'reader-a', 'isStale=false')).toBeVisible()
-  expect(await scenario.count('GET', /^\/api\/time$/)).toBe(3)
+  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted + 1)
 })
 
 test('on mount: never never fetches, always always does, ifStale only when stale', async ({
@@ -139,7 +147,7 @@ test('on mount: never never fetches, always always does, ifStale only when stale
   scenario,
 }) => {
   await scenario.config({ latency: 0 })
-  await openFresh(page, open)
+  const mounted = await openFresh(page, open, scenario)
 
   await pick(page, 'on-mount-b', 'never')
   await reattachB(page)
@@ -161,12 +169,12 @@ test('on mount: never never fetches, always always does, ifStale only when stale
   await reattachB(page)
   await expect(fact(page, 'focus-b', 'fetches=3')).toBeVisible()
   await expect(fact(page, 'focus-a', 'fetches=1')).toBeVisible()
-  expect(await scenario.count('GET', /^\/api\/time$/)).toBe(4)
+  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted + 2)
 })
 
 test('one focus event, two answers: A always, B never', async ({ page, open, scenario }) => {
   await scenario.config({ latency: 0 })
-  await openFresh(page, open)
+  const mounted = await openFresh(page, open, scenario)
   await pick(page, 'on-focus-a', 'always')
   await pick(page, 'on-focus-b', 'never')
 
@@ -174,7 +182,7 @@ test('one focus event, two answers: A always, B never', async ({ page, open, sce
 
   await expect(fact(page, 'focus-a', 'fetches=2')).toBeVisible()
   await expect(fact(page, 'focus-b', 'fetches=1')).toBeVisible()
-  expect(await scenario.count('GET', /^\/api\/time$/)).toBe(3)
+  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted + 1)
 })
 
 // Entry C's own focus source. It runs on a client of its own, so the app
@@ -225,7 +233,7 @@ test('min background none: the same absence and return does refetch', async ({ p
 
 test('the threshold knob swaps the client entry C runs on', async ({ page, open, scenario }) => {
   await scenario.config({ latency: 0 })
-  await open('/focus-refetch')
+  const mounted = await openFresh(page, open, scenario)
   await focusCycleC(page)
   await expect(reader(page, 'reader-c', 'fetches=2')).toBeVisible()
 
@@ -243,7 +251,7 @@ test('the threshold knob swaps the client entry C runs on', async ({ page, open,
 
   // Entries A and B never left the app's own client, and the app switch was
   // never touched: nothing on `/api/time` moved.
-  expect(await scenario.count('GET', /^\/api\/time$/)).toBe(2)
+  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted)
 })
 
 // A real lifecycle transition in the browser: Flutter web maps the window's

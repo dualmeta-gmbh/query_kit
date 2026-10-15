@@ -174,8 +174,14 @@ it does.
   *added* to the enclosing widget's reads and does not release what its own
   `build` read. A key such a callback stops reading is released on that
   widget's next own build that reads, or when it goes — so read in `build`
-  itself: a `build` that leaves every read to a nested builder never starts
-  over.
+  itself. A `build` that leaves every read to a nested builder releases
+  nothing, and neither does a new widget from the parent on its own: the
+  first read after it, a nested builder's included, counts as that own
+  build. And an own build that reads keeps only what it reads: a nested
+  builder it does not re-run — its widget kept in a field — reads nothing
+  then, so its keys are released after that frame while it still shows
+  them, until it runs again and reads. Give such a part a widget of its
+  own.
 - **A `LayoutBuilder`'s or `OrientationBuilder`'s own `context`.** A read
   through it starts over when its builder provably runs: new constraints (the
   wide layout's key goes after a resize), a notification from one of its own
@@ -187,7 +193,8 @@ it does.
   const WideTasks() : const NarrowTasks())`, each reading in its own `build`.
 - **Dialogs and bottom sheets.** A read rebuilds the element whose `context`
   it went through. A dialog reading through the page's `context` is not
-  rebuilt by a change, and its key goes at the page's next build. Give a
+  rebuilt by a change, and its key goes at the page's next own build that
+  reads. Give a
   dialog a reader of its own: read through the `context` the dialog builder is
   given.
 - **Lazily built lists.** A `ListView.builder`, `GridView.builder`,

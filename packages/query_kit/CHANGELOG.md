@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.3
+
+- A fetch or a mutation met from another error zone than the one it began
+  in now reaches that zone. Dart delivers a future's error only within the
+  error zone the future was made in, so an `await cancelQueries` from another
+  zone waited for good, `clear`, `removeQueries` and `resetQueries` reported
+  the cancelled fetch's `CancelledError` as uncaught, a caller who joined a
+  fetch or read `Query.future` never heard that it failed, and
+  `resumePausedMutations` waited for good on a mutation that failed. A
+  Flutter app has two error zones as soon as a `runZonedGuarded` wraps
+  `runApp`, or a widget test's zone meets the binding's: a refetch on focus
+  is started by a platform callback. Within one zone nothing changes.
+- `QueryState`, `MutationState` and `DefaultedMutationOptions` compare equal
+  only to a value of the same type arguments. A `QueryState<int>` and an
+  equal `QueryState<num>` used to be equal one way and not the other, so a
+  `Set` held one or both depending on the order they went in. A comparison
+  between the same type arguments is unchanged.
+- The errors reference gave a remedy that does not compile for the
+  `UnsupportedError` an `InfiniteQueryObserver` throws for plain options. It
+  now names both that do: the infinite options to `setInfiniteOptions`, or
+  what `client.infiniteObserverOptions` makes of them to `setOptions`.
+
 ## 1.0.2
 
 No change to the code. The documentation site moved to its own address,

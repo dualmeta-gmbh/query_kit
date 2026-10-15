@@ -12,4 +12,6 @@ dependencies:
   query_kit_flutter: ^1.0.0
 
 dev_dependencies:
+  flutter_test:
+    sdk: flutter
   lints: '>=5.1.1 <7.0.0'

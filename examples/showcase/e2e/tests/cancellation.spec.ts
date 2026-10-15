@@ -1,4 +1,4 @@
-import { expect, fact, factIn, strip, test, type Page } from './fixtures'
+import { expect, fact, factIn, holdRequest, strip, test, type Page, typeInto } from './fixtures'
 
 // Two cards and up to three strips: taller than the default viewport, and a
 // lazily built list only has what is in view.
@@ -27,9 +27,7 @@ function abortedRequests(page: Page, fragment: string) {
 }
 
 async function typeNeedle(page: Page, needle: string) {
-  const field = page.getByRole('textbox')
-  await field.click()
-  await field.fill(needle)
+  await typeInto(page, page.getByRole('textbox'), needle)
 }
 
 test('cancelling the slow fetch reverts it to idle and aborts the request', async ({ page, open, scenario }) => {
@@ -97,8 +95,7 @@ test('two keystrokes inside the debounce window send one request', async ({ page
   await expect(searched(page, 'needle=none')).toBeVisible()
 
   const field = page.getByRole('textbox')
-  await field.click()
-  await field.fill('met')
+  await typeInto(page, field, 'met')
   await field.fill('metr')
 
   // Only the last needle ever became a key, so nothing was there to cancel.
@@ -116,17 +113,21 @@ test('a needle typed while the last is in flight cancels it', async ({ page, ope
   await open('/cancellation')
   await expect(searched(page, 'needle=none')).toBeVisible()
 
+  // `a` is held in the browser, so it is still in flight when `az` is
+  // committed however long the typing takes — the one-second answer alone
+  // was outrun by WebKit under load.
+  const hold = holdRequest(page, (url) => url.pathname === '/api/search' && url.searchParams.get('q') === 'a')
   await typeNeedle(page, 'a')
-  // The needle is committed after the debounce, well before the one-second
-  // request can answer.
   await expect(searched(page, 'needle=a')).toBeVisible()
   await expect(searched(page, 'searching=true')).toBeVisible()
+  await expect.poll(() => hold.seen).toBe(1)
 
   await typeNeedle(page, 'az')
 
   await expect(searched(page, 'needle=az')).toBeVisible()
   await expect(searched(page, 'searchCancels=1')).toBeVisible()
   await expect.poll(() => aborted.length).toBe(1)
+  await hold.release()
   // The abandoned needle keeps its entry, reverted to before the fetch.
   await expect(fact(page, 'previous', 'fetchStatus=idle')).toBeVisible()
   await expect(fact(page, 'previous', 'status=pending')).toBeVisible()
@@ -135,6 +136,42 @@ test('a needle typed while the last is in flight cancels it', async ({ page, ope
   await expect(searched(page, 'results=0')).toBeVisible()
   await expect(page.getByText('Local development: setup guide', { exact: true })).toBeHidden()
   expect(await scenario.count('GET', SEARCH)).toBe(1)
+})
+
+test('an abandoned needle whose answer arrives after the next one never shows', async ({ page, open, scenario }) => {
+  await scenario.config({ latency: 0 })
+  await open('/cancellation')
+  const ignores = page.getByRole('switch', { name: 'Search ignores the signal', exact: true })
+  await ignores.click()
+  await expect(ignores).toBeChecked()
+
+  // `a` is held in the browser: not aborted, since nothing reads the signal,
+  // and answered only once `az` has been.
+  const hold = holdRequest(page, (url) => url.pathname === '/api/search' && url.searchParams.get('q') === 'a')
+  await typeNeedle(page, 'a')
+  await expect(searched(page, 'needle=a')).toBeVisible()
+  await expect.poll(() => hold.seen).toBe(1)
+
+  await typeNeedle(page, 'az')
+  await expect(searched(page, 'needle=az')).toBeVisible()
+  await expect(searched(page, 'results=0')).toBeVisible()
+  await expect(searched(page, 'searching=false')).toBeVisible()
+  expect(await scenario.count('GET', SEARCH)).toBe(1)
+
+  // Now `a`'s answer: most of the posts, delivered to the app after `az`'s.
+  const late = page.waitForResponse((response) => new URL(response.url()).searchParams.get('q') === 'a')
+  await hold.release()
+  expect((await late).ok()).toBe(true)
+  const order = (await scenario.requests()).filter((entry) => SEARCH.test(entry.path)).map((entry) => entry.query.q)
+  expect(order).toEqual(['az', 'a'])
+
+  // Thrown away: the screen stays on `az`, and the cancelled entry was
+  // reverted rather than written.
+  await expect(fact(page, 'previous', 'status=pending')).toBeVisible()
+  await expect(fact(page, 'previous', 'fetchStatus=idle')).toBeVisible()
+  await expect(searched(page, 'needle=az')).toBeVisible()
+  await expect(searched(page, 'results=0')).toBeVisible()
+  await expect(page.getByText('Local development: setup guide', { exact: true })).toBeHidden()
 })
 
 test('a query function that ignores the signal is cancelled, its request is not', async ({ page, open, scenario }) => {

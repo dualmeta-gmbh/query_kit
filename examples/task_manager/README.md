@@ -195,9 +195,12 @@ start (`--dart-define=E2E=true`, see `main.dart`); rows are groups named after
 their task, buttons carry their tooltips, the switch is a `switch` with
 `aria-checked`. Two things worth knowing when adding a test: the semantic
 `<input>` of a text field mirrors its text only once the field has focus, so
-click before you read or `fill`. On refocus, the combined rename test also
-checks that Flutter's input listener is attached. If it is not, the test
-repeats the focus traversal within a bounded wait; it never retries the
+click before you read, and type through `typeInto` (`tests/flutter_input.ts`),
+never a bare `fill`. A click can leave Flutter's input connection inactive;
+a `fill` then sets a DOM value the app never hears of, and `toHaveValue`
+passes all the same — Firefox and WebKit met that under load. `typeInto`
+counts the `input` listeners on the focused element and repeats the focus
+traversal within a bounded wait until Flutter has one; it never retries the
 write or its assertions. The list builds only the rows in view,
 which is why the suite runs with a tall viewport and sweeps its own tasks off
 the backend before and after.

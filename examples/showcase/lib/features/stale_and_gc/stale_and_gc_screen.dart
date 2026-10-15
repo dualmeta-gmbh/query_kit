@@ -23,7 +23,9 @@
 /// invalidation while a reader is attached refetches at once, and one while
 /// detached is honoured on the next attach; a detached entry with `5 s` gc is
 /// gone after five seconds and one with `never` is still there ten minutes
-/// on, and attaching after a collection starts from scratch; the `dynamic`
+/// on, and attaching after a collection starts from scratch; `zero` on an
+/// entry that was given `5 s` changes nothing (the longest gc time wins), and
+/// on a new entry collects it the moment its reader leaves; the `dynamic`
 /// stale time is fresh after an odd serial and stale after an even one.
 library;
 
@@ -91,13 +93,16 @@ class _StaleAndGcScreenState extends State<StaleAndGcScreen> {
     ('dynamic', _dynamic),
   ];
 
+  static const GcTime _fiveSecondsGc = GcTime.duration(Duration(seconds: 5));
+
   static const List<(String, GcTime)> _gcTimes = <(String, GcTime)>[
-    ('5 s', GcTime.duration(Duration(seconds: 5))),
+    ('zero', GcTime.duration(Duration.zero)),
+    ('5 s', _fiveSecondsGc),
     ('never', GcTime.never),
   ];
 
   StaleTime _staleTime = StaleTime.zero;
-  GcTime _gcTime = _gcTimes.first.$2;
+  GcTime _gcTime = _fiveSecondsGc;
 
   late final ShowcaseApi _api;
   late final QueryClient _client;
@@ -281,8 +286,9 @@ class _StaleAndGcScreenState extends State<StaleAndGcScreen> {
               const SizedBox(height: 4),
               Text(
                 'Counted from the moment the last reader leaves. An entry '
-                'keeps the longest gc time a reader ever gave it, so after '
-                'never only removing the entry brings 5 s back.',
+                'keeps the longest gc time a reader ever gave it, so a '
+                'shorter one takes hold on a new entry only: remove this '
+                'one first.',
                 style: small,
               ),
             ],

@@ -8,6 +8,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'chrome.dart';
 import 'feature.dart';
 import 'scope.dart';
 
@@ -36,16 +37,7 @@ class FeatureScaffold extends StatelessWidget {
         automaticallyImplyLeading: !scope.embed,
         actions: <Widget>[
           ...actions,
-          if (label != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Center(
-                child: Text(
-                  label,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-            ),
+          if (label != null) BackendLabel(label),
         ],
       ),
       body: Center(

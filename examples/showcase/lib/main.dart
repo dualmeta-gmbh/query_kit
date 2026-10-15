@@ -44,6 +44,7 @@ import 'home_screen.dart';
 import 'routes.dart';
 import 'shared/api.dart';
 import 'shared/cache_stats.dart';
+import 'shared/fact_group.dart';
 import 'shared/scope.dart';
 
 /// Built with `--dart-define=E2E=true`, the app switches its semantics tree on
@@ -68,8 +69,26 @@ ThemeData _showcaseTheme(Brightness brightness) => ThemeData(
           const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     );
 
+/// What a widget whose build threw shows in its place. Flutter's own is a
+/// red screen in a debug build and a blank grey box in a release one — which
+/// a web build is, and which no reader, human or test, can read. This one
+/// says what failed, in every mode; the `diagnostics` screen provokes it.
+Widget _buildFailure(FlutterErrorDetails details) => SemanticsGroup(
+      name: 'build failure',
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        color: const Color(0xFFFDE7E9),
+        child: Text(
+          'build failed: ${details.exception}',
+          textDirection: TextDirection.ltr,
+          style: const TextStyle(color: Color(0xFF8C1D18), fontSize: 13),
+        ),
+      ),
+    );
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  ErrorWidget.builder = _buildFailure;
   final parameters = Uri.base.queryParameters;
   if (_e2e || parameters['semantics'] == '1') {
     SemanticsBinding.instance.ensureSemantics();
@@ -90,6 +109,7 @@ class ShowcaseApp extends StatefulWidget {
     super.key,
     required this.api,
     this.client,
+    this.onlineStatus,
     this.initialRoute,
     this.embed = false,
     this.inMemory = false,
@@ -100,6 +120,11 @@ class ShowcaseApp extends StatefulWidget {
 
   /// Injected by the widget tests, which bring their own client.
   final QueryClient? client;
+
+  /// The app has no connectivity source of its own — the `offline` screen's
+  /// switch stands in for one. The native suite brings a reachability probe
+  /// here, to meet a radio that is really off.
+  final OnlineStatus? onlineStatus;
 
   /// Where to start; the widget tests open a feature directly. On the web the
   /// URL's hash wins over this, which is how a deep link works.
@@ -138,6 +163,7 @@ class _ShowcaseAppState extends State<ShowcaseApp> {
   @override
   Widget build(BuildContext context) => QueryClientProvider(
         client: _client,
+        onlineStatus: widget.onlineStatus,
         child: ShowcaseScope(
           api: widget.api,
           stats: _stats,

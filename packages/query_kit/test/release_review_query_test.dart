@@ -406,8 +406,11 @@ void main() {
               queryKey: key,
               staleTime: StaleTime.zero,
               retry: RetryPolicy.never))
-          .then((value) => data = value, onError: (Object e) => error = e)
-          .ignore();
+          .then<void>((value) {
+        data = value;
+      }, onError: (Object e) {
+        error = e;
+      }).ignore();
       await time.advance(ms(50));
       expect(error, isNull);
       expect(data?.pages, [10, 20]);

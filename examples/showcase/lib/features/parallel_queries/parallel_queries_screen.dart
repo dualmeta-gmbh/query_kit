@@ -273,14 +273,14 @@ class _FetchingCountState extends State<_FetchingCount>
   @override
   Widget build(BuildContext context) {
     final fetching = widget.stats.client.isFetching();
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: <Widget>[
         Text(
           'client.isFetching()',
           style: Theme.of(context).textTheme.labelLarge,
         ),
-        const SizedBox(width: 8),
         Text(
           'fetching=$fetching',
           style: const TextStyle(fontFamily: 'monospace'),

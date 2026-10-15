@@ -3129,23 +3129,6 @@ suite does not have to go looking:
 | `QueryCacheConfig` / `MutationCacheConfig` behind a reassignable `config` field | the hooks are final constructor arguments, with no setter; nothing upstream reassigns one, and a handler that has to change closes over a variable its owner swaps | C59, [#66](https://github.com/dualmeta-gmbh/query_kit/issues/66) |
 | a blind cast in `getQueryData` | a type mismatch throws `QueryDataTypeError` — and a *subtype* is a mismatch: one key, one exact type | [#7](https://github.com/dualmeta-gmbh/query_kit/issues/7), fourth review 2026-09-09 |
 | one observer options object with an optional `select` | two shapes over a sealed base: `QueryObserverOptions<TData>` without `select`, `QuerySelectOptions<TQueryData, TData>` with `select` required (infinite: `InfiniteQueryObserverOptions` / `InfiniteQuerySelectOptions`); the binding's controllers refuse a top-typed `TData` in debug builds only — the backstop is compiled out of release | [ADR-0001](../../../docs/adr/0001-one-type-slot-for-plain-queries.md), ninth review 2026-09-11 |
-
-### A `Set` of listeners does not port
-
-`subscribable.ts` keeps `listeners` in a `Set`, and one ported case —
-"should deduplicate the same listener reference" — pins that: subscribing the
-same function three times and unsubscribing once leaves nothing.
-
-In JavaScript that is nearly unobservable, because two function objects are
-never equal; the `Set` is an insertion-ordered list that merely cannot hold
-one closure twice. In Dart a tear-off of a method on an object is `==` to
-itself, so `cache.subscribe(logger.onEvent)` called from two unrelated places
-produced **one** registration — and the first unsubscribe took the other
-subscriber's listener with it. The port keeps a `List`: one entry per
-`subscribe`, each returned handle removing its own, and a handle called twice
-removing nothing more. The ported case is renamed "registers the same listener
-reference once per subscribe" and asserts the port's answer, with two
-port-specific cases beside it (eighth review, 2026-09-10).
 | `MutationCache.remove` leaves the mutation's gc timer running | the timer is cancelled, so a removed mutation cannot ask to be removed again | [#22](https://github.com/dualmeta-gmbh/query_kit/issues/22) |
 | a cancelled retry can still flip its query from `idle` to `paused` after its delay | the retryer checks `isResolved` after the delay | review, 2026-09-08 |
 | a removed query or mutation re-arms its own gc timer from the fetch's `finally` | removal marks it, and a marked one schedules nothing | [#24](https://github.com/dualmeta-gmbh/query_kit/issues/24) |
@@ -3216,6 +3199,23 @@ port-specific cases beside it (eighth review, 2026-09-10).
 | a `Query` or `Mutation` that was removed from its cache can be added back, and then runs as a second entry under a key that already has one | a removed object is terminally removed: `QueryCache.add` / `MutationCache.add` refuse it with a `StateError`, and it collects itself rather than lingering. Re-adding was how a removal could quietly produce two live entries for one key | [ADR-0003](../../../docs/adr/0003-core-operation-lifetimes.md) V02/V03; `release_query_regressions_test.dart` QER4 |
 | `Set.forEach` visits entries added during the iteration, so a listener that subscribes from inside a notification is delivered **that** round | `ListenerRegistry.notify` iterates a snapshot, so a listener added during a dispatch first hears the next one. Removal keeps upstream's behaviour — a listener unsubscribed by an earlier one in the same round is skipped — because the registry checks each entry is still active before delivering. The snapshot is what makes the loop safe in Dart at all: iterating the live list while a listener subscribes throws | C50, [#59](https://github.com/dualmeta-gmbh/query_kit/issues/59); `listener_registry.dart`, recorded here at the pre-release deep-dive review, 2026-09-12 |
 | an `initialData` callback that writes to its own key while it is being computed leaves two entries in play: the caller's `fetchQuery` resolves with the fetched value (3) while the cache keeps what the reentrant write left (1) | one entry is canonical. The reentrant `setQueryData` writes into the query being built, the fetch settles over it, and the caller and the cache agree — both see the fetched value | [ADR-0003](../../../docs/adr/0003-core-operation-lifetimes.md) V02/V03; `release_query_regressions_test.dart` QER5 |
+
+### A `Set` of listeners does not port
+
+`subscribable.ts` keeps `listeners` in a `Set`, and one ported case —
+"should deduplicate the same listener reference" — pins that: subscribing the
+same function three times and unsubscribing once leaves nothing.
+
+In JavaScript that is nearly unobservable, because two function objects are
+never equal; the `Set` is an insertion-ordered list that merely cannot hold
+one closure twice. In Dart a tear-off of a method on an object is `==` to
+itself, so `cache.subscribe(logger.onEvent)` called from two unrelated places
+produced **one** registration — and the first unsubscribe took the other
+subscriber's listener with it. The port keeps a `List`: one entry per
+`subscribe`, each returned handle removing its own, and a handle called twice
+removing nothing more. The ported case is renamed "registers the same listener
+reference once per subscribe" and asserts the port's answer, with two
+port-specific cases beside it (eighth review, 2026-09-10).
 
 ### Sharing a map whole: what it costs (2026-09-12)
 
@@ -6672,3 +6672,175 @@ where the comment promised the measured figure rounded down.
 **Counts after:** core **1157** VM / **1153** browser (826 and 822, plus
 331 each), binding **299** VM / **298** browser (the `vm-only` case). All
 green.
+
+## Independent reviews 2026-10-15
+
+Two reviewers read both packages in full and independently, each in a
+worktree of its own: GPT-6-Astra (through the Codex CLI) and Fable 5.1. They
+were given the same brief: every library file, the ported and port-only
+suites, the documentation, this file and the backlog, plus the proof ladder —
+a finding is reported at step 4 (red on unchanged `main`) or labelled as less.
+Between them: **no P1, two P2, three P3.** Every one was reproduced again in
+this repository before anything changed, and every regression below is red
+against the commit before its fix. The new cases live in
+`independent_review_test.dart` (core), and in `failed_update_test.dart`,
+`build_reconcile_test.dart` and `cached_nested_builder_test.dart` (binding), each named for a subject rather
+than added to the 4,000-line regression files (ASTRA-S4's row).
+
+| ID | What was wrong | How it was reproduced | What changed |
+|---|---|---|---|
+| ASTRA-B1 (P2) | `QueryBuilder`, `QuerySelectBuilder`, `InfiniteQueryBuilder` and `QueriesBuilder`: options whose update throws (a new key whose `InitialData.compute` throws) leave the observer on the old options, which is the core's atomic update — and Flutter puts an error widget in the element's place without calling `dispose`. The builder's controller, its `refetchInterval` with it, ran on after the whole tree was gone. The keyless styles and an explicitly owned controller were already right. The provider's twin of this was V5-2 | Astra's four-style loop: after the throw and an unmount, the old key kept 1 observer and polled 3 more times in 3 s; `failed_update_test.dart` repeats it for five styles (the infinite builder added) and is red for the three builder widgets before the fix | **Reworked after the second pass (V-1, V-2 below).** The first fix released the controller when `didUpdateWidget` threw; now `didUpdateWidget` only notes that the widget changed, and `build` reconciles — the client first, then the options — as the keyless styles always did. A throw there is an ordinary build error: Flutter keeps the `State`, shows an error widget, and disposes it as usual, so nothing is abandoned and nothing need be released early. Options that throw stay pending and are tried again at the next build; the next ones that apply carry on with the same controller. `MutationBuilder` shares the state class and gains the same |
+| F-1 (P2, Fable) | The dartdoc of `QueryMixin` and `context.query`, and the troubleshooting page, promised that nothing a reader shows in its own subtree loses its subscription. A `State` that keeps a nested builder in a field (`late final`, the usual way to spare a subtree a rebuild) and reads through it hands that builder the same widget at its own build; Flutter does not re-run it, the own build keeps only what it read, and the nested key is released while it is still shown — that part stops updating | Fable's five cases, three red on `main` (a cached builder, per call style, and what the user sees); `cached_nested_builder_test.dart` pins the bound — six cases, both call styles × cached builder, rebuilt builder, cached reader widget | **Documentation, not the rule.** The rule is V3's: an additive read goes at the next own build that does not read it. Keeping such keys until unmount is the leak V3 removed (`reader_shapes_test.dart`'s three tick shapes would hold keys a callback stopped reading), and a release only in frames with additive reads would let one builder's tick drop another's keys. The promise is gone from `query_mixin.dart`, `query_context.dart`, `reading-queries-in-widgets.md`, `widgets-and-controllers.md` and `troubleshooting.md` (the dialog and `LayoutBuilder` entries); a troubleshooting entry "A nested builder kept in a field stops updating" names the fix — a widget of its own, which may itself be kept in a field. The test pins both the bound and the fix |
+| ASTRA-C2 (P3) | `==` of `QueryState`, `MutationState` and `DefaultedMutationOptions` tested `other is X<T>` alone, so `<int> == <num>` was false one way and true the other, and a `Set` of the two held one or two entries by insertion order. L2-4 and L3-2 had fixed the same for the seed and placeholder types and `InfiniteData` | three red cases | `other.runtimeType == runtimeType`, as `QueryResult`, `DefaultedQueryOptions` and L2-4's types compare. No comparison inside the packages sees two type arguments: a query and a mutation compare their own states, an observer its own defaulted options. (A `Mutation` will take a covariant state — the idle `MutationState<Never, Never, Never>` — but only its fields are read, never compared; second pass) |
+| ASTRA-D3 (P3) | `errors.md` said to fix the `UnsupportedError` an `InfiniteQueryObserver` throws for plain options with "`setInfiniteOptions` with options from `client.infiniteObserverOptions`" — a type `setInfiniteOptions` does not take | an analyzed fixture: `argument_type_not_assignable` | The row names both real spellings: the infinite options to `setInfiniteOptions` (`getOptimisticInfiniteResult`), or `client.infiniteObserverOptions`'s output to `setOptions`. A core case compiles and runs both |
+| ASTRA-S4 (P3, structural) | Four port-only suites exceed a thousand lines: `review_regressions_test.dart` (binding, 4,350), `port_specifics_test.dart` (4,807), `value_semantics_test.dart` (1,885), `port_lifecycle_test.dart` (1,048) | `wc -l` | **Left as they are, the reason written down.** A split by subject is the right shape, and the new cases above already follow it; moving 12,000 lines of regressions is a change of its own, whose proof is an unchanged count and order per case, and is not mixed into a fix |
+
+### Second pass
+
+A fresh verifier each — Astra and Fable again, neither shown the other's
+report — read the round's diff against the commit before it, with the same
+proof ladder. **No P1, Astra two P2 and one P3, Fable four P3**, two of them
+the same as Astra's. Each was reproduced here first;
+`failed_update_test.dart` (17) and `cached_nested_builder_test.dart` (8)
+hold them. Against the pre-fix commit 11 of the 17 are red; the six green
+there are the four keyless controls, the header case and the move to another
+client — two that pass on either side of the change, kept because they pin
+what the change must not break (third pass).
+
+| ID | What was wrong | How it was reproduced | What changed |
+|---|---|---|---|
+| V-1 (P2, Astra; P3, Fable) | The first B1 fix assumed a throwing `didUpdateWidget` means Flutter abandons the element. It need not: a custom parent element may catch the update and keep the child (Astra), and a `SliverPersistentHeader` delegate builds its child during layout, where nothing replaces it (Fable). Released early, a builder still on screen lost its observer, a refetch in flight was cancelled, a running mutation's observer and per-call callbacks were gone, and the next valid options started an idle controller | Astra: four cases under a retaining parent — 0 observers, `(cancelled: true, data: 1)` for `(false, 7)`, `(same controller: false, callbacks: 0, idle)`. Fable: the header case, `observersCount` 0 while shown | Reconciliation in `build` (ASTRA-B1's row). The permanent cases: the state kept and recovering, per builder style; a refetch in flight landing after the recovery; a `MutationBuilder` keeping its run and callbacks; the header case. Astra's retaining-parent cases now see no error at all: nothing throws in `update` |
+| V-2 (P2, Astra) | Client resolution ran before the first fix's `try`: a `client` taken away with no provider above threw outside it, and the old observer stayed after unmount — a leak older than the round | two cases, `QueryBuilder` and `QueriesBuilder`: 1 observer after the error and the unmount | The client lookup is part of `build`'s reconciliation; both cases are permanent, and a move to another client whose options throw holds nothing on either |
+| V-2b (P3, Fable) | A bound: what Flutter abandons below a `didUpdateWidget` that threw — a sibling builder included — is never disposed, keeps polling, and trips Flutter's wrong-build-scope assertion | the sibling polled on after the tree was gone | Out of the binding's hands for someone else's throw; for its own options it no longer arises, because nothing throws in `update`. A case pins that a sibling of a builder whose options throw goes with the tree |
+| V-3 (P3, Astra and Fable) | The F-1 texts still promised too much. "A `build` that reads nothing never starts over; those keys stay until the parent rebuilds this widget": a new widget alone sweeps nothing, and — Fable — the first read after it, a nested builder's tick included, is taken for that own build, so one cached builder's tick released another's key while shown. "It never updates again": a tick re-runs it and it subscribes again. And the cause was misattributed — a cached builder is not re-run by the outer `State`'s rebuild, so it shows a change only at its own tick whether its key is kept or not; what the release costs is the poll and the `gcTime` | Astra: held keys `{inner0, inner1}` where the docs said `{inner1}`. Fable: two builders, `b`'s observers 0 after `a`'s tick; on a prototype keeping the key, `b` still showed the old value until `b` ticked | **Documentation, not the rule** — as F-1. Fable's prototype keeps the key (it records the widget at every frame's end, with a post-frame callback per frame while a scope has readers, and a `didUpdateWidget` in the mixin); the cost lands on every frame of every app, and the case it fixes ends as F-1's does, a shown builder re-subscribing at its tick. The texts in `query_mixin.dart`, `query_context.dart`, `read_set.dart`, the two guides, the troubleshooting entry and the CHANGELOG now say what the code does; the two-builder case is pinned in `cached_nested_builder_test.dart` as it behaves |
+| V-4 (P3, Astra) | Astra's alternative to F-1's decision: a read set that marks the nested elements dirty when an own build opens a generation, so a cached builder is re-run and reads again — twelve candidate cases green | its prototype | **Recorded, not taken**: it gives up what caching a subtree is for, a skipped rebuild, in every reader |
+
+### Third pass
+
+Astra once more, on the redesign alone: ordering and notifications moved from
+`didUpdateWidget` into `build`, the throwing paths, the corrected texts.
+**No runtime regression, two P3s in the prose.** Its 25 runtime probes all
+passed and are kept unchanged as `build_reconcile_test.dart`: the build that
+applies new options shows their result once, a notification during the
+reconciliation is not lost, `buildWhen` compares against what was shown,
+`Enabled.when` re-evaluates for a parent update and not for a notification, a
+provider's client swap reaches a cached widget, repeated throwing seeds stay
+pending and recover, a throwing first build and a throwing `client` getter
+end clean, and a mutation finishing under rejected options runs its callback
+once. A `QueriesBuilder` list that throws partway is partly applied, as
+`QueriesObserver.setQueries` documents and upstream does.
+
+| ID | What was wrong | How it was reproduced | What changed |
+|---|---|---|---|
+| V3-1 (P3) | The dialog entries — `query_context.dart`, the guide, the reference table, troubleshooting — still said the page's next build releases a dialog's read; a page build that reads nothing releases nothing, as the corrected nested-builder texts now say | two red cases, both call styles: 1 observer after the page rebuilt, where the text promised 0; the controls whose page reads another key pass | "the page's next own build that reads", in all four. `query_mixin.dart` already said so |
+| V3-2 (P3) | The CHANGELOG promised the observer and a refetch in flight kept through any failed update; a change of client drops the old client's controller first, whether or not the new one can be made | a failed move to another client: `(old observers: 0, refetch cancelled: true)` | The entry scopes the promise to the same client and says what a change of client does. The behaviour stays: an observer on a client the widget no longer names is not the widget's |
+
+**Seen and not new.** Both reviewers checked the backlog's known items and
+the ADRs and reported nothing as new among them (Astra's "Known — seen and
+left" table lists them: C11, SURF-1, V-B-2/V3/V4's documented bounds,
+ADR-0001–0003, #62, the divergence table). Astra's `KNOWN-C11` probe — a
+paused mutation's rollback writing into a client after the provider's
+teardown cleared it — passes and is C11 as recorded.
+
+**Native end-to-end suite.** In the same pass the showcase gained an
+`integration_test/` suite run on an iOS simulator, an Android emulator and
+in Chrome (`e2e-native/run.sh`, the showcase README's "Native end-to-end
+tests"): a real app lifecycle (background and return, the
+`refetchInterval` pause), a proxy on the host that refuses, black-holes or
+records a connection the client hung up, airplane mode and rotation on
+Android, and every screen opened and scrolled through. Its first round found
+no library defect; its widening found E2E-Z1 ("Wider end-to-end coverage"
+below). It found four showcase screens and every app bar overflowing a
+phone's width (fixed, and pinned by `phone_layout_test.dart`), WebKit
+coalescing two identical in-flight `GET`s in a Playwright spec, and that
+`tester.enterText` does nothing in a profile build: it sends the edit as
+text input client `-1`, which `TextInput` accepts inside an `assert` only.
+The harness types through the field's `EditableTextState` instead. Run in
+Firefox and WebKit as well, the task manager's Playwright suite found that a
+page Flutter's service worker controls sends its requests past
+`page.route` in WebKit; the specs block service workers, and its one
+Chromium-only check (a DevTools session) is skipped elsewhere. The showcase's
+specs typed with `click` then `fill`, and on a loaded machine the text
+sometimes landed before Flutter's input connection was active — the app never
+saw it, in Chromium and WebKit alike, on the commit before this round too; CI
+had not shown it. They type through `typeInto` (`e2e/tests/fixtures.ts`),
+which retries focus and fill until the field keeps the text, as the task
+manager's rename test already did.
+
+## Wider end-to-end coverage 2026-10-15
+
+The native suite and the Playwright specs were taken past what a screen shows
+by default: every screen visited and left with nothing held, answers that
+arrive out of order, the API surface no screen had yet used, options that
+throw in a running app, a mutation made in real airplane mode, and a desktop
+run. One of them found a library defect.
+
+| ID | What was wrong | How it was reproduced | What changed |
+|---|---|---|---|
+| E2E-Z1 (P2) | A fetch or a mutation met from another error zone than the one it began in. Dart hands a future's error only to listeners in the error zone the future was made in; anywhere else the listener never hears it and the error is reported as uncaught in the future's zone. `Query.cancel` awaited the cancelled retryer's future, so an `await cancelQueries` from another zone waited for good, and `clear`, `removeQueries` and `resetQueries` reported the `CancelledError` as uncaught. A caller who joined a fetch, or rode along with the fetch that cancelled its own, never heard that it failed, and `continueMutation` — hence `resumePausedMutations`, and every reconnect or focus refetch queued behind it — waited for good on a run that failed. A Flutter app has two error zones as soon as a `runZonedGuarded` wraps `runApp`, or a test's zone meets the binding's: a refetch on focus is started by a platform callback | The native airplane-mode case on Android: a focus refetch, started by a lifecycle event, was still in flight when the test's teardown cleared the client, and the run failed with an uncaught `CancelledError` the core suite never produced. `error_zones_test.dart` starts the work in one guarded zone and meets it from another; seven of its eight cases are red before the fix (three of them hang), the eighth — a join that succeeds — passes on both sides, since a value does cross | `zones.dart`'s `inCurrentZone`: a shared future is handed to a caller in another error zone through a listener registered in the zone it was made in. `Retryer` records its zone, `Query` the zone of its operation, `Mutation` the zone of its run; `cancel`, a joined fetch, a superseded one, the silent-cancel hand-over and a joined or continued mutation go through it. Within one zone the future is returned as it was. Upstream has nothing to match: a promise has no zone |
+| E2E-Z2 (P2) | Found by GPT-6-Astra's review of E2E-Z1: `Query.future`, the public getter for the in-flight fetch, still handed out the operation's own future, so a caller who read it from another error zone never heard the fetch fail or be cancelled, and the error was reported as uncaught where the fetch began | Two cases in `error_zones_test.dart` read `query.future` in zone B, then fail or cancel the fetch zone A started: both hang and leave an uncaught error in zone A before the fix | The getter goes through `inCurrentZone` like every other path to the operation |
+
+**The review of the fix.** GPT-6-Astra (Codex CLI) read E2E-Z1 against Dart's
+zone rules and every path to a shared future, with 55 review tests of its own.
+Beyond E2E-Z2 it raised three points, each reproduced before anything changed.
+Two concern the `Retryer`, which the package does not export, and were not
+taken: its `future`, `start` and `continueFetch` answer only in the zone it was
+made in, and an `initialFuture` made in another zone is not adopted. Its only
+callers are `Query` and `Mutation`, which await `start` in the zone that made
+it, ignore `continueFetch`, and bridge `future` themselves; no construction
+passes an `initialFuture`. The third was taken (P3): the bridge completed the
+caller's future from inside the origin zone, so a zone with an
+`errorCallback` — one that wraps or chains its errors — intercepted the error
+a second time, and a caller across zones got it wrapped twice where a
+listener in the origin got it once. Astra proposed completing in the root
+zone, which skips every callback; the bridge now completes in the caller's
+zone, so the origin's callback runs once, as for its own listeners, and the
+caller's own once, as for any error completed there. A case in
+`error_zones_test.dart` counts the interceptions: two before, one after.
+
+Three more tests hold the branches the fix added that no case reached: a second
+`execute` of a running mutation from another error zone (red with the join
+path unbridged, by timeout), and a fetch superseded while its initial data
+seeds the query — by a fetch a cache listener starts, which it then joins, and
+by a cancel, which it answers with a silent `CancelledError`
+(`coverage_gaps_test.dart`). `continueMutation` reads its run with `!`: a run
+installs it before making its retryer and drops both together, so the branch
+for a retryer without a run could not be reached.
+
+**The suites in every engine.** The new `native-e2e` workflow's first run on
+the pull request also ran both Playwright suites in Firefox and WebKit, which
+the push CI never does. They failed, and so did the web leg, on things of the
+suites' own and none of the library's; each was reproduced in the Playwright
+Linux image under a CPU cap before anything changed, and the fixed suites ran
+clean there in all three engines with no retries (showcase 555 runs, task
+manager 30).
+
+- **Typing that never reached the app.** A click can leave Flutter's input
+  connection inactive; a `fill` then sets a DOM value no listener reads, and
+  `toHaveValue` passes all the same. The task manager's rename sent the old
+  name. `typeInto` (both suites) now counts the `input` listeners per element
+  from an init script and types only once the focused field has Flutter's.
+  Its first version checked right after the click and walked the focus away
+  when it found none, which under load broke every connection on its way up;
+  it now gives each focus two seconds first.
+- **Clocks in assertions.** Two task-manager checks proved an optimistic
+  change with `{ timeout: 300 }`, and a showcase case relied on a one-second
+  answer outlasting the next keystroke. Each request is now held in the
+  browser until the assertion has run.
+- **A click outside the window.** A row a lazy list builds is in the
+  semantics tree before it is on screen; WebKit's click on a button just past
+  the edge reached nothing. `reveal` scrolls until the target lies inside.
+- **A boot that waited on the internet.** A web build whose font manifest has
+  no Roboto fetches it from `fonts.gstatic.com`, and the engine starts the
+  app only once that answers; a stalled request left the page blank. Both
+  examples bundle Roboto (Apache 2.0, the weights their screens use).
+- **The web leg** started whichever Chrome the runner had, older than the
+  chromedriver set up beside it; `run.sh` passes `CHROME_EXECUTABLE` on as
+  `--chrome-binary`. Two task-manager names drawn in the same millisecond
+  could collide; they carry a random suffix.
+- **Two clocks in one window.** The native interval case bounded its window
+  with the app's lifecycle, stamped by the device, and looked for polls in
+  the backend's log, stamped by the host. On the Android runner a poll begun
+  before `paused` was logged inside the window. The case now stamps each
+  poll as it begins, from the client's query cache, on the device's clock,
+  and asserts it hears the polls after the return.

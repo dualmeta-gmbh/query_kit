@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, test } from './fixtures'
+import { expect, fact, test, typeInto } from './fixtures'
 
 // The add card, the strip and a list of four rows are taller than the default
 // viewport, and the scaffold's list builds only what is in view.
@@ -39,9 +39,7 @@ function holdPost(page: Page) {
 
 /// Types `text` into the field and presses `Add`.
 async function add(page: Page, text: string) {
-  const field = page.getByRole('textbox')
-  await field.click()
-  await field.fill(text)
+  await typeInto(page, page.getByRole('textbox'), text)
   await page.getByRole('button', { name: 'Add', exact: true }).click()
 }
 

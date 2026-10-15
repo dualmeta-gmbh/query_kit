@@ -7,7 +7,7 @@ const reader = (page: Page, text: string) => factIn(page, 'reader', text)
 
 const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
-// A segment of one knob: both knobs have a `5 s`, so the knob's group first.
+// A segment of one knob: both knobs have a `zero` and a `5 s`, so the knob's group first.
 const pick = (page: Page, knob: 'stale-time' | 'gc-time', label: string) =>
   group(page, knob).getByRole('radio', { name: label, exact: true }).click()
 
@@ -132,6 +132,36 @@ test('gc never: a detached entry outlives the five seconds', async ({ page, open
   await page.waitForTimeout(7_000)
   await expect(fact(page, 'time', 'status=success')).toBeVisible()
   await expect(fact(page, 'time', 'observers=0')).toBeVisible()
+})
+
+test('gc zero: no shorter on an entry that had 5 s, and collected the moment its reader leaves on a new one', async ({
+  page,
+  open,
+  scenario,
+}) => {
+  await open('/stale-and-gc')
+  await expect(reader(page, 'serial=1')).toBeVisible()
+  await pick(page, 'gc-time', 'zero')
+
+  // The entry was given 5 s and keeps the longest: zero does not shorten it.
+  await button(page, 'Detach reader').click()
+  await expect(fact(page, 'time', 'observers=0')).toBeVisible()
+  await page.waitForTimeout(1_000)
+  await expect(fact(page, 'time', 'status=success')).toBeVisible()
+
+  // A new entry, made by a reader with zero: gone as soon as it leaves.
+  await button(page, 'Remove entry').click()
+  await expect(fact(page, 'time', 'status=absent')).toBeVisible()
+  await button(page, 'Attach reader').click()
+  await expect(reader(page, 'serial=2')).toBeVisible()
+  await expect(fact(page, 'time', 'status=success')).toBeVisible()
+  await button(page, 'Detach reader').click()
+  await expect(fact(page, 'time', 'status=absent')).toBeVisible({ timeout: 1_000 })
+
+  // And the next attach starts from scratch.
+  await button(page, 'Attach reader').click()
+  await expect(reader(page, 'serial=3')).toBeVisible()
+  expect(await scenario.count('GET', /^\/api\/time$/)).toBe(3)
 })
 
 test('dynamic: fresh after an odd serial, stale after an even one', async ({ page, open, scenario }) => {

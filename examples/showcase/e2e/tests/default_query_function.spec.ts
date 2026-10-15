@@ -4,14 +4,24 @@ import { expect, fact, test } from './fixtures'
 // The screen is longer than the browser window, and the scaffold's list
 // builds only what is in view — so a section below the fold is not in the
 // semantics tree until the list has been scrolled to it. The wheel goes to
-// Flutter's own scrolling, like a user's would.
+// Flutter's own scrolling, like a user's would. Being in the tree is not yet
+// being on screen: the list builds a little past the window's edge, and a
+// click there lands outside the canvas — WebKit's did — so the wheel turns
+// until the target lies wholly inside the window.
 async function reveal(page: Page, target: Locator) {
+  const height = page.viewportSize()!.height
+  const inView = async () => {
+    if ((await target.count()) === 0) return false
+    const box = await target.boundingBox()
+    return box !== null && box.y >= 0 && box.y + box.height <= height
+  }
   await page.mouse.move(640, 400)
-  for (let step = 0; step < 20 && (await target.count()) === 0; step += 1) {
+  for (let step = 0; step < 20 && !(await inView()); step += 1) {
     await page.mouse.wheel(0, 300)
     await page.waitForTimeout(150)
   }
   await expect(target).toBeVisible()
+  expect(await inView(), 'the target lies inside the window').toBe(true)
 }
 
 const text = (page: Page, value: string) => page.getByText(value, { exact: true })

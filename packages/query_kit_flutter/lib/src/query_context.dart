@@ -102,10 +102,16 @@ import 'read_set.dart';
 ///   `LayoutBuilder` callback runs later than `build`, and it releases
 ///   nothing the widget's own build read. A key such a callback stops reading
 ///   stays subscribed until the widget's next own build that reads through
-///   this context, or its unmount. A `build` that reads nothing itself never
-///   starts over: those keys stay until the parent rebuilds this widget
-///   (hands it a new widget instance), or it unmounts. Read in `build`, or
-///   give the nested part a widget of its own.
+///   this context, or its unmount. A `build` that reads nothing releases
+///   nothing, and neither does a new widget instance from the parent on its
+///   own: the first read through this context after it — a nested
+///   builder's included — counts as that own build. And an own build that
+///   reads keeps only what it reads: a nested builder it does not re-run —
+///   its widget kept in a field — reads nothing then, so its keys are
+///   released after that frame while it still shows them, until it runs
+///   again and reads. (Flutter does not re-run such a builder when this
+///   widget rebuilds, so it shows a change only when it runs again anyway.)
+///   Read in `build`, or give the nested part a widget of its own.
 /// * **A `LayoutBuilder`'s own context.** Reads through the `context` a
 ///   `LayoutBuilder`, `SliverLayoutBuilder` or `OrientationBuilder` hands its
 ///   builder start over whenever that builder provably runs: its constraints
@@ -121,8 +127,9 @@ import 'read_set.dart';
 ///   that widget.
 /// * **Dialogs, sheets and overlays read through their own context.**
 ///   Reading through a page's `context` from a `showDialog` or bottom-sheet
-///   builder rebuilds the page, not the dialog, and the page's next build
-///   releases the read while the dialog may still show it. Read through the
+///   builder rebuilds the page, not the dialog, and the page's next own
+///   build that reads through its `context` releases the read while the
+///   dialog may still show it. Read through the
 ///   builder's own `context`, or in a widget inside the dialog.
 /// * **Never through a list's item-builder context.** The `context` a
 ///   `ListView.builder`, `GridView.builder`, `PageView.builder` or another

@@ -364,10 +364,11 @@ class _ReaderState extends State<_Reader> with QueryMixin {
         QueryDebugStrip(queryKey: counterKey, label: 'counter'),
         SectionCard(
           title: 'B. Callback order',
-          trailing: const _IsMutatingCount(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              const _IsMutatingCount(),
+              const SizedBox(height: 8),
               const Text(
                 'The option callbacks run first, each awaited before the '
                 'next; the callbacks passed to this one mutate call run once '
@@ -531,14 +532,14 @@ class _IsMutatingCountState extends State<_IsMutatingCount>
   }
 
   @override
-  Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
+  Widget build(BuildContext context) => Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: <Widget>[
           Text(
             'client.isMutating()',
             style: Theme.of(context).textTheme.labelLarge,
           ),
-          const SizedBox(width: 8),
           Text('isMutating=${_client.isMutating()}', style: monoStyle),
         ],
       );

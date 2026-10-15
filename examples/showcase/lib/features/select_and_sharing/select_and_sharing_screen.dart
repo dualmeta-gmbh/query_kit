@@ -44,6 +44,19 @@
 ///   data through untouched, so with sharing off the fifth reader moves on
 ///   every refetch.
 ///
+/// The four `select` readers' options are the control's, with
+/// `withSelect` added: one options helper, every field carried over, the
+/// same key.
+///
+/// Below, behind `Measure a value class`, two more reads of the todos whose
+/// data is not a list but a value class around one — the shape freezed
+/// suggests, and the shape the first real integration measured. A class of
+/// one's own is a leaf to structural sharing: equal, it is kept whole;
+/// changed, it is replaced whole, every element with it. `TodoBoard` is that
+/// leaf; `SharedTodoBoard` implements `StructurallyShareable` and keeps the
+/// todos that did not change. Each shows `kept=K of N`: how many of the
+/// todos it holds are the instances it held before its last change.
+///
 /// Proofs (widget tests in `test/features/select_and_sharing_test.dart`,
 /// end-to-end in `e2e/tests/select_and_sharing.spec.ts`): every reader shows
 /// its selection after one `GET /api/todos`; a refetch with equal data moves
@@ -56,9 +69,13 @@
 /// a new instance — the controller's list of texts — while the three whose
 /// selections are `==` to the last stand still and the guard-less readers'
 /// `builds` climb; and the control's `data builds` climbs with sharing off
-/// and stands still once it is back on.
+/// and stands still once it is back on. The value class: after `Rename
+/// todo 2` and `Refetch boards`, the leaf board kept `0 of 3` todos and the
+/// shareable one `2 of 3`; a refetch that changed nothing keeps both boards
+/// whole (`instances=` stands still).
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
@@ -103,19 +120,13 @@ final StructuralSharing<List<Todo>> keepNext = noStructuralSharing();
 
 /// The one query every reader shares. They differ only in what they select
 /// and in whether the cache write shares structure. A select is its own
-/// options shape (`QuerySelectOptions`), so the raw reader has
-/// [rawTodosQuery].
+/// options shape (`QuerySelectOptions`): [rawTodosQuery] with `withSelect`.
 QuerySelectOptions<List<Todo>, T> todosQuery<T>(
   ShowcaseApi api, {
   required T Function(List<Todo> todos) select,
   bool sharing = true,
 }) =>
-    QuerySelectOptions<List<Todo>, T>(
-      queryKey: ShowcaseKeys.todos,
-      queryFn: (context) => api.todos(signal: context.signal),
-      select: select,
-      structuralSharing: sharing ? null : keepNext,
-    );
+    rawTodosQuery(api, sharing: sharing).withSelect(select);
 
 /// [todosQuery] without a select: the same key, the same fetch, the list as
 /// the cache holds it.
@@ -129,6 +140,56 @@ QueryObserverOptions<List<Todo>> rawTodosQuery(
       structuralSharing: sharing ? null : keepNext,
     );
 
+/// The todos inside a value class: equal when the todos are, and to
+/// structural sharing a leaf — kept whole or replaced whole.
+class TodoBoard {
+  const TodoBoard(this.todos);
+
+  final List<Todo> todos;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TodoBoard &&
+      other.runtimeType == runtimeType &&
+      listEquals(other.todos, todos);
+
+  @override
+  int get hashCode => Object.hashAll(todos);
+}
+
+/// [TodoBoard], walked into: the todos that did not change stay the
+/// instances the cached board held.
+class SharedTodoBoard extends TodoBoard
+    implements StructurallyShareable<SharedTodoBoard> {
+  const SharedTodoBoard(super.todos);
+
+  @override
+  SharedTodoBoard shareWith(SharedTodoBoard previous) {
+    final shared = replaceEqualDeep(previous.todos, todos);
+    return identical(shared, previous.todos)
+        ? previous
+        : SharedTodoBoard(shared);
+  }
+}
+
+QueryKey boardKey({required bool shares}) => QueryKey(<Object?>[
+      'select-and-sharing',
+      'board',
+      if (shares) 'shared' else 'leaf',
+    ]);
+
+QueryObserverOptions<TodoBoard> boardQuery(
+  ShowcaseApi api, {
+  required bool shares,
+}) =>
+    QueryObserverOptions<TodoBoard>(
+      queryKey: boardKey(shares: shares),
+      queryFn: (context) async {
+        final todos = await api.todos(signal: context.signal);
+        return shares ? SharedTodoBoard(todos) : TodoBoard(todos);
+      },
+    );
+
 typedef _TodoPatch = ({int id, String? text, bool? done});
 
 class SelectAndSharingScreen extends StatefulWidget {
@@ -140,6 +201,7 @@ class SelectAndSharingScreen extends StatefulWidget {
 
 class _SelectAndSharingScreenState extends State<SelectAndSharingScreen> {
   bool _sharingOff = false;
+  bool _boards = false;
 
   @override
   Widget build(BuildContext context) {
@@ -175,6 +237,26 @@ class _SelectAndSharingScreenState extends State<SelectAndSharingScreen> {
               _MixinReader(sharing: sharing),
               _ControllerReader(sharing: sharing),
               _RawReader(sharing: sharing),
+            ],
+          ),
+        ),
+        SectionCard(
+          title: 'A value class around the list',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              // Off at first, so the readers above count the only requests.
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Measure a value class'),
+                value: _boards,
+                onChanged: (value) => setState(() => _boards = value),
+              ),
+              if (_boards) ...const <Widget>[
+                _BoardRefetch(),
+                _BoardReader(shares: false),
+                _BoardReader(shares: true),
+              ],
             ],
           ),
         ),
@@ -338,7 +420,14 @@ class _ReaderRow extends StatelessWidget {
                 Expanded(
                   child: Text(style, style: theme.textTheme.labelLarge),
                 ),
-                Text(selection, style: theme.textTheme.bodySmall),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    selection,
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 2),
@@ -569,4 +658,81 @@ class _RawReaderState extends State<_RawReader> {
           );
         },
       );
+}
+
+class _BoardRefetch extends StatelessWidget {
+  const _BoardRefetch();
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: _ActionButton(
+          'Refetch boards',
+          onPressed: () => QueryClientProvider.of(context)
+              .refetchQueries(
+                filters: QueryFilters(
+                  queryKey: QueryKey(const <Object?>[
+                    'select-and-sharing',
+                    'board',
+                  ]),
+                ),
+              )
+              .ignore(),
+        ),
+      );
+}
+
+/// One board, read through `context.query`, and what its last change kept.
+class _BoardReader extends StatefulWidget {
+  const _BoardReader({required this.shares});
+
+  final bool shares;
+
+  @override
+  State<_BoardReader> createState() => _BoardReaderState();
+}
+
+class _BoardReaderState extends State<_BoardReader> {
+  TodoBoard? _last;
+  int _instances = 0;
+  String _kept = 'kept=none yet';
+
+  /// Counts a board the first time it is built: how many of its todos are
+  /// the instances the board before it held, by position.
+  void _measure(TodoBoard board) {
+    if (identical(board, _last)) return;
+    final last = _last;
+    if (last != null) {
+      var kept = 0;
+      for (final (index, todo) in board.todos.indexed) {
+        if (index < last.todos.length && identical(todo, last.todos[index])) {
+          kept += 1;
+        }
+      }
+      _kept = 'kept=$kept of ${board.todos.length}';
+    }
+    _last = board;
+    _instances += 1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final result = context.query(
+      boardQuery(ShowcaseScope.apiOf(context), shares: widget.shares),
+    );
+    final board = result.dataOrNull;
+    if (board != null) _measure(board);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: FactGroup(
+        name: widget.shares ? 'shared board' : 'leaf board',
+        facts: <String>[
+          if (board == null) 'pending' else 'todos=${board.todos.length}',
+          'instances=$_instances',
+          _kept,
+          'isFetching=${result.isFetching}',
+        ],
+      ),
+    );
+  }
 }
