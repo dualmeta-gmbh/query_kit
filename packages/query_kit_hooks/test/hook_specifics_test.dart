@@ -1941,5 +1941,41 @@ void main() {
       // A held-back `retry` refetched the repaired B too: (3, 2).
       expect((fetchesA, fetchesB), (3, 1));
     });
+
+    // The price of the rule, pinned: a page fetch that leaves the selected
+    // value where it was is two builds under a predicate that declines it,
+    // one when `isFetchingNextPage` goes up and one when it comes down. The
+    // predicate is not asked for either.
+    hookTest(
+        'useInfiniteQuery: a page fetch that keeps the selected value is '
+        'two builds, the predicate unasked', (tester, client) async {
+      late InfiniteQueryController<int, int, String> feed;
+      var builds = 0;
+      var asked = 0;
+      await tester.pumpApp(client, HookBuilder(builder: (_) {
+        builds++;
+        feed = useInfiniteQuery(
+            InfiniteQuerySelectOptions<int, int, String>(
+              queryKey: QueryKey(['beside-cost']),
+              initialPageParam: 0,
+              initialData:
+                  InitialData.value(InfiniteData(pages: [0], pageParams: [0])),
+              staleTime: StaleTime.infinite,
+              pageFn: (c) => sleep(10).then((_) => c.pageParam),
+              getNextPageParam: (page, _, __, ___) => page + 1,
+              select: (_) => 'unchanged',
+            ), buildWhen: (p, c) {
+          asked++;
+          return p.dataOrNull != c.dataOrNull;
+        });
+        return Text(feed.value.dataOrNull!);
+      }));
+      feed.fetchNextPage().ignore();
+      await tester.pump();
+      final afterStart = builds;
+      await advance(tester, 11);
+      expect(feed.value.dataOrNull, 'unchanged');
+      expect((afterStart, builds, asked), (2, 3, 0));
+    });
   });
 }

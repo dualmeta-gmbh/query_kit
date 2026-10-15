@@ -6791,8 +6791,9 @@ refetched the repaired one.
   go red with `beside` taken out of `ReadEntry`.
 - `besideOf` joins `ObservedState` and `observedStateOf` behind the barrel's
   `hide`, and C23.7's test checks it.
-- No existing binding test changed. "buildWhen on every builder" still holds:
-  a refetch moves no flag there, so its predicate still decides.
+- One existing binding assertion changed: C23.7's list of what the barrel
+  hides gains `besideOf`. "buildWhen on every builder" still holds: a
+  refetch moves no flag there, so its predicate still decides.
 - **The showcase taught the defect.** Its `build-when` screen said `Load
   next` was one build for a filtered infinite reader and two for a plain
   one, because the page fetch starting "moves only `fetchStatus`". It moves
@@ -6800,9 +6801,12 @@ refetched the repaired one.
   showing a spinner from that flag would never have shown it. Now `Load
   next` is two builds for both halves. The screen's text, its widget test,
   its Playwright spec and the site's example page say so. `Refetch the
-  pages` moves no flag, and there the predicate still answers. The cost is
-  one build per page fetch for a filtered reader that shows no flag; the
-  binding cannot tell which readers show one.
+  pages` moves no flag, and there the predicate still answers. The cost
+  for a filtered reader that shows no flag is up to two builds per page
+  fetch, one as `isFetchingNextPage` goes up and one as it comes down. When
+  the new page changes what the reader selected, as on this screen, the
+  second is the value's own. The binding cannot tell which readers show a
+  flag.
 - The hooks pass `beside` from `ControllerHookState.besideOf`: the flags for
   `useInfiniteQuery`, and for `useCombinedQueries` which sources are in error
   and their refetch targets. Their `PORTING_NOTES` record the two hook
@@ -6810,3 +6814,46 @@ refetched the repaired one.
 
 **Counts after:** binding **317** VM; hooks **315** VM; showcase **256**
 widget tests, the same count, one of them changed.
+
+**Second review (GPT-6.1-Sol, xhigh).** It ran both suites, put the new
+branch out of action and saw all five regressions go red. It probed the rule
+with a decision matrix, `useCombinedQueries`' refetch tear-offs (stable
+equality) and a predicate replaced across a key swap, all green. Two
+findings, both reproduced:
+
+- **S-1 (P2 as filed, pre-existing): a reread through an outer `context`
+  can take the outer reader's rebuild.** A nested `ValueListenableBuilder`
+  writes the cache during its build, then reads the same entry through the
+  outer builder's `context`. That read records the new state as built for
+  the outer element, so the notification that follows compares equal, and
+  the outer text stays stale. Reproduced with Sol's case and again with a
+  plain `context.query`, no `buildWhen` and no flags. So it is not
+  `beside`'s and not the infinite query's. It needs a cache write *during a
+  build*: the same reread after a write outside the build is green, because
+  the notification arrives before the frame. Through the nested builder's
+  own `context` it is green either way. Not fixed here: it is the binding's
+  additive-read rule, released in 1.0.x and under parallel change for 1.0.4.
+  Filed for the binding as #108 with the reproduction, which is red as well
+  at `669c911`, before `beside`, and on `e2e-coverage` (binding 1.0.4).
+- **S-2 (P3, the orchestrator's notes only): "a flag that moves and moves
+  back between two builds does not rebuild" was too strong.** It holds when
+  both moves arrive before a delivery. Once the first delivery has
+  scheduled a rebuild, the move back does not cancel it (builds 1 → 2). That
+  was already true of the value, and it is the right behaviour: a scheduled
+  frame is not withdrawn. No dartdoc made the claim, and no code changed.
+
+From the sparring:
+
+- The cost was understated. The notes said one build per page fetch; with
+  the selected value unchanged it is two. Corrected above and pinned in the
+  hooks' `hook_specifics_test.dart`: "a page fetch that keeps the selected
+  value is two builds, the predicate unasked". Without the fix that case
+  measures (1, 1, 2) for builds before, builds after and predicate calls.
+- "No existing binding test changed" was wrong by one: C23.7's hide list.
+  Corrected above.
+- A backport to 1.0.x: Sol reads it as a correctness fix with an
+  observable change in build counts, which semver allows in a patch. It
+  warns that 1.0.x documents the unasked rebuild for flags moving *alone*.
+  That is left to the maintainer.
+
+**Counts after the review:** hooks **316** VM.
