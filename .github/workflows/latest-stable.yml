@@ -1,0 +1,45 @@
+# Both packages on whatever Flutter stable is today — the SDK most users
+# have. `ci` pins its Flutter (and runs the declared floor in `floors`), so a
+# new stable release that breaks something would otherwise show up first in
+# someone else's app. Weekly and on demand, not per push: the SDK changes
+# under it independently of any commit, and a red run is about Flutter, not
+# about the change that happened to trigger it.
+name: latest-stable
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * 1'
+
+jobs:
+  latest-stable:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      # A newer SDK resolves newer packages; the lockfile is the pinned
+      # SDK's, so it is left behind here on purpose.
+      - run: flutter pub upgrade
+      - run: (cd packages/query_kit_flutter/example && flutter pub get)
+      # Warnings fail; infos do not — a new SDK may add lints whose
+      # adoption is a decision, not a breakage.
+      - run: dart analyze packages examples tool
+      - name: core
+        run: dart test && dart test -p chrome
+        working-directory: packages/query_kit
+      - name: binding
+        run: flutter test && flutter test --platform chrome --exclude-tags vm-only
+        working-directory: packages/query_kit_flutter
+      - run: flutter test
+        working-directory: examples/doc_snippets
+      - run: flutter test
+        working-directory: examples/task_manager
+      - run: flutter test
+        working-directory: examples/showcase
+      - run: flutter test
+        working-directory: packages/query_kit_flutter/example

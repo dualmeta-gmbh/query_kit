@@ -125,7 +125,13 @@ From 1.0.1 on, nothing is done in a browser:
 1. Bump `version` in both pubspecs (and the binding's `query_kit:` constraint
    when it needs the new core), and add a heading to both CHANGELOGs.
    Semantic versioning holds: a breaking change is a major.
-2. Merge to `main` and wait for `ci` to go green there.
+2. Merge to `main` and wait for `ci` to go green there. Then run
+   `native-e2e` by hand on `main` (Actions → native-e2e → Run workflow,
+   "all"): the showcase's native suite on an Android emulator, an iOS
+   simulator, as a macOS and a Linux desktop app and in Chrome, and both
+   Playwright suites in all three browsers. It runs on a schedule otherwise
+   — iOS and macOS only monthly, because a macOS minute costs twenty Linux
+   ones — so a release is the one time it is asked for.
 3. Push `query_kit-v<version>`. `publish.yml` publishes the core, and
    `pages.yml` redeploys the site.
 4. Once `https://pub.dev/api/packages/query_kit` lists the new version, push

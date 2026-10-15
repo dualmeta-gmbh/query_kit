@@ -66,6 +66,11 @@ jobs:
       - name: doc snippet tests
         run: flutter test
         working-directory: examples/doc_snippets
+      # The example pub.dev shows on the package page: it starts, lists its
+      # tasks and adds one.
+      - name: binding example test
+        run: flutter test
+        working-directory: packages/query_kit_flutter/example
       # `dart pub publish --dry-run` exits 65 when validation finds a warning
       # (a missing CHANGELOG, say) and 0 when the package is clean, so a
       # warning fails the job without any extra flag.
@@ -93,7 +98,7 @@ jobs:
       - name: docs jargon
         run: dart run tool/check_docs_jargon.dart
       - name: formatter
-        run: dart format --set-exit-if-changed --output=none packages examples/task_manager/lib examples/task_manager/test examples/showcase/lib examples/showcase/test examples/doc_snippets/lib examples/doc_snippets/test tool
+        run: dart format --set-exit-if-changed --output=none packages examples/task_manager/lib examples/task_manager/test examples/showcase/lib examples/showcase/test examples/showcase/integration_test examples/showcase/test_driver examples/doc_snippets/lib examples/doc_snippets/test tool
       - name: demo web build
         run: flutter build web --no-pub
         working-directory: examples/task_manager
@@ -247,7 +252,7 @@ jobs:
         if: matrix.app == 'showcase'
         run: |
           (cd server && PORT=5176 node server.ts &)
-          for i in $(seq 1 50); do curl -sf localhost:5176/api/__scenario/probe/requests > /dev/null && break; sleep 0.2; done
+          for _ in $(seq 1 50); do curl -sf localhost:5176/api/__scenario/probe/requests > /dev/null && break; sleep 0.2; done
           SHOWCASE_SERVER=http://localhost:5176/api flutter test test/backend_contract_test.dart
         working-directory: examples/showcase
       # On a port of its own: Playwright starts the demo's backend on 5174
@@ -258,7 +263,7 @@ jobs:
         if: matrix.app == 'task_manager'
         run: |
           (cd server && PORT=5177 LIST_LATENCY=0 DETAIL_LATENCY=0 WRITE_LATENCY=0 CONFIRM_AFTER=300 node server.ts &)
-          for i in $(seq 1 50); do curl -sf localhost:5177/api/tasks > /dev/null && break; sleep 0.2; done
+          for _ in $(seq 1 50); do curl -sf localhost:5177/api/tasks > /dev/null && break; sleep 0.2; done
           TASK_MANAGER_SERVER=http://localhost:5177/api flutter test test/backend_contract_test.dart
         working-directory: examples/task_manager
       - name: playwright

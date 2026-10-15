@@ -1,0 +1,269 @@
+# The showcase's native end-to-end suite (examples/showcase/integration_test,
+# run by e2e-native/run.sh) on an Android emulator, an iOS simulator, as a
+# macOS and a Linux desktop app and in Chrome, plus both apps' Playwright
+# suites in Firefox and WebKit, which the `ci` workflow's `e2e` job leaves to
+# Chromium.
+#
+# Rarely, by design: a macOS minute costs twenty Linux ones. Android, Linux
+# and the web run every Monday and on a pull request labelled `native-e2e`;
+# iOS and macOS once a month and on demand. Before a release, run it by hand (Actions → native-e2e
+# → Run workflow, "all"); docs/releasing.md says so.
+name: native-e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Which platforms
+        type: choice
+        options: [all, android, ios, macos, linux, web]
+        default: all
+  schedule:
+    - cron: '0 3 * * 1' # weekly: Android, Linux and the web
+    - cron: '0 4 1 * *' # monthly: everything, iOS and macOS included
+  pull_request:
+    types: [labeled, synchronize]
+
+concurrency:
+  group: native-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.38.8
+
+jobs:
+  android:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","android"]'), inputs.platforms)) ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native-e2e'))
+    # x64 for KVM: the emulator needs nested virtualisation, which Blacksmith
+    # offers on x64 Linux only.
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - run: flutter pub get
+      # Debug first (the binding's debug-only assertions on), then profile
+      # (compiled ahead of time, as a user gets it). run.sh finds the
+      # emulator the action booted.
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          working-directory: examples/showcase
+          script: e2e-native/run.sh android && MODE=profile e2e-native/run.sh android
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: native-e2e-android-logs
+          path: examples/showcase/e2e-native/.logs
+          retention-days: 7
+
+  ios:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","ios"]'), inputs.platforms)) ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 4 1 * *')
+    runs-on: blacksmith-6vcpu-macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: CocoaPods
+        run: pod --version || sudo gem install cocoapods
+      - run: flutter pub get
+      # The newest iPhone the image's Xcode ships, unless it has the one the
+      # suite was written on. A simulator runs debug builds only.
+      - name: end-to-end tests
+        working-directory: examples/showcase
+        run: |
+          device="iPhone 17 Pro"
+          if ! xcrun simctl list devices available | grep -q "$device ("; then
+            device="$(xcrun simctl list devices available | grep -oE 'iPhone [0-9]+ Pro \(' | sed 's/ ($//' | sort -V | tail -1)"
+          fi
+          echo "simulator: $device"
+          IOS_DEVICE="$device" e2e-native/run.sh ios
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: native-e2e-ios-logs
+          path: examples/showcase/e2e-native/.logs
+          retention-days: 7
+
+  # The desktop app on the iOS job's kind of runner, once a month: a window
+  # sent away behind Finder and brought back, where a phone is paused.
+  macos:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","macos"]'), inputs.platforms)) ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 4 1 * *')
+    runs-on: blacksmith-6vcpu-macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: CocoaPods
+        run: pod --version || sudo gem install cocoapods
+      - run: flutter pub get
+      - name: end-to-end tests
+        working-directory: examples/showcase
+        run: e2e-native/run.sh macos
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: native-e2e-macos-logs
+          path: examples/showcase/e2e-native/.logs
+          retention-days: 7
+
+  # The desktop app under a virtual display, on a Linux minute: everything
+  # but a trip away, which needs a window manager the runner has none of.
+  linux:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","linux"]'), inputs.platforms)) ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native-e2e'))
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: desktop toolchain and a virtual display
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev xvfb
+      - run: flutter pub get
+      - name: end-to-end tests
+        working-directory: examples/showcase
+        run: e2e-native/run.sh linux
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: native-e2e-linux-logs
+          path: examples/showcase/e2e-native/.logs
+          retention-days: 7
+
+  web:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","web"]'), inputs.platforms)) ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native-e2e'))
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4 # v2.2.0
+        id: chrome
+        with:
+          install-chromedriver: true
+      - run: flutter pub get
+      - name: end-to-end tests, debug and release
+        working-directory: examples/showcase
+        env:
+          CHROMEDRIVER: ${{ steps.chrome.outputs.chromedriver-path }}
+          CHROME_EXECUTABLE: ${{ steps.chrome.outputs.chrome-path }}
+        run: e2e-native/run.sh web && MODE=release e2e-native/run.sh web
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: native-e2e-web-logs
+          path: examples/showcase/e2e-native/.logs
+          retention-days: 7
+
+  # Both Playwright suites in all three engines. The `ci` workflow runs them
+  # in Chromium on every push; Firefox and WebKit differ in ways that matter
+  # here (WebKit coalesces two identical in-flight GETs into one request).
+  playwright:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","web"]'), inputs.platforms)) ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native-e2e'))
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: task_manager
+            server: examples/task_manager/server
+            build: --dart-define=E2E=true
+          - app: showcase
+            server: examples/showcase/server
+            build: --dart-define=E2E=true --pwa-strategy=none --no-web-resources-cdn
+    name: playwright, all browsers (${{ matrix.app }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: flutter pub get
+      - name: web build with semantics on
+        run: flutter build web --no-pub ${{ matrix.build }}
+        working-directory: examples/${{ matrix.app }}
+      - name: backend dependencies
+        run: npm ci
+        working-directory: ${{ matrix.server }}
+      - name: playwright
+        run: npm ci && npx playwright install --with-deps
+        working-directory: examples/${{ matrix.app }}/e2e
+      - name: end-to-end tests
+        run: E2E_BROWSERS=all npx playwright test
+        working-directory: examples/${{ matrix.app }}/e2e
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: playwright-all-${{ matrix.app }}
+          path: |
+            examples/${{ matrix.app }}/e2e/playwright-report
+            examples/${{ matrix.app }}/e2e/test-results
+          retention-days: 7

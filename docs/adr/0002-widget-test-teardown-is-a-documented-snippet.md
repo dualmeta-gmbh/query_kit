@@ -22,6 +22,12 @@ thing on the testing page and in the binding README, compiled in
 `examples/doc_snippets` so it cannot rot. The binding's own tests and both
 examples use one harness of that shape.
 
+**Amended since:** the snippet has five steps now, not three. A mutation
+the first `clear()` dropped fails a few microtasks later, and an optimistic
+rollback in its callbacks re-creates the query it names, gc timer included;
+so the teardown ends with one more `pump()` and a second `client.clear()`
+(C11 in PORTING_NOTES). The decision — a snippet, not an export — stands.
+
 ## Considered options
 
 1. **A companion `query_kit_flutter_test` package.** The honest place for a
