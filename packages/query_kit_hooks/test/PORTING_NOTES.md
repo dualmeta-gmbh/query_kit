@@ -530,7 +530,7 @@ share is recorded in the core's PORTING_NOTES, "The hooks' deep-dive review".
 | F-1 (P2) | A list of a `String` and an `int` query compiles as `Object`, and the collection creates its entries as `Object` entries. A typed reader of one of those keys then throws `QueryDataTypeError`; where a typed reader came first, the list's build throws | Yes, with Fable's probes, both orders | Documented on `useQueries`, `useCombinedQueries`, `QueriesBuilder` and `QueriesController`, in the hooks guide and on the troubleshooting page. Pinned by "a list of queries of two data types" in `hook_specifics_test.dart`. A debug check needs a member on the core's options, `Object` being a legal data type, so it is the binding's backlog item HB-4, for all four styles at once |
 | F-2 (P3) | `adapter.dart` did not export `BuildWhen`, the type `shouldRebuild` takes | Yes: the export list | Exported |
 | F-3 (P3) | `useInfiniteQuery` copied the controller's six paging flags as its `beside`. A hooks release resolves against any later binding of the same major, so a flag that binding added would be missing from the copy | Yes, by reading: the copy, and the barrel hiding `besideOf` | `RebuildRule.of(controller)`, the rule the binding's own readers use, built from the binding's own functions. `useQuery`, `useInfiniteQuery` and `useMutation` take it through `ControllerHookState.ruleOf`. With the binding's `besideOf` switched off, three hooks cases go red. Fable proposed exporting `observedStateOf` and `besideOf`; one constructor keeps the surface to the rule, as ADR-0004 decided, and an adapter needs to know neither name |
-| F-4 (P3) | The top-type assertion offered only `QueryController.create<Task>` and `QueryBuilder<Task>` as remedies, for a hooks user who wrote neither | Yes: the message, printed | For a plain query it names the options' type argument first, `QueryObserverOptions<Task>(…)`. For a select whose result alone is a top type it names the select's return type, after the verification pass (V1-1) |
+| F-4 (P3) | The top-type assertion offered only `QueryController.create<Task>` and `QueryBuilder<Task>` as remedies, for a hooks user who wrote neither | Yes: the message, printed | For a plain query it names the options' type argument first, `QueryObserverOptions<Task>(…)`. For options with a select it names the select's return type, with a cast where the select returns `dynamic` (V1-1, V2-1, V2-2) |
 
 Plan decisions reopened: Astra none. Fable reopened D4 narrowly, for the
 copy of the flags. F-3 answers it with one constructor rather than two more
@@ -583,5 +583,31 @@ inside `shouldRebuild`, after the hooks' own probe read succeeded, escapes
 that probe's catch. It predates AP11 and needs a value that throws on one
 read and not on the next.
 
-**Counts after the second pass:** hooks **332**, binding **320**. A third
+**Counts after the second pass:** hooks **332**, binding **320**.
+
+### Third pass (verification of the second pass's fixes)
+
+GPT-6.1-Sol (xhigh) read `35cb27e` against the second pass's report. It
+confirmed the following:
+
+- The assertion's condition is right: a named `TData` passes and a top one
+  fails. The message calls no user code, and the whole assertion is gone in
+  release.
+- `useQuery` and `useSelectQuery` reach the changed constructor. The
+  collections bypass it, and the infinite controller and `.observing` keep
+  their own messages.
+- V1-2's wording and HB-4 hold everywhere.
+- The second pass's notes state its report faithfully.
+
+V1-1's fix keyed the message on the wrong thing.
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| V2-1 (P2) | V1-1 branched on whether the cached type is named, not on whether there is a select. Options with a select whose two types are both `dynamic` got the plain advice. Following it, by typing the fetch, only moved the failure to `QueryController<String, dynamic>`. Options widened where they are read, `QueryController<String, Object?>` over plain options, were told to type a select they do not have. The binding's test checked substrings of the message, never that the cure worked | Yes, with Sol's probe: `BOTH-TOP` printed the plain advice, and the widened plain options printed the select's | The message now branches on `options is QuerySelectOptions`. The binding's case covers both shapes and constructs each cure it names. With the old condition, it fails on the both-`dynamic` select |
+| V2-2 (P3) | Under `strict-casts`, which this repository sets, `withSelect<int>((text) => jsonDecode(text))` does not compile, and neither does a `jsonDecode` tear-off. The advice named only the type argument | Yes: three analyzer errors, two `return_of_invalid_type_from_closure` and one `argument_type_not_assignable`; the form with `as int` is clean | The select's advice now leads with the cast, `(raw) => jsonDecode(raw) as Selected`, in `QueryController` and `InfiniteQueryController` alike. Both cases check for it |
+
+Sol's probe pinned the old branch. Run against the fix, it fails in
+exactly the three cases that encoded it, and its two cure cases pass.
+
+**Counts after the third pass:** hooks **332**, binding **320**. A fourth
 pass reads these fixes.

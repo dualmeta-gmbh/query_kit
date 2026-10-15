@@ -1453,23 +1453,62 @@ void main() {
                 contains('QueryController.create<Task>')),
           )),
         );
-        // The cached type named, the selected one not: the cure is the
-        // select's return type, not the options' (hooks review, V1-1).
+        // Options with a select: the cure is the select's return type,
+        // whether or not the cached type is named (hooks review, V1-1 and
+        // V2-1), and the cure works — with the cast `strict-casts` asks for
+        // where the select returns `dynamic` (V2-2).
+        var cure = 0;
+        QueryKey cured() => QueryKey(<Object?>['cured', cure++]);
+        final selectAdvice = isA<AssertionError>().having(
+          (e) => e.message.toString(),
+          'message',
+          allOf(
+              contains('selected type is a top type'),
+              contains('as Selected'),
+              contains('withSelect<Selected>'),
+              isNot(contains('QueryObserverOptions<Task>'))),
+        );
         expect(
           () => QueryController(
             client,
             QueryObserverOptions<String>(queryKey: key, queryFn: (_) => 'a')
                 .withSelect((text) => jsonDecode('"$text"')),
           ),
+          throwsA(selectAdvice),
+        );
+        expect(
+          () => QueryController(
+            client,
+            QueryObserverOptions<dynamic>(queryKey: key)
+                .withSelect((raw) => jsonDecode(raw as String)),
+          ),
+          throwsA(selectAdvice),
+        );
+        QueryController(
+          client,
+          QueryObserverOptions<String>(queryKey: cured(), queryFn: (_) => 'a')
+              .withSelect((text) => jsonDecode('"$text"') as String),
+        ).dispose();
+        QueryController(
+          client,
+          QueryObserverOptions<dynamic>(queryKey: cured())
+              .withSelect((raw) => jsonDecode(raw as String) as int),
+        ).dispose();
+        // Options without one, widened where they are read: no select to
+        // name, so the advice is where the query is read.
+        final plain = QueryObserverOptions<String>(queryKey: key);
+        expect(
+          () => QueryController<String, Object?>(client, plain),
           throwsA(isA<AssertionError>().having(
             (e) => e.message.toString(),
             'message',
-            allOf(
-                contains('selected type is a top type'),
-                contains('withSelect<Selected>'),
-                isNot(contains('QueryObserverOptions<Task>'))),
+            allOf(contains('the data type is a top type'),
+                contains('where the query is read'), isNot(contains('select'))),
           )),
         );
+        QueryController.create<String>(
+                client, QueryObserverOptions(queryKey: cured()))
+            .dispose();
         // A plain infinite shape's data is always an `InfiniteData`, never a
         // top type; the infinite backstop is reachable only through a select
         // whose return type is one — `jsonDecode` returns `dynamic`.
@@ -1487,7 +1526,8 @@ void main() {
           throwsA(isA<AssertionError>().having(
             (e) => e.message.toString(),
             'message',
-            allOf(contains('top type'), contains('select')),
+            allOf(contains('top type'), contains('select'),
+                contains('as Selected')),
           )),
         );
         // Neither refusal touched the cache.

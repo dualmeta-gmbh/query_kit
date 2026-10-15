@@ -100,11 +100,12 @@ class QueryController<TQueryData, TData> extends ChangeNotifier
     QueryObserverOptionsBase<TQueryData, TData> options,
   )   : assert(
           _debugDataTypeIsAnchored<TData>(),
-          _debugDataTypeIsAnchored<TQueryData>()
+          options is QuerySelectOptions
               ? 'QueryController<$TQueryData, $TData>: the selected type is a '
                   'top type ($TData) — give the select a return type that '
-                  'names it, or an explicit type argument '
-                  '(withSelect<Selected>(…), '
+                  'names it, with a cast where it returns an untyped value '
+                  '(withSelect((raw) => jsonDecode(raw) as Selected)), or an '
+                  'explicit type argument (withSelect<Selected>(…), '
                   'QuerySelectOptions<$TQueryData, Selected>(…)).'
               : 'QueryController<$TQueryData, $TData>: the data type is a top '
                   'type ($TData) — give the options a queryFn whose return '
@@ -304,9 +305,10 @@ class InfiniteQueryController<TPageData, TPageParam, TData>
           _debugDataTypeIsAnchored<TData>(),
           'InfiniteQueryController<$TPageData, $TPageParam, $TData>: the data '
           'type is a top type ($TData) — a plain infinite query never is, so '
-          'give the select a return type that names it, or explicit type '
-          'arguments (InfiniteQuerySelectOptions<List<Post>, int, '
-          'List<Post>>(…)).',
+          'give the select a return type that names it, with a cast where it '
+          'returns an untyped value ((data) => jsonDecode(…) as Selected), or '
+          'explicit type arguments (InfiniteQuerySelectOptions<List<Post>, '
+          'int, List<Post>>(…)).',
         ),
         _infiniteOptions = options,
         super.observing(

@@ -1162,6 +1162,20 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     den Rückgabetyp des Selects.
   - V1-2: „Jeder typisierte Leser“ war zu breit. Gemeint ist ein Lesen als
     eigener Typ; als `Object` gelesen funktioniert es.
+- **Dritter Durchgang (Sol, xhigh), über `35cb27e`:** Der Fix von V1-1
+  richtete die Meldung am falschen Merkmal aus. Beide Befunde sind
+  reproduziert und behoben.
+  - V2-1 (P2): Die Meldung hing daran, ob der gecachte Typ benannt ist.
+    Richtig ist, ob es einen Select gibt.
+    - Ein Select mit zwei `dynamic`-Typen bekam deshalb den Rat für
+      einfache Optionen.
+    - Einfache Optionen, die erst beim Lesen verbreitert werden, bekamen
+      einen Rat zu einem Select, den sie gar nicht haben.
+    - Jetzt entscheidet `options is QuerySelectOptions`. Der Test baut jede
+      genannte Abhilfe tatsächlich.
+  - V2-2 (P3): Unter `strict-casts` kompiliert ein Typargument allein über
+    `jsonDecode` nicht. Der Rat zum Select nennt jetzt den Cast, in
+    `QueryController` wie in `InfiniteQueryController`.
 
 ### AP12 — Release: `query_kit_hooks` 0.1.0 und `query_kit_flutter` 1.1.0
 

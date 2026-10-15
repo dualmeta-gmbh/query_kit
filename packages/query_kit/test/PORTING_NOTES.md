@@ -6892,6 +6892,14 @@ what changed in the binding, each finding reproduced first.
   does not help. Where the cached type is named and only the selected one
   is a top type, the message now names the select's return type instead
   (`withSelect<Selected>(…)`, `QuerySelectOptions<Raw, Selected>(…)`).
+  The third pass (V2-1, V2-2) found that branch keyed on the wrong thing.
+  It now keys on the options' shape: a `QuerySelectOptions` is told about
+  its select, however its cached type stands, and options without a select
+  are never told about one. The select's advice now carries a cast,
+  `(raw) => jsonDecode(raw) as Selected`, because under `strict-casts` a
+  type argument alone does not compile over `jsonDecode`.
+  `InfiniteQueryController`'s message carries the same cast. The
+  binding's case now applies each cure it names.
 - **F-1 (P2), in the docs only:** a list of queries of two data types
   infers `Object`, and its entries are created as `Object` entries.
   `QueriesBuilder` and `QueriesController` now say so in their dartdoc. A
