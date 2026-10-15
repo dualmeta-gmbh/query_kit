@@ -90,14 +90,15 @@ what every call style does. A case changed only in spelling is **ported**.
 | `useMutation.test.tsx` | `use_mutation_test.dart` | 55 / 61 | done (AP5) |
 | `mutationOptions.test.tsx` | `mutation_options_test.dart` | 12 / 14 | done (AP5) |
 | `useQueries.test.tsx` | `use_queries_test.dart` | 17 / 24 | done (AP6) |
-| `useIsFetching.test.tsx` | `use_is_fetching_test.dart` | 1 / 5 | spike selection; AP7 |
-| `useMutationState.test.tsx` | `use_mutation_state_test.dart` | 1 / 5 | spike selection; AP7 |
+| `useIsFetching.test.tsx` | `use_is_fetching_test.dart` | 5 / 5 | done (AP7) |
+| `useMutationState.test.tsx` | `use_mutation_state_test.dart` | 5 / 5 | done (AP7) |
+| `QueryClientProvider.test.tsx` | `query_client_provider_test.dart` | 4 / 4 | done (AP7) |
 | `usePrefetchQuery.test.tsx` | `use_prefetch_query_test.dart` | 4 / 6 | done (AP8) |
 | `usePrefetchInfiniteQuery.test.tsx` | `use_prefetch_infinite_query_test.dart` | 2 / 3 | done (AP8) |
 
-`useQuery.test.tsx` is accounted for in full. The other rows are still the
-spike's selection (AP0, `docs/research/hooks-spike.md`); each later ticket
-accounts for its suite in full.
+A row marked done is accounted for in full, every case ported, adapted or
+omitted with its reason in the file's section below. A row that is not is
+still the spike's selection (AP0, `docs/research/hooks-spike.md`).
 
 ### The package's own files
 
@@ -325,3 +326,78 @@ GPT-6.1-Sol (xhigh) ran the suite (233 green), compared all 75 upstream cases ag
 | S-2 (P2) | This file still had the spike's `3 / 61` and no account of either suite | — | This section and the status rows; the porting agent's notes were outside the repository by design |
 
 Sol's sparring agreed with the online spy, the shared frame, the written-out `select`, 1176's strengthening, the own clients, the effect keyed on `mutate`, the conditional rollback, the AP5 group, the D13 tests and the D14 exclusions. It disagreed only with the zone as it was built, which is S-1.
+
+## `useIsFetching.test.tsx`, `useMutationState.test.tsx` and `QueryClientProvider.test.tsx`
+
+**14 upstream cases (5, 5 and 4): all 14 ported (AP7, #100).** `useIsFetching` and `useIsMutating` subscribe to their cache directly and count with the latest build's filters (D12). `useMutationState` goes over `MutationStateController`, with `setOptions` on every build, and `useTypedMutationState` over `MutationStateController.typed`. `useQueryClient` is `QueryClientProvider.of` over `useContext()`. `useMutationState.test.tsx` has two top-level describes, `useIsMutating` and `useMutationState`; they are two groups, so the names stay unique and the file diffs against upstream. No case carries a skip, and the port found no defect in the binding or the core.
+
+In the spelling:
+
+- A component that re-renders with its parent, upstream's `IsFetching` or `IsMutating`, is a function returning a new `HookBuilder` (60, 80, 116).
+- A `mutate` in a `useEffect` goes through `afterFrame`, the harness's mapping for state changes in an effect (80, 116, 154). It is load-bearing in 80 and 116: with a direct call they record `[1, 1, 0]` where upstream records `[0, 1, 0]`.
+- `expect.not.arrayContaining([2])` is `isNot(contains(2))` (129). The build-based "never 2" keeps its strength: with an unfiltered count the case goes red.
+- `useMutationState`'s default `select`, `(m) => m.state`, is written out (195), as in AP5.
+- Pages with their own client run without a provider (154, 214).
+- 52's second client is torn down in the body, the ADR-0002 shape.
+- **147's message is the binding's.** `useQueryClient` is `QueryClientProvider.of`, so a missing provider throws the binding's `FlutterError`: "No QueryClientProvider found above this widget. Wrap your app (or the subtree that uses queries) in QueryClientProvider(client: …)." Upstream's "No QueryClient set, use QueryClientProvider to set one" says the same two things, what is missing and what to do. The whole message is asserted, so this is wording, not a weaker assertion. A second message from the hook for the same mistake would teach two things.
+
+### Built on the way
+
+No ported case forced a hook change. Two came from reading the spike, and two hooks are new:
+
+- **Each count and each selection has a hook type of its own.** The spike had one `_CountHook` for both counts, with the cache passed in as closures. `flutter_hooks` keeps a state when the runtime type matches, so `cond ? useIsFetching() : useIsMutating()` across a hot reload kept the query cache's subscription and never rebuilt for mutations. A regular build silently subscribed to the wrong cache instead of throwing `flutter_hooks`' type-mismatch error.
+- **The liveness check comes first.** A delivery reads `_disposed`, the generation and `context.mounted` before it reads the filters or calls `setState`. `dispose` never touches `context`.
+- **New:** `useTypedMutationState` and `useQueryClient`.
+
+`useQueryClient` takes no `client:`. With one it would be `client ?? useQueryClient()`, which a caller writes in one expression, and the parameter would be the hook's whole result. It is a plain function, not a `Hook`: nothing persists between builds, and `of` already makes the element depend on the provider, so a provider switch rebuilds it.
+
+### What the port measured
+
+- **The inventory was too cautious.** All nine A verdicts in `useIsFetching.test.tsx` and `useMutationState.test.tsx` are plain ports, with upstream's own `advance` steps and `afterFrame` for an effect's `mutate`. 18 needs no second pump, 60 no extra `pump(1ms)`, and 17 no split of `advance(41)`. 17's "build it over a `MutationStateController` filtered on pending" contradicts D12: the count subscribes to the cache directly. QueryClientProvider 147, the tenth A, is 147 above.
+- **The AP7 group** in `hook_specifics_test.dart` holds the acceptance criteria and what upstream cannot say:
+  - Filters and `select` new on every build cost no subscription and no build, for all four hooks. A cache calls its listeners in subscription order, so each hook has a twin that subscribed after it and is never rebuilt. A hook that subscribed again would be called after its twin, and one that added a subscription would be called more often.
+  - Counts and selections follow the latest build.
+  - A count delivery queued for the old client does nothing.
+  - A hot reload from `useIsFetching` to `useIsMutating` counts mutations.
+  - `useTypedMutationState` selects one type, build after build.
+  - `useQueryClient` follows its provider.
+  - "A delivery queued before disposal adds no build" is `review_reproductions_test.dart`'s H-03.
+- **The suite has teeth.** Nine faults in `use_counts.dart`, over the whole package suite:
+
+  | Fault | Red |
+  |---|---|
+  | The generation and disposed checks removed | 2 |
+  | The count subscribes again on every build | 1 |
+  | The first build's filters counted | 1 |
+  | No comparison with the built count | 6 |
+  | The selection's `setOptions` skipped | 1 |
+  | The typed hook built untyped | 1 |
+  | One shared count hook type | 1 |
+  | Either count ignoring its filters | 4 each |
+
+### Second review
+
+GPT-6.1-Sol (xhigh) ran the suite (178 green), checked all 14 cases, names and line references, and added 12 probes of its own. They covered:
+
+- client switches, unmount and a hot-reload replacement, each with a queued delivery;
+- typed and untyped selections, equal and changed;
+- the latest filters after a switch.
+
+Four findings, each reproduced:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S-1 (P2) | A delivery queued before a filter switch reads the new filters: the predicate ran 3 times where 1 was expected for fetching, and 4 for mutating. Sol saw no extra build and no stale count | Yes, with Sol's probe | Kept. D12 counts with the latest build's filters, and the dartdoc says so. Upstream does the same: its subscription lives as long as the cache, and a batched `onStoreChange` queued before a render makes React call `getSnapshot`, the latest render's closure over the new filters. The cost is a predicate run, not a build. The generation guards a change of source, a client switch or disposal, and a filter switch keeps the source |
+| S-2 (P2) | 147 asserted only the binding message's diagnosis. Upstream's assertion covers the instruction too, and dropping the binding's "Wrap your app…" left the case green | Yes: green with that sentence removed | The whole message is asserted, and the same fault now turns 147 red. Kept as ported: the wording is the binding's, and the content is upstream's |
+| S-3 (P2) | The agent's notes said "9 of 10 A verdicts" for two suites that have nine A cases | — | This section says "all nine", and names the tenth |
+| S-4 (P3) | Listener order catches a hook that subscribes again, but not one that keeps its subscription and adds another | Yes: Sol's fault, an extra subscription per build, left the test green | Each hook must now be asked exactly as often as its twin. Under the same fault the test is red (8 calls against 2) |
+
+Sol's sparring agreed with:
+
+- the plain `useQueryClient` (preferring an optional `client:` for upstream's sake, though D9 decides against it);
+- the two groups;
+- the typed select erased with a cast in `setOptions`, the observer keeping the type test;
+- the guards for client switches, disposal and hook replacement;
+- the comparison with the built count, which builds `[0, 0]` for a `0 → 1 → 0` before the next frame. D5 accepts that one extra build.
+
+It disagreed with listener order as proof of a single subscription (S-4) and with 147 as written (S-2).

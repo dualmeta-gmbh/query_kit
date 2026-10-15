@@ -1317,4 +1317,401 @@ void main() {
       expect(built, ['idle 0', 'pending 0', 'success 0']);
     });
   });
+
+  // AP7 (#100): the counts, the selections and the client (plan, D7, D9,
+  // D12). The acceptance tests the ticket lists that upstream has no case
+  // for, and what the hooks do beyond upstream's suites. "A delivery queued
+  // before the hook was disposed does nothing" is the spike's reproduction
+  // in review_reproductions_test.dart ("count: a delivery queued before
+  // disposal adds no build"); "filters and select new on every build add no
+  // build", above, is the build half of the first test here.
+  group('AP7: counts, selections and the client', () {
+    // A cache calls its listeners in the order they subscribed, so each hook
+    // below has a twin that subscribed after it and is never rebuilt. A hook
+    // that subscribed again on a later build — a new subscription for new
+    // filters or a new select — would now be called after its twin. One that
+    // kept its first subscription and added another would be called as often
+    // as it has subscriptions, so each hook is asked as often as its twin.
+    hookTest(
+        'filters and select new on every build: no new subscription, '
+        'no extra build', (tester, client) async {
+      final calls = <String>[];
+      late void Function() rebuildParent;
+      var builds = 0;
+
+      // Every count and every selection runs its predicate over these two.
+      client
+          .query(QueryOptions<String>(
+            queryKey: queryKey(),
+            queryFn: (_) => sleep(100).then((_) => 'data'),
+          ))
+          .ignore();
+      MutationObserver<String, void, void>(
+        client,
+        MutationOptions.simple<String, void>(
+          mutationFn: (_) => sleep(100).then((_) => 'ok'),
+        ),
+      ).mutate(null);
+      await tester.pump();
+
+      void useEveryHook(String who) {
+        bool log(String hook) {
+          calls.add('$hook $who');
+          return true;
+        }
+
+        useIsFetching(filters: QueryFilters(predicate: (_) => log('fetching')));
+        useIsMutating(
+            filters: MutationFilters(predicate: (_) => log('mutating')));
+        useMutationState(
+          filters: MutationFilters(predicate: (_) => log('state')),
+          select: (mutation) => mutation.state.status,
+        );
+        useTypedMutationState(
+          filters: MutationFilters(predicate: (_) => log('typed')),
+          select: (Mutation<String, void, void> mutation) =>
+              mutation.state.status,
+        );
+      }
+
+      await tester.pumpApp(
+        client,
+        Column(children: [
+          StatefulBuilder(builder: (context, setState) {
+            rebuildParent = () => setState(() {});
+            return HookBuilder(builder: (context) {
+              builds++;
+              useEveryHook('first');
+              return const SizedBox();
+            });
+          }),
+          HookBuilder(builder: (context) {
+            useEveryHook('twin');
+            return const SizedBox();
+          }),
+        ]),
+      );
+      expect(builds, 1);
+
+      for (var i = 0; i < 3; i++) {
+        rebuildParent();
+        await tester.pump();
+      }
+      await advance(tester, 5);
+      expect(builds, 4); // one of its own, three from the parent
+
+      // One event in each cache, outside a frame.
+      calls.clear();
+      client.setQueryData<String>(queryKey(), 'event');
+      MutationObserver<String, void, void>(
+        client,
+        MutationOptions.simple<String, void>(
+          mutationFn: (_) => sleep(100).then((_) => 'ok'),
+        ),
+      ).mutate(null);
+      for (final hook in ['fetching', 'mutating', 'state', 'typed']) {
+        final first = calls.indexOf('$hook first');
+        expect(first, isNonNegative, reason: hook);
+        expect(first, lessThan(calls.indexOf('$hook twin')),
+            reason: '$hook subscribed again');
+        expect(
+          calls.where((call) => call == '$hook first').length,
+          calls.where((call) => call == '$hook twin').length,
+          reason: '$hook subscribed twice',
+        );
+      }
+
+      await advance(tester, 100);
+    });
+
+    // What a later build passes is what counts and selects from then on: a
+    // count's delivery counts with the latest filters, and a selection gets
+    // the latest filters and select through `setOptions`.
+    hookTest('counts and selections follow the latest build',
+        (tester, client) async {
+      final keyA = queryKey();
+      final keyB = queryKey();
+      // A fetch and a mutation under each key; A's settle at 10 ms, B's at
+      // 30 ms.
+      for (final (key, ms) in [(keyA, 10), (keyB, 30)]) {
+        client
+            .query(QueryOptions<String>(
+              queryKey: key,
+              queryFn: (_) => sleep(ms).then((_) => 'data'),
+            ))
+            .ignore();
+        MutationObserver<String, void, void>(
+          client,
+          MutationOptions.simple<String, void>(
+            mutationKey: key,
+            mutationFn: (_) => sleep(ms).then((_) => 'ok'),
+          ),
+        ).mutate(null);
+      }
+      await tester.pump();
+      var watched = keyA;
+      var label = 'first';
+      final built = <String>[];
+      late void Function() rebuildParent;
+
+      await tester.pumpApp(
+        client,
+        StatefulBuilder(builder: (context, setState) {
+          rebuildParent = () => setState(() {});
+          return HookBuilder(builder: (context) {
+            final tag = label;
+            final pending = MutationFilters(
+              mutationKey: watched,
+              status: MutationStatus.pending,
+            );
+            final fetching =
+                useIsFetching(filters: QueryFilters(queryKey: watched));
+            final mutating =
+                useIsMutating(filters: MutationFilters(mutationKey: watched));
+            final selected =
+                useMutationState(filters: pending, select: (_) => tag);
+            final typed = useTypedMutationState(
+              filters: pending,
+              select: (Mutation<String, void, void> _) => tag,
+            );
+            built.add('$fetching $mutating $selected $typed');
+            return const SizedBox();
+          });
+        }),
+      );
+      watched = keyB;
+      label = 'second';
+      rebuildParent();
+      await tester.pump();
+      expect(built, ['1 1 [first] [first]', '1 1 [second] [second]']);
+
+      // A settles. Through B's filters nothing moved, so nothing builds.
+      await advance(tester, 11);
+      expect(built, hasLength(2));
+
+      await advance(tester, 20);
+      expect(built, hasLength(3));
+      expect(built.last, '0 0 [] []');
+    });
+
+    // The ticket's third acceptance test (review H-03, the client half). A
+    // fetch on the old client starts in a sibling's build in the very frame
+    // the hook moves to the new client; the provider defers its
+    // notifications past that frame, so they reach a subscription the hook
+    // has already left. Read with the hook's current client they would find
+    // nothing changed and build nothing either — what shows that they did
+    // nothing at all is the predicate, which they would have run.
+    hookTest('a count delivery queued for the old client does nothing',
+        (tester, client) async {
+      final other = QueryClient();
+      addTearDown(other.clear);
+      // Fetching on the new client, so a count there runs the predicate.
+      other
+          .query(QueryOptions<String>(
+            queryKey: queryKey(),
+            queryFn: (_) => sleep(100).then((_) => 'other'),
+          ))
+          .ignore();
+      var phase = 0;
+      var builds = 0;
+      var predicateCalls = 0;
+      late void Function() next;
+
+      await tester.pumpApp(
+        client,
+        StatefulBuilder(builder: (context, setState) {
+          next = () => setState(() => phase++);
+          return Column(children: [
+            Builder(builder: (context) {
+              if (phase == 1) {
+                client
+                    .query(QueryOptions<String>(
+                      queryKey: queryKey(),
+                      queryFn: (_) => sleep(10).then((_) => 'data'),
+                    ))
+                    .ignore();
+              }
+              return const SizedBox();
+            }),
+            HookBuilder(builder: (context) {
+              builds++;
+              final count = useIsFetching(
+                filters: QueryFilters(predicate: (_) {
+                  predicateCalls++;
+                  return true;
+                }),
+                client: phase == 0 ? client : other,
+              );
+              return Text('isFetching: $count');
+            }),
+          ]);
+        }),
+      );
+      expect(find.text('isFetching: 0'), findsOneWidget);
+      expect(builds, 1);
+      expect(predicateCalls, 0); // nothing fetching on the old client
+
+      next();
+      await tester.pump();
+      // The switch's own build counted the new client's one fetching query.
+      expect(find.text('isFetching: 1'), findsOneWidget);
+      expect(builds, 2);
+      expect(predicateCalls, 1);
+
+      await tester.pump();
+      await tester.pump();
+      expect(builds, 2);
+      expect(predicateCalls, 1);
+
+      await advance(tester, 100);
+      expect(find.text('isFetching: 0'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      other.clear();
+    });
+
+    // flutter_hooks keeps a hook's state across a hot reload when the hook
+    // at its position has the same runtime type. The two counts are two
+    // types, so the edit below gets a mutation-cache subscription.
+    hookTest(
+        'a hot reload from useIsFetching to useIsMutating counts mutations',
+        (tester, client) async {
+      var mutating = false;
+
+      await tester.pumpApp(
+        client,
+        Column(children: [
+          HookBuilder(builder: (context) {
+            final count = mutating ? useIsMutating() : useIsFetching();
+            return Text('count: $count');
+          }),
+          HookBuilder(builder: (context) {
+            final mutation = useMutation(MutationOptions.simple<String, void>(
+              mutationFn: (_) => sleep(10).then((_) => 'ok'),
+            ));
+            return TextButton(
+              onPressed: () => mutation.mutate(null),
+              child: const Text('mutate'),
+            );
+          }),
+        ]),
+      );
+      expect(find.text('count: 0'), findsOneWidget);
+
+      // The edit, and the hot reload that brings it in.
+      mutating = true;
+      tester.binding.reassembleApplication().ignore();
+      await tester.pump();
+
+      await click(tester, 'mutate');
+      await advance(tester, 0);
+      expect(find.text('count: 1'), findsOneWidget);
+      await advance(tester, 10);
+      expect(find.text('count: 0'), findsOneWidget);
+    });
+
+    hookTest('useTypedMutationState selects one type, build after build',
+        (tester, client) async {
+      final seen = <List<String>>[];
+      final predicateSaw = <Object?>[];
+      late void Function() rebuildParent;
+
+      await tester.pumpApp(
+        client,
+        Column(children: [
+          StatefulBuilder(builder: (context, setState) {
+            rebuildParent = () => setState(() {});
+            return HookBuilder(builder: (context) {
+              seen.add(useTypedMutationState(
+                filters: MutationFilters(
+                  status: MutationStatus.pending,
+                  predicate: (mutation) {
+                    predicateSaw.add(mutation.state.variables);
+                    return true;
+                  },
+                ),
+                // The parameter's type is the filter: String variables.
+                select: (Mutation<Object?, String, Object?> mutation) =>
+                    mutation.state.variables!,
+              ));
+              return const SizedBox();
+            });
+          }),
+          HookBuilder(builder: (context) {
+            final strings = useMutation(MutationOptions.simple<String, String>(
+              mutationFn: (text) => sleep(10).then((_) => text),
+            ));
+            final flags = useMutation(MutationOptions.simple<String, bool>(
+              mutationFn: (flag) => sleep(10).then((_) => '$flag'),
+            ));
+            return Column(children: [
+              TextButton(
+                onPressed: () => strings.mutate('x'),
+                child: const Text('string'),
+              ),
+              TextButton(
+                onPressed: () => flags.mutate(true),
+                child: const Text('flag'),
+              ),
+            ]);
+          }),
+        ]),
+      );
+
+      await click(tester, 'string');
+      await click(tester, 'flag');
+      await advance(tester, 0);
+      expect(seen.last, ['x']);
+
+      // New filters and a new select: the type test stays.
+      rebuildParent();
+      await tester.pump();
+      await click(tester, 'flag');
+      await advance(tester, 0);
+      expect(seen.last, ['x']);
+      expect(predicateSaw, everyElement(isA<String>()));
+
+      await advance(tester, 10);
+      // A flag never built: one build of its own, one per change of the
+      // string, one from the parent.
+      expect(seen, [
+        <String>[],
+        ['x'],
+        ['x'],
+        <String>[],
+      ]);
+    });
+
+    hookTest("useQueryClient returns the provider's client, and follows it",
+        (tester, client) async {
+      final other = QueryClient();
+      addTearDown(other.clear);
+      final seen = <QueryClient>[];
+
+      // One page instance under both providers: only the provider's new
+      // client can rebuild the probe.
+      final page = MaterialApp(
+        home: HookBuilder(builder: (context) {
+          seen.add(useQueryClient());
+          return const SizedBox();
+        }),
+      );
+
+      await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        observeAppLifecycle: false,
+        child: page,
+      ));
+      await tester.pumpWidget(QueryClientProvider(
+        client: other,
+        observeAppLifecycle: false,
+        child: page,
+      ));
+
+      expect(seen, hasLength(2));
+      expect(seen.first, same(client));
+      expect(seen.last, same(other));
+    });
+  });
 }

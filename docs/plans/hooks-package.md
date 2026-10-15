@@ -975,7 +975,7 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     (D13).
   - Der `PORTING_NOTES`-Abschnitt fehlte; er steht jetzt dort.
 
-### AP7 — `useIsFetching`, `useIsMutating`, `useMutationState`, `useQueryClient`
+### AP7 — `useIsFetching`, `useIsMutating`, `useMutationState`, `useQueryClient` — **erledigt** (#100)
 
 - **Inhalt:** Die Dateien `useIsFetching.test.tsx` (5),
   `useMutationState.test.tsx` (5) und `QueryClientProvider.test.tsx` (4).
@@ -985,6 +985,26 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - Eine Zustellung, die vor dem Entsorgen des Hooks eingereiht war, und
     eine für den alten Client nach einem Client-Wechsel bewirken nichts
     (H-03).
+- **Ergebnis, gemessen:**
+  - **14 Fälle, alle portiert.** 147 prüft die Meldung der Bindung,
+    vollständig: Diagnose und Abhilfe, wie upstreams.
+  - Neu: `useTypedMutationState` und `useQueryClient` (eine Funktion über
+    `useContext()`, ohne `client:`).
+  - Ein Spike-Defekt, beim Lesen gefunden: Beide Zähler teilten einen
+    Hook-Typ, also behielt ein Hot Reload von `useIsFetching` auf
+    `useIsMutating` das Abo des Query-Caches. Jetzt hat jeder Hook seinen
+    eigenen Typ.
+  - Beide Akzeptanzkriterien als Tests; neun eingebaute Fehler in
+    `use_counts.dart`, jeder macht 1 bis 6 Tests rot.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** vier Befunde, alle reproduziert.
+  - Eine vor einem Filterwechsel eingereihte Zustellung liest die neuen
+    Filter: Prädikat-Aufrufe, kein Build, keine veraltete Zahl. Behalten,
+    weil D12 mit den Filtern des letzten Builds zählt und upstreams
+    `useSyncExternalStore` dasselbe tut.
+  - 147 prüfte nur die Diagnose der Meldung; jetzt die ganze.
+  - Eine falsche Zählung in den Notizen des Agenten, korrigiert.
+  - Die Reihenfolge der Listener fand ein erneutes Abo, aber kein
+    zusätzliches. Jetzt wird jeder Hook so oft gefragt wie sein Zwilling.
 
 ### AP8 — `usePrefetchQuery`, `usePrefetchInfiniteQuery` — **erledigt** (#101)
 
