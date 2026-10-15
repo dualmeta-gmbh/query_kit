@@ -1,6 +1,8 @@
-/// The one shape every controller-owning hook has (plan, D5): everything in
-/// `build`, nothing in `initHook`, the rebuild decided in the listener.
+/// The one shape every controller-owning hook has: everything in `build`,
+/// nothing in `initHook`, the rebuild decided in the listener.
 library;
+
+// The shape is the plan's D5.
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -10,7 +12,8 @@ import 'package:query_kit_flutter/query_kit_flutter.dart';
 /// A hook that owns a [ChangeNotifier] controller [C] whose value is [T],
 /// and returns [R] from it.
 abstract base class ControllerHook<R, T> extends Hook<R> {
-  /// No `keys`: a changed key is `setOptions` on the same controller (D6).
+  /// No `keys`: a changed key is `setOptions` on the same controller.
+  // Plan, D6.
   const ControllerHook({this.client, this.buildWhen});
 
   /// The client to use instead of the nearest provider's.

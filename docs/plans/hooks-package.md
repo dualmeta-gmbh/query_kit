@@ -904,6 +904,15 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
       `hook_specifics_test.dart` 1 rot. Die Bindung meldet beim letzten
       Listener ohnehin ab.
   - Das Paket hat jetzt 160 Tests.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** drei Befunde, alle reproduziert.
+  - `delivered` war zu stark beschrieben: Zwei Ergebnisse in einem
+    `notifyManager.batch` kommen als das letzte an. React rendert einen
+    Batch ebenfalls einmal; nur die Beschreibung ist korrigiert.
+  - 6805 und 6923 sind ohne ihr `throwOnError` portierbar und jetzt
+    angepasst (D14). Damit: 122 portiert, 13 angepasst, 20 ausgelassen,
+    162 Tests.
+  - Plan-Kennungen standen in `///` von `controller_hook.dart`; der
+    Jargon-Scan kannte sie nicht.
 
 ### AP4 — `useInfiniteQuery`
 

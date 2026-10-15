@@ -53,8 +53,14 @@ Widget app(QueryClient client, Widget child) => QueryClientProvider(
 /// notification before it. [advance] steps one frame per millisecond, so the
 /// two mostly agree, but a frame can still merge two results into one build.
 /// [builds] is what upstream's `states.push(state)` records; [delivered] is
-/// every result the observer handed the hook that differed from the one on
+/// every result the hook's controller delivered that differed from the one on
 /// screen — a state the frame merged away is still in it.
+///
+/// A delivery is a read of the observer's current result, one per
+/// notification flush: two results raised inside one `notifyManager.batch`
+/// arrive as the last of them. React renders such a batch once as well,
+/// from the store's snapshot, so a state that lives only inside one batch is
+/// in neither framework's list.
 ///
 /// ```dart
 /// final state = rec.build(useQuery(options, buildWhen: rec.buildWhen));
@@ -110,8 +116,8 @@ Future<void> sleep(int ms) => Future<void>.delayed(Duration(milliseconds: ms));
 /// - A frame before any time passes, for what microtasks already raised, as
 ///   `act` renders it before the first timer. Without it, a failure delivered
 ///   in a microtask and a 1 ms retry's failure share one frame (case 159).
-/// - Then one frame per millisecond, so every timer that fires gets a frame
-///   of its own.
+/// - Then one frame per millisecond, so timers a millisecond or more apart
+///   get frames of their own. Timers due in the same millisecond share one.
 Future<void> advance(WidgetTester tester, int ms) async {
   await tester.pump(Duration.zero);
   for (var i = 0; i < ms; i++) {

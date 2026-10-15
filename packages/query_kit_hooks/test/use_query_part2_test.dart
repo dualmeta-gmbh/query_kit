@@ -2895,6 +2895,102 @@ void main() {
     expect(results[3].errorUpdatedAt, isNotNull);
   });
 
+  // useQuery.test.tsx:6805 — `throwOnError: () => false` is dropped (plan,
+  // D14): errors are data in the result, which is what `false` asks for. The
+  // constant `retryOnMount: () => true` is `retryOnMount: true`.
+  hookTest('should retry on mount when throwOnError returns false',
+      (tester, client) async {
+    final key = queryKey();
+    var fetchCount = 0;
+
+    Widget component() => HookBuilder(builder: (context) {
+          final result = useQuery(QueryObserverOptions<String>(
+            queryKey: key,
+            queryFn: (_) {
+              fetchCount++;
+              return Future<String>.error(StateError('Simulated 500 error'));
+            },
+            retryOnMount: true,
+            staleTime: StaleTime.infinite,
+            retry: RetryPolicy.never,
+          ));
+          final error = result.errorOrNull;
+
+          return Column(children: [
+            Text('status: ${result.status.name}'),
+            if (error is StateError) Text('error: ${error.message}'),
+          ]);
+        });
+
+    await tester.pumpApp(client, component());
+    await advance(tester, 0);
+    expect(find.text('status: error'), findsOneWidget);
+    expect(find.text('error: Simulated 500 error'), findsOneWidget);
+    expect(fetchCount, 1);
+    // rendered1.unmount()
+    await tester.pumpWidget(const SizedBox());
+
+    final initialFetchCount = fetchCount;
+
+    await tester.pumpApp(client, component());
+    await advance(tester, 0);
+    expect(find.text('status: error'), findsOneWidget);
+
+    expect(fetchCount, initialFetchCount + 1);
+    expect(fetchCount, 2); // queryFn toHaveBeenCalledTimes(2)
+  });
+
+  // useQuery.test.tsx:6923 — `throwOnError: (error) =>
+  // error.message.includes('404')` is dropped (plan, D14): for this case's
+  // 500 it answers `false`, and errors are data in the result, which is what
+  // `false` asks for.
+  hookTest('should handle throwOnError function based on actual error state',
+      (tester, client) async {
+    final key = queryKey();
+    var fetchCount = 0;
+
+    Widget component() => HookBuilder(builder: (context) {
+          final result = useQuery(QueryObserverOptions<String>(
+            queryKey: key,
+            queryFn: (_) {
+              fetchCount++;
+              return Future<String>.error(StateError('Simulated 500 error'));
+            },
+            retryOnMount: true,
+            staleTime: StaleTime.infinite,
+            retry: RetryPolicy.never,
+          ));
+          final error = result.errorOrNull;
+
+          return Column(children: [
+            Text('status: ${result.status.name}'),
+            if (error is StateError) Text('error: ${error.message}'),
+          ]);
+        });
+
+    await tester.pumpApp(client, component());
+
+    await advance(tester, 0);
+    expect(find.text('status: error'), findsOneWidget);
+    expect(find.text('error: Simulated 500 error'), findsOneWidget);
+    expect(fetchCount, 1);
+
+    // rendered1.unmount()
+    await tester.pumpWidget(const SizedBox());
+
+    final initialFetchCount = fetchCount;
+
+    await tester.pumpApp(client, component());
+
+    await advance(tester, 0);
+    expect(find.text('status: error'), findsOneWidget);
+
+    // Should retry because throwOnError returns false (500 error doesn't
+    // include '404')
+    expect(fetchCount, initialFetchCount + 1);
+    expect(fetchCount, 2); // queryFn toHaveBeenCalledTimes(2)
+  });
+
   // useQuery.test.tsx:7004 — upstream's `retryOnMount` is a callback whose
   // never being called is half of the case; query_kit's option is a `bool`
   // (plan, D14), so that half is omitted and `retryOnMount: false` stands in.

@@ -34,8 +34,8 @@ has a row below that names which one.
   harness's `advance(ms)` steps one frame per millisecond, which makes the
   two agree almost everywhere. Where a build count or a sequence of builds
   still differs, the case keeps upstream's sequence as an assertion on what
-  the observer **delivered** (the harness's `Recorder`, below), and only the
-  count of builds changes.
+  the hook's controller **delivered** (the harness's `Recorder`, below), and
+  only the count of builds changes.
 - **D10, `CombinedResult`.** `useCombinedQueries` returns a
   `CombinedResult`, which stays pending until every source has data.
 - **D14, out of scope.** Suspense, error boundaries and `throwOnError`,
@@ -59,10 +59,14 @@ what every call style does. A case changed only in spelling is **ported**.
   `function Page() { … }` (D16). The spike's hand-written probe is gone.
 - **`Recorder<T>`** — upstream's `states`, and beside it what a frame can
   hide (D8, Astra H-02). `builds` is one entry per build, which is what
-  `states.push(state)` records. `delivered` is every result the observer
-  handed the hook that differed from the one on screen. It is recorded by a
-  `buildWhen` that always says yes, which is what no `buildWhen` does, so
-  recording changes no build.
+  `states.push(state)` records. `delivered` is every result the hook's
+  controller delivered that differed from the one on screen. It is recorded
+  by a `buildWhen` that always says yes, which is what no `buildWhen` does,
+  so recording changes no build. A delivery reads the observer's current
+  result once per notification flush, so two results raised inside one
+  `notifyManager.batch` arrive as the last of them. React renders such a
+  batch once too, so neither list holds a state that lives only inside one
+  batch.
 - **`advance(tester, ms)`** — upstream's `vi.advanceTimersByTimeAsync(ms)`
   (D8). It builds one frame before any time passes, for what microtasks
   already raised, as React's `act` renders before the first timer. Then it
@@ -81,7 +85,7 @@ what every call style does. A case changed only in spelling is **ported**.
 | Upstream suite | Dart file | Cases | State |
 |---|---|---|---|
 | `useQuery.test.tsx`, lines 1–3600 | `use_query_part1_test.dart` | 72 / 78 | done (AP3) |
-| `useQuery.test.tsx`, lines 3601–7096 | `use_query_part2_test.dart` | 61 / 77 | done (AP3) |
+| `useQuery.test.tsx`, lines 3601–7096 | `use_query_part2_test.dart` | 63 / 77 | done (AP3) |
 | `useInfiniteQuery.test.tsx` | `use_infinite_query_test.dart` | 2 / 28 | spike selection; AP4 |
 | `useMutation.test.tsx` | `use_mutation_test.dart` | 3 / 61 | spike selection; AP5 |
 | `useQueries.test.tsx` | `use_queries_test.dart` | 3 / 24 | spike selection; AP6 |
@@ -108,14 +112,14 @@ They count in no column above.
 
 ## `useQuery.test.tsx`
 
-**155 upstream cases: 122 ported, 11 adapted, 22 omitted (AP3, #96).** Every
+**155 upstream cases: 122 ported, 13 adapted, 20 omitted (AP3, #96).** Every
 case not listed below is **ported**: upstream's scenario and assertions, in
 Dart spelling. Upstream's nested `describe`s are `group`s:
 `notifyOnChangeProps` › `function` in part 1, and the three `networkMode`
 groups in part 2. No case carries a skip, and the port found no defect in the
 hooks, the binding or the core.
 
-### Adapted (11)
+### Adapted (13)
 
 | Line | Case | What changed, and why |
 |---|---|---|
@@ -129,17 +133,19 @@ hooks, the binding or the core.
 | 4291 | should use placeholder data even for disabled queries | **D8, a build count of 3 becomes 2.** The effect's `setCount(1)` lands after the first frame (`afterFrame`), and the synchronous query function's data lands before the next frame, so upstream's `states[1]` (placeholder, count 1) and `states[2]` (data, count 1) are one build. `delivered` is `[data]`: the observer's own sequence, placeholder then data, is upstream's. The lost render was a `setCount` render, not a delivery, so no list of deliveries can hold it in either framework. A delay in the query function would keep three builds, but it would change the case |
 | 4912 | should hash query keys that contain bigints given a supported query hash function | D14: there is no `queryKeyHashFn`, because keys compare by `==`. `getQueryCache().get(queryKeyHashFn(key))` becomes `queryCache.find` with an equal key built anew (`BigInt.from(1)`). The asserted value, `'test'`, is unchanged |
 | 6495 | should respect skipToken and refetch when skipToken is taken away | D14: `queryFn: enabled ? fn : skipToken` becomes a fixed `queryFn` with `enabled: enabled ? Enabled.yes : Enabled.no`, the spelling the core documents for `skipToken`. The assertions are unchanged |
+| 6805 | should retry on mount when throwOnError returns false | D14: `throwOnError: () => false` is dropped, because errors are data in the result, which is what `false` asks for. The constant `retryOnMount: () => true` is `true`. The assertions are unchanged. Omitted at first; the second review (S-2) showed its remainder ports |
+| 6923 | should handle throwOnError function based on actual error state | D14: `throwOnError: (error) => error.message.includes('404')` is dropped. For this case's 500 it answers `false`, so the case is 6805's again with a `bool` `retryOnMount`. The assertions are unchanged. Omitted at first, as 6805 |
 | 7004 | should not call retryOnMount callback when the query has data | D14 and the gap table: `expect(retryOnMount).not.toHaveBeenCalled()` is omitted, because the core's `retryOnMount` is a `bool?`, and `retryOnMount: false` stands in. The rest, a remount with data refetching to three `queryFn` calls, is ported under upstream's name |
 
 A constant `retryOnMount: () => false` is spelled `retryOnMount: false`
 (4935, 4996, 5056, 6068, 6495). Only 6973 and 7004 inspect or count the
 callback's calls.
 
-### Omitted (22)
+### Omitted (20)
 
 | Lines | Category | Why |
 |---|---|---|
-| 2751, 2785, 2814, 2841, 2873, 6805, 6851, 6923 | `throwOnError` and error boundaries (D14) | #15: errors are data in the result. 2785 also throws a falsy value, which Dart cannot do. 6805's and 6923's leftover, `retryOnMount: true` refetching an errored query on remount, is not ported on its own |
+| 2751, 2785, 2814, 2841, 2873, 6851 | `throwOnError` and error boundaries (D14) | #15: errors are data in the result. 2785 also throws a falsy value, which Dart cannot do. 6851 asserts that a throwing `throwOnError` stops the remount's retry, which needs the boundary |
 | 5921, 5966, 6002, 6031 | `subscribed` (D14) | Binding backlog HB-1, for all call styles at once |
 | 6539 | `skipToken` (D14) | With `Enabled.yes` and no `queryFn`, the core fails with `MissingQueryFunctionError` instead of staying `pending`/`idle`. `Enabled.no` serves the purpose, as 6495 shows |
 | 6786 | missing-`queryFn` warning (D14) | The core fails the fetch with `MissingQueryFunctionError`; asserting that would be a different test |
@@ -165,3 +171,15 @@ callback's calls.
   - With the rebuild rule ignored (every delivery rebuilds), 18 of 133 go red.
   - With `setOptions` skipped on later builds, 26 go red.
   - With the controller left undisposed, none go red. When a hook's listener goes, the binding's `ControllerLifetime` already unsubscribes the observer. `hook_specifics_test.dart` catches that fault.
+
+### Second review
+
+GPT-6.1-Sol (reasoning effort xhigh) read the two AP3 commits against upstream, the plan and the notes above, with the snapshot to run in. It compared all 133 cases with upstream and found no assertion changed among the 122 ported. Three findings, each reproduced before anything changed:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S-1 (P2) | `delivered` is not "every result the observer handed the hook". The controller reads the observer's current result once per notification flush, so two results raised in one `notifyManager.batch` arrive as the last of them | Yes: the observer saw `[1, 2]`, `delivered` held `[2]` | A wording defect, not a hole. React renders such a batch once too, so no case relied on the stronger claim. The harness and this file say what `delivered` is. `advance`'s "every timer gets its own frame" was too strong in the same way: timers due in the same millisecond share one |
+| S-2 (P2) | 6805 and 6923 were omitted whole, though only their `throwOnError` is out of scope | Yes: the remount refetches the errored query, two calls | Both ported as adapted (D14). The useQuery count is now 122 ported, 13 adapted, 20 omitted |
+| S-3 (P3) | `controller_hook.dart` carried the plan's decision ids in `///`, and the jargon scan did not know them | Yes | Moved to `//` |
+
+Sol's sparring agreed with the recorder, the split, the omissions other than S-2 and the constant-callback spelling. It held that `advance`'s leading frame maps the driver for 159 but proves no general equivalence of frame cadence, which is all the notes claim.
