@@ -1163,3 +1163,53 @@ Runs after the fixes:
 - **Playwright in Chromium:** 57 of 57, each test three times, against a
   web build made with Flutter 3.38.8.
 - **Native on an iOS 26 simulator (iPhone 17 Pro):** the flows, 18 of 18.
+
+### Sixth pass (the last: verification of the fifth pass's fixes)
+
+GPT-6.1-Sol (xhigh) verified `cedd7a1` against `b25a1a3`. The pass was
+scoped as the fifth pass decided: only what that diff introduced, or failed
+to fix. It found:
+
+- X-1 and X-3 fixed.
+- X-2 fixed in all three of its reproductions.
+- Two defects in the new skip rule, reproduced here with Sol's
+  `verify_catalog.py` against the working catalogue and against `cedd7a1`'s:
+
+| Id | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| Y-1 (P2, introduced) | The new rule dropped the old one's computed access along a chain of `test`'s members. A nested `test.describe['skip'](…)` skipped the whole proof, and the catalogue passed | Yes, `chain-skip`: 21 of 21 green on `cedd7a1` | `test`, or any chain of its members, that is not called is a skip. That covers an index, an alias and destructuring alike. `test.describe.configure(…)` and `test.step(…)` are calls, and pass |
+| Y-2 (P3, introduced) | `skip`, `fixme`, `fail` and `only` counted as a skip anywhere as a word, so a correct test with `const only = 1` failed the catalogue | Yes, `innocent-only`: one case red on `cedd7a1` | A modifier counts only as a member, after a `.` and any space. Reaching one without its name is the chain rule's job |
+
+Sol noted one older thing, not this pass's: a name spelled with an escape,
+`test.skip()`, evaded every rule. It costs one line to close, and the
+line only refuses, so it is closed: the tokenizer refuses a `\` outside a
+string, a template or a regular expression.
+
+Controls, each run against the working catalogue and against `cedd7a1`'s:
+
+- `chain-skip`: red now; green before.
+- `alias-describe`: red on both.
+- `escaped-skip`: red now; green before.
+- `innocent-only`: green now; red before.
+- `configure-and-step`, a correct suite with both calls: green on both.
+
+Sol's fifth-pass modes give the same results as recorded there. The
+self-tests gained these shapes: nested and aliased `describe`, a `const
+only`, `configure` and `step`, and the escape.
+
+Sol also confirmed the following:
+
+- the seven mutants;
+- the three gap cases against `b25a1a3`'s `queries.dart`;
+- fourteen further runtime cases of its own: answer orders, refusals,
+  paused writes, cancel waits, remounts and garbage collection.
+
+None of them reopened W-1. The fifth pass's "last full pass" decision
+stands. This pass changed only the catalogue's skip rule and one refusal,
+both checked above against the previous catalogue, so AP10 ends here.
+
+Runs after the fixes:
+
+- **Widget, interleavings, contract and repository:** 71 of 71 with the
+  showcase server.
+- **The app:** unchanged since the fifth pass's Playwright and native runs.

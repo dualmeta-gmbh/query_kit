@@ -217,6 +217,8 @@ String _typeScriptCode(String source, {bool keepStrings = false}) {
         default:
           slash = _Slash.regExp;
       }
+    } else if (char == r'\') {
+      unreadable('an escape outside a string, which would spell a name');
     } else {
       copy(i + 1, keep: true);
       slash = _Slash.unknown;
@@ -466,12 +468,13 @@ String _read(Iterable<File> files) =>
 /// such as a regular expression's `.test(`, whatever space is before it.
 final RegExp _browserTest = RegExp(r'(?<![\w$#])(?<!\.\s*)test\s*\(');
 
-/// A run narrowed or skipped in a `test.describe`'s bare text: a modifier's
-/// name, however it is reached; or `test` neither called nor followed by a
-/// member's name, which is how one would reach a modifier without it.
+/// A run narrowed or skipped in a `test.describe`'s bare text: a modifier
+/// reached as a member, however spaced; or `test`, or a chain of its
+/// members, that is not called, which is how one would reach a modifier
+/// without its name: by index, through an alias, or by destructuring.
 final RegExp _browserSkip = RegExp(
-  r'(?<![\w$#])(skip|fixme|fail|only)(?![\w$])|'
-  r'(?<![\w$#])(?<!\.\s*)test(?![\w$])(?!\s*(\(|\.\s*[\w$]))',
+  r'\.\s*(skip|fixme|fail|only)(?![\w$])|'
+  r'(?<![\w$#])(?<!\.\s*)test(\s*\.\s*[\w$]+)*(?![\w$])(?!\s*[(.])',
 );
 
 /// A test call in a `group`'s bare text, and a skip: the argument, or
@@ -645,6 +648,7 @@ test.describe('useE', () => {
       'const open = /abc',
       "const text = 'abc",
       'const text = `abc',
+      r'test.s\u006bip();',
     ]) {
       expect(() => _typeScriptCode(source), throwsStateError, reason: source);
     }
@@ -656,10 +660,24 @@ test.describe('useA', () => { test(`${test.skip()}`, () => {}); });
 test.describe('useB', () => { const { skip } = test; skip(); });
 test.describe('useC', () => { const t = test; t('aliased', () => {}); });
 test.describe('useD', () => { test('d', (_, info) => { info.fixme(); }); });
-test.describe('useE', () => { test('e', () => {}); test.step; });
+test.describe('useE', () => {
+  test.describe.configure({ mode: 'serial' });
+  test('e', async () => {
+    const only = 1;
+    await test.step('a step', async () => {});
+    expect(only).toBe(1);
+  });
+});
+test.describe('useF', () => {
+  test.describe['skip']('nested', () => { test('f', () => {}); });
+});
+test.describe('useG', () => {
+  const nested = test.describe;
+  nested('nested', () => { test('g', () => {}); });
+});
 ''');
     final calls = _calls([file], RegExp(r'\btest\.describe(\.\w+)?\s*\('));
-    for (final hook in ['useA', 'useB', 'useC', 'useD']) {
+    for (final hook in ['useA', 'useB', 'useC', 'useD', 'useF', 'useG']) {
       expect(calls[hook]!.single.bare, matches(_browserSkip), reason: hook);
     }
     expect(calls['useE']!.single.bare, isNot(matches(_browserSkip)));

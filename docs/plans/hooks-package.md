@@ -1236,6 +1236,12 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
   - **Tests danach:** 19 Widget-Tests, 11 Interleaving-Fälle, 10
     Vertragsfälle je Backend, 21 Katalogfälle, 19 Playwright-Tests und 18
     native Flows mit 2 Lebenszyklus-Fällen.
+- **Letzte Verifikation durch Sol, auf den Diff begrenzt:** X-1 bis X-3
+  bestätigt. Die neue Skip-Regel hatte zwei eingeführte Fehler: Y-1, ein
+  `test.describe['skip']` blieb unerkannt, und Y-2, eine Variable `only`
+  galt als Skip. Beide sind behoben, ebenso der ältere maskierte Name
+  (`test.s\u006bip()`), den der Tokenizer jetzt ablehnt. Die Tabelle steht
+  in den `PORTING_NOTES` unter „Sixth pass“. Damit endet AP10.
 
 ### AP11 — Review-Runde
 
