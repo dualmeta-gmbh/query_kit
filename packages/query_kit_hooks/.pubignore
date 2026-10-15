@@ -4,3 +4,17 @@ example/pubspec_overrides.yaml
 # The fence test reads the site's hooks guide from the repository's website/,
 # which an unpacked archive does not have. The twins it checks ship and run.
 test/docs_fences_test.dart
+# The example's end-to-end suites and its platform folders stay in the
+# repository: the suites need the showcase's backend and device control,
+# which an archive does not hold, and `flutter create .` writes the folders
+# for the platforms a user picks (the example's README says how).
+example/e2e/
+example/e2e-native/
+example/integration_test/
+example/test_driver/
+example/android/
+example/ios/
+example/linux/
+example/macos/
+example/web/
+example/test/repository_test.dart

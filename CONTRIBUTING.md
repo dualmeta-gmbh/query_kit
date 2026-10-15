@@ -60,9 +60,10 @@ and a PORTING_NOTES entry if it touches ported behaviour.
 flutter pub get
 ```
 
-The binding's example sits outside the workspace (it ships with the
-package), so after a fresh clone run `flutter pub get` in
-`packages/query_kit_flutter/example` once before the analyzer.
+The binding's example and the hooks add-on's sit outside the workspace
+(they ship with their packages), so after a fresh clone run
+`flutter pub get` in `packages/query_kit_flutter/example` and
+`packages/query_kit_hooks/example` once before the analyzer.
 
 ```bash
 cd packages/query_kit && dart test
@@ -74,6 +75,10 @@ cd packages/query_kit_flutter && flutter test
 
 ```bash
 cd packages/query_kit_hooks && flutter test
+```
+
+```bash
+cd packages/query_kit_hooks/example && flutter test
 ```
 
 ```bash
@@ -93,7 +98,7 @@ dart analyze --fatal-infos packages examples tool && dart format --set-exit-if-c
 ```
 
 CI runs the same gates plus `dart doc`, both publish dry-runs, a web build of
-each example, the documentation site, the two Playwright end-to-end suites and
+each example, the documentation site, the three Playwright end-to-end suites and
 the whole suite again on the declared Flutter floor. It also holds line
 coverage to a floor (`tool/check_coverage.dart`; raise it, never lower it)
 and keeps internal bookkeeping — review rounds, dates, finding and issue

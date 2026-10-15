@@ -2,7 +2,7 @@
 # nothing to update there. The hooks add-on has exactly one, `flutter_hooks`,
 # still before 1.0: a 0.22 falls outside `^0.21.2` and has to be taken by
 # hand, so it is watched here. What else ages is the tooling: the actions this
-# workflow runs, the two example backends, the two Playwright suites and the
+# workflow runs, the two example backends, the three Playwright suites and the
 # documentation site.
 version: 2
 updates:
@@ -22,6 +22,7 @@ updates:
       - /examples/showcase/e2e
       - /examples/task_manager/server
       - /examples/task_manager/e2e
+      - /packages/query_kit_hooks/example/e2e
     schedule:
       interval: monthly
     groups:

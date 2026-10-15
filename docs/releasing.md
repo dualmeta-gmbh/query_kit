@@ -129,9 +129,10 @@ From 1.0.1 on, nothing is done in a browser:
    Semantic versioning holds: a breaking change is a major.
 2. Merge to `main` and wait for `ci` to go green there. Then run
    `native-e2e` by hand on `main` (Actions → native-e2e → Run workflow,
-   "all"): the showcase's native suite on an Android emulator, an iOS
-   simulator, as a macOS and a Linux desktop app and in Chrome, and both
-   Playwright suites in all three browsers. It runs on a schedule otherwise
+   "all"): the showcase's native suite and the hooks add-on's example's on
+   an Android emulator, an iOS simulator, as a macOS and a Linux desktop app
+   and in Chrome, and the three Playwright suites in all three browsers. It
+   runs on a schedule otherwise
    — iOS and macOS only monthly, because a macOS minute costs twenty Linux
    ones — so a release is the one time it is asked for.
 3. Push `query_kit-v<version>`. `publish.yml` publishes the core, and
@@ -237,6 +238,16 @@ true for that, all of it set on 2026-09-23:
   of the archive. After a fresh clone, `flutter pub get` in
   `packages/query_kit_flutter/example` resolves it; CI does that before the
   analyzer.
+- **The hooks package's example ships without its end-to-end suites.** It
+  resolves as the binding's does, through an `example/pubspec_overrides.yaml`
+  the hooks' `.pubignore` keeps out. The same file keeps out `e2e/`,
+  `e2e-native/`, `integration_test/`, `test_driver/` — they need the
+  showcase's backend and device control — and the platform folders, which
+  `flutter create .` writes for whoever runs it; it writes no template
+  `test/widget_test.dart`, because the example's own is there. Also kept out:
+  `test/repository_test.dart`, which compares the seed with the showcase
+  server's and the suites with the package's hooks. The widget tests and the
+  in-memory half of the contract test ship and run.
 - **The hooks package's fence test stays home.** `test/docs_fences_test.dart`
   reads the site's hooks guide from `website/`, which an archive does not
   have, so the hooks' `.pubignore` keeps it out. The twins it checks, under

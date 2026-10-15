@@ -712,3 +712,84 @@ following:
 Every finding was reproduced before it was worked, and none was declined.
 Hooks **332**, binding **320**. AP11 stays open until AP10. If AP10
 changes `lib/`, a further pass reads that change.
+
+## The example app (AP10)
+
+`example/` is a small app of posts, todos and projects that calls every
+hook the package exports where an app would call it. Its README has a
+table of the hooks and where each one is used. The decisions are in #103's
+opening comment. In short:
+
+- The example runs against the showcase's express server on port 5178, so
+  this package gets no backend of its own.
+- In the archive it runs against `lib/src/in_memory_backend.dart`, which
+  answers over a copy of that server's seed.
+- The end-to-end suites stay in the repository.
+
+No line of the package's `lib/` changed, nor of the binding's or the core's,
+so no further AP11 pass is owed.
+
+### What proves it
+
+| Suite | Where | Cases | Against |
+|---|---|---|---|
+| Widget tests | `test/widget_test.dart` | 10 | the in-memory backend, on the test's fake clock |
+| Backend contract | `test/backend_contract_test.dart` | 10 per backend | the in-memory backend, and the showcase server when `HOOKS_EXAMPLE_SERVER` names it (CI's `e2e` job) |
+| Repository test | `test/repository_test.dart` (not in the archive) | 15 | the seed against the server's; every hook declared in `lib/src/` against the app, `e2e/tests/` and `integration_test/` |
+| Playwright | `e2e/tests/` | 15, one `describe` per hook | the web build and the real server; Chromium in CI, Firefox and WebKit in `native-e2e` |
+| Native | `integration_test/` | 13 flows, one `group` per hook, and 2 lifecycle cases | a device and the real server through the showcase's device control; `native-e2e` runs it after the showcase's suite on every platform |
+
+The repository test reads the hook names from the declarations, so a hook
+added to the package fails it until both suites prove it.
+
+Both prefetch claims were tested against their fault. With `usePrefetchQuery`
+and `usePrefetchInfiniteQuery` commented out, the four widget tests that
+depend on them go red, and nothing else does. In the browser, the comments
+request has to reach the server while the post's request is held in the
+browser.
+
+The native lifecycle cases send the app away for real:
+
+- the todos on screen (`staleTime` 0) are fetched again on return;
+- the posts on screen (a minute fresh) are not.
+
+### Runs before the commit
+
+- The widget and contract tests pass; the contract against the showcase
+  server on 5178 is 20 of 20.
+- Playwright, three browsers, each test three times: 135 of 135.
+- Native on an iOS 26 simulator (iPhone 17 Pro): 15 of 15.
+- A copy of exactly what the archive holds, resolved against the checkout
+  through an override file, then `flutter create . --platforms=web`:
+  `test/widget_test.dart` is unchanged, 20 tests pass and the analyzer is
+  clean. The publish dry-run reports 0 warnings.
+
+Not run before the commit: the native suite on Android, macOS, Linux and
+Chrome, and the `floors` run on Flutter 3.27.4. CI's `native-e2e` and
+`floors` cover them.
+
+### What building it found
+
+None of these is a defect in the package. Each is recorded because the next
+app built on the hooks, or the next suite, meets it too.
+
+- **The web reads a chip as a checkbox.** Flutter's web engine gives an
+  `ActionChip` the checkbox role, because a chip carries a selected state.
+  Its label is still there, but `getByRole('button')` does not find it, and
+  a screen reader announces a checkbox. The recently-viewed row uses
+  `OutlinedButton`s instead.
+- **A `ListTile` on the web is a label, not text.** A tile's `selected`
+  state makes the engine put its title in `aria-label` and not in the
+  node's text. `getByText` misses it, and so does an accessibility snapshot.
+  The pending todo row is a plain `Row`: nothing in it can be tapped.
+- **A failed write is counted only after the refetch.** `onSettled` returns
+  the invalidation's refetch, so a failed toggle stays pending until the
+  list is reloaded, and only then counts as `failed`. The rollback in
+  `onError` shows at once. The widget test asserts both moments.
+- **`pushReplacement` keeps two back buttons for a while.** The replaced
+  route leaves only when the new route's entrance is over, and that takes
+  longer than 400 ms on Flutter 3.41's Android transition. The widget test
+  waits a second; the native test waits until there is one back button.
+- **`flutter create` writes Xcode settings that current Xcode rejects.** The
+  iOS template targets 13.0, and Xcode 27 builds from 15.0. The Podfiles are
+  the showcase's, which raise the pods as well.

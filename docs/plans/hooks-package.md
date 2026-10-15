@@ -1106,18 +1106,31 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     - eine native Suite über `integration_test`, mit `run.sh` und dem
       nativen Harness des Showcase als Vorlage;
     - je ein Bein in `ci.yml` (`e2e`) und `native-e2e.yml`.
-- **Wartet auf** den Merge von `e2e-coverage` nach `main`. Danach wird
-  dieser Branch darauf rebased. Erwartete Konflikte:
-  - Die Bindung (1.0.3/1.0.4) ändert `query_builder.dart`,
-    `query_context.dart` und `query_mixin.dart`, die auch
-    `RebuildRule.beside` berührt.
-  - Die native Suite des Showcase braucht vielleicht dieselbe Zählung für
-    `Load next` wie `build_when_test.dart`.
-- **Entscheidet AP10:**
-  - wo die E2E-Dateien liegen, im veröffentlichten Archiv oder per
-    `.pubignore` draußen (D18: das Beispiel wird mitveröffentlicht);
-  - gegen welches Backend sie laufen: ein kleiner Server mit Vertragstest
-    wie bei `task_manager`, oder ein Fake in der App.
+- **Wartete auf** den Merge von `e2e-coverage` nach `main` (#107, am
+  2026-10-15 gemergt). `main` ist in diesen Branch **gemergt, nicht
+  rebased** (`5736426`): Die Hashes des Branches stehen in den
+  `PORTING_NOTES`, in diesem Plan und in den Issues, und ein Rebase hätte
+  jede dieser Angaben ungültig gemacht und PR #106 per Force-Push
+  überschrieben. Die drei erwarteten Konflikte kamen; alle Gates blieben
+  grün.
+- **Entschieden (#103, Startkommentar):**
+  - **Ort:** Die E2E-Dateien liegen im Repository, aber per `.pubignore`
+    außerhalb des Archivs. Das gilt für `e2e/`, `integration_test/`,
+    `e2e-native/`, `test_driver/`, die Plattformordner, den
+    Katalogtest und `pubspec_overrides.yaml`. Im Archiv bleiben `lib/`,
+    `test/` und `assets/`. Jeder Nutzer lädt das Archiv; eine Node-Suite
+    und fünf Plattformordner sind Werkzeug, kein Beispiel.
+  - **Backend:** Der Server des Showcase, mit Szenario-Isolation, auf
+    eigenem Port (5178). Er hat schon jede Route, die die App braucht,
+    dazu `failNext` und das Request-Log; ein dritter Server wäre Pflege
+    ohne Gewinn. Ohne `--dart-define=BACKEND=…` läuft die App gegen einen
+    Fake in `lib/` über eine Kopie von `seed.json`, damit `flutter run`
+    aus dem Archiv funktioniert. Ein Vertragstest prüft beide.
+  - **Schriften:** keine im Archiv. Playwright beantwortet die eine
+    Roboto-Anfrage der Web-Engine aus der Datei des Showcase.
+  - **Nativ:** ein eigener `run.sh` und ein eigener Harness;
+    `device_control.ts` des Showcase wird per Pfad genutzt, mit `APP_ID`
+    und Ports aus der Umgebung (5179, 5180).
 - **Akzeptanz:**
   - Das Beispiel lebt im veröffentlichten Archiv und läuft dort mit
     `flutter test`.
@@ -1125,6 +1138,23 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     Ein Test vergleicht die Exporte mit den Specs, wie `catalogue_test.dart`
     im Showcase.
   - Beide E2E-Beine sind in CI grün.
+- **Gebaut:** `example/`, mit allen 13 Hooks an ihrem Platz. Der
+  Katalogtest heißt `test/repository_test.dart`. Er liest die Hooks aus
+  ihren Deklarationen in `lib/src/` und verlangt zu jedem drei Dinge:
+  einen Aufruf in `lib/`, ein `describe` in `e2e/tests/` und eine `group`
+  in `integration_test/`.
+  - **Tests:** 10 Widget-Tests, 10 Vertragsfälle je Backend,
+    15 Playwright-Tests und 13 native Flows mit 2 Lebenszyklus-Fällen.
+  - **Läufe vor dem Commit:**
+    - Playwright: 135 von 135 Läufen (drei Engines, jeder Test dreimal).
+    - Nativ auf dem iOS-Simulator: 15 von 15.
+    - Das simulierte Archiv bleibt nach `flutter create .` grün.
+  - **Nicht vor dem Commit gelaufen:** nativ auf Android, macOS, Linux und
+    im Browser, dazu die `floors`. Das übernimmt die CI.
+  - Was der Bau gefunden hat (keine Fehler im Paket), steht in den
+    `PORTING_NOTES` unter „The example app (AP10)“.
+  - `lib/` des Pakets blieb unberührt, deshalb ist kein weiterer
+    AP11-Durchgang fällig. Es folgt das Review durch Sol.
 
 ### AP11 — Review-Runde
 

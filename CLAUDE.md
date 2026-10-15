@@ -203,6 +203,10 @@ cd packages/query_kit_hooks && flutter test
 ```
 
 ```bash
+cd packages/query_kit_hooks/example && flutter test
+```
+
+```bash
 cd examples/task_manager && flutter test
 ```
 
@@ -214,9 +218,10 @@ cd examples/showcase && flutter test
 cd examples/doc_snippets && flutter test
 ```
 
-The binding's example is outside the workspace (it ships; see
-`docs/releasing.md`), so after a fresh clone run `flutter pub get` in
-`packages/query_kit_flutter/example` once before the analyzer:
+The binding's example and the hooks add-on's are outside the workspace
+(they ship; see `docs/releasing.md`), so after a fresh clone run
+`flutter pub get` in `packages/query_kit_flutter/example` and
+`packages/query_kit_hooks/example` once before the analyzer:
 
 ```bash
 dart analyze --fatal-infos packages examples tool && dart format --set-exit-if-changed packages examples/task_manager/lib examples/task_manager/test examples/showcase/lib examples/showcase/test examples/showcase/integration_test examples/showcase/test_driver examples/doc_snippets/lib examples/doc_snippets/test tool
@@ -234,8 +239,9 @@ floor — it caught three dependency pins and a `foundation` export that current
 stable hides); and an `e2e` matrix job runs each example's Playwright
 end-to-end suite (the real web build in Chromium against the real express
 backend — read the example's README before touching one; they read Flutter's
-semantics tree, not the canvas, and nothing in them asserts on a clock). The
-showcase leg also runs `backend_contract_test.dart` against the real server.
+semantics tree, not the canvas, and nothing in them asserts on a clock). Every
+leg also runs its `backend_contract_test.dart` against the real server; the
+hooks add-on's example runs against the showcase's, on ports of its own.
 **1.0.0 of both packages is published** (2026-09-23), and the site is live
 at <https://query-kit.dualmeta.io/>. A breaking change is now a
 major. How a later release goes — bump, merge, tag; `publish.yml` and

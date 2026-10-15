@@ -8,15 +8,16 @@
 // What a user reads, and so what is scanned:
 //
 // * the site's pages, `website/docs/**/*.md` and `*.mdx`;
-// * each package's `README.md`;
+// * each package's `README.md`, and its example's when it has one;
 // * each package's `CHANGELOG.md`, its top entry only — older entries are
 //   history and may say what they said;
 // * every `///` line under `packages/*/lib`, which `dart doc` publishes;
 // * the example apps' sources — `examples/showcase/lib`,
-//   `examples/task_manager/lib` and `packages/query_kit_flutter/example/lib`
-//   — which the site shows whole on its Examples pages: every `//` and `///`
-//   comment and every string literal in them (a string is what the running
-//   demo puts on screen).
+//   `examples/task_manager/lib`, `packages/query_kit_flutter/example/lib`
+//   and `packages/query_kit_hooks/example/lib` — which the site shows whole
+//   on its Examples pages, or pub.dev in a package's archive: every `//` and
+//   `///` comment and every string literal in them (a string is what the
+//   running demo puts on screen).
 //
 // A line that must keep its reference says so with `<!-- jargon-ok -->`
 // (Markdown), `{/* jargon-ok */}` (MDX, which has no HTML comments) or
@@ -66,6 +67,7 @@ const shownSources = [
   'examples/showcase/lib',
   'examples/task_manager/lib',
   'packages/query_kit_flutter/example/lib',
+  'packages/query_kit_hooks/example/lib',
 ];
 
 /// The markers that let one line keep a reference.
@@ -158,8 +160,10 @@ void main(List<String> args) {
       .toList()
     ..sort((a, b) => a.path.compareTo(b.path));
   for (final package in packages) {
-    final readme = File('${package.path}/README.md');
-    if (readme.existsSync()) scan(readme);
+    for (final path in ['README.md', 'example/README.md']) {
+      final readme = File('${package.path}/$path');
+      if (readme.existsSync()) scan(readme);
+    }
     final changelog = File('${package.path}/CHANGELOG.md');
     if (changelog.existsSync()) scan(changelog, topOnly: true);
     final name = package.path.substring(root.path.length + 1);

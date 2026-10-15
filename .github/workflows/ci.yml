@@ -25,6 +25,10 @@ jobs:
       - name: example dependencies
         run: flutter pub get
         working-directory: packages/query_kit_flutter/example
+      # The hooks add-on's example ships the same way, and resolves the same.
+      - name: hooks example dependencies
+        run: flutter pub get
+        working-directory: packages/query_kit_hooks/example
       # Both suites record line coverage as they run; the `coverage floors`
       # step below reads it.
       - name: core tests
@@ -79,6 +83,13 @@ jobs:
       - name: binding example test
         run: flutter test
         working-directory: packages/query_kit_flutter/example
+      # The hooks add-on's example: every tab against its in-memory backend,
+      # that backend's contract (the server half runs in the `e2e` job), and
+      # the repository test that holds both end-to-end suites to every hook
+      # the package exports.
+      - name: hooks example tests
+        run: flutter test
+        working-directory: packages/query_kit_hooks/example
       # `dart pub publish --dry-run` exits 65 when validation finds a warning
       # (a missing CHANGELOG, say) and 0 when the package is clean, so a
       # warning fails the job without any extra flag.
@@ -143,6 +154,9 @@ jobs:
       - name: hooks tests
         run: flutter test
         working-directory: packages/query_kit_hooks
+      - name: hooks example tests
+        run: flutter test
+        working-directory: packages/query_kit_hooks/example
       - name: demo tests
         run: flutter test
         working-directory: examples/task_manager
@@ -234,9 +248,11 @@ jobs:
   # against its real express backend, driven by Playwright. The task manager
   # (examples/task_manager/e2e) runs against its own express backend; the
   # showcase (examples/showcase/e2e) against its own scenario-isolated
-  # backend. Both legs also run their app's backend contract test against the
-  # real server, which is what proves the widget tests' fake mirrors it — the
-  # `gates` job runs the same file against the fake alone.
+  # backend, and the hooks add-on's example
+  # (packages/query_kit_hooks/example/e2e) against the showcase's, on a port
+  # of its own. Every leg also runs its app's backend contract test against
+  # the real server, which is what proves the widget tests' fake mirrors it —
+  # the `gates` job runs the same file against the fake alone.
   e2e:
     runs-on: ubuntu-latest
     strategy:
@@ -244,11 +260,17 @@ jobs:
       matrix:
         include:
           - app: task_manager
+            dir: examples/task_manager
             server: examples/task_manager/server
             build: --dart-define=E2E=true
           - app: showcase
+            dir: examples/showcase
             server: examples/showcase/server
             build: --dart-define=E2E=true --pwa-strategy=none --no-web-resources-cdn
+          - app: hooks_example
+            dir: packages/query_kit_hooks/example
+            server: examples/showcase/server
+            build: --dart-define=E2E=true --dart-define=BACKEND=http://localhost:5178/api --pwa-strategy=none --no-web-resources-cdn
     name: e2e (${{ matrix.app }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -261,9 +283,14 @@ jobs:
         with:
           node-version: 24
       - run: flutter pub get
+      # A workspace member resolves with the root; the hooks example is not
+      # one (it ships in an archive) and resolves on its own.
+      - name: app dependencies
+        run: flutter pub get
+        working-directory: ${{ matrix.dir }}
       - name: web build with semantics on
         run: flutter build web --no-pub ${{ matrix.build }}
-        working-directory: examples/${{ matrix.app }}
+        working-directory: ${{ matrix.dir }}
       - name: backend dependencies
         run: npm ci
         working-directory: ${{ matrix.server }}
@@ -285,17 +312,26 @@ jobs:
           for _ in $(seq 1 50); do curl -sf localhost:5177/api/tasks > /dev/null && break; sleep 0.2; done
           TASK_MANAGER_SERVER=http://localhost:5177/api flutter test test/backend_contract_test.dart
         working-directory: examples/task_manager
+      # The showcase's server again, on a port Playwright does not start one
+      # on (5178): the example's in-memory backend mirrors the routes it calls.
+      - name: backend contract against the real server
+        if: matrix.app == 'hooks_example'
+        run: |
+          (cd ../../../examples/showcase/server && PORT=5181 node server.ts &)
+          for _ in $(seq 1 50); do curl -sf localhost:5181/api/__scenario/probe/requests > /dev/null && break; sleep 0.2; done
+          HOOKS_EXAMPLE_SERVER=http://localhost:5181/api flutter test test/backend_contract_test.dart
+        working-directory: packages/query_kit_hooks/example
       - name: playwright
         run: npm ci && npx playwright install --with-deps chromium
-        working-directory: examples/${{ matrix.app }}/e2e
+        working-directory: ${{ matrix.dir }}/e2e
       - name: end-to-end tests
         run: npx playwright test
-        working-directory: examples/${{ matrix.app }}/e2e
+        working-directory: ${{ matrix.dir }}/e2e
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: playwright-report-${{ matrix.app }}
           path: |
-            examples/${{ matrix.app }}/e2e/playwright-report
-            examples/${{ matrix.app }}/e2e/test-results
+            ${{ matrix.dir }}/e2e/playwright-report
+            ${{ matrix.dir }}/e2e/test-results
           retention-days: 7
