@@ -686,5 +686,29 @@ It found two errors in the records:
 | V5-1 (P2) | The V4-1 row said no test calls `QueryController.observing` with an ordinary observer. Two lifetime cases do, at lines 566 and 614 of `review_regressions_test.dart`. The fifth pass had found the gap in the backstop case only | Yes. A search for `QueryController.observing(` missed `QueryController<int, int>.observing(` | The V4-1 row is scoped to the backstop case and names the lifetime cases |
 | V5-2 (P2) | The fifth pass's rewording of AP12's sweep dropped the general count update for `CLAUDE.md` and kept only the hooks row. The binding row still says 287 tests, and the suite has 320 | Yes: `CLAUDE.md:128` | The sweep has a separate item for every count in `CLAUDE.md`'s state table again, the binding row's included |
 
-**Counts after the sixth pass:** hooks **332**, binding **320**. A seventh
-pass reads these fixes.
+**Counts after the sixth pass:** hooks **332**, binding **320**.
+
+### Seventh pass: nothing new
+
+GPT-6.1-Sol (xhigh) read `4b05c1d` and found nothing new. It confirmed the
+following:
+
+- The V4-1 row and the sixth pass's record are faithful.
+- Its fault controls give the same results: the lifetime cases and the
+  new backstop fail on the fault, and the old backstop passes.
+- AP12's restored count item is right, and `CLAUDE.md` still says 287
+  for the binding.
+- Run with its exclusions, AP12's search finds no actionable line that the
+  list misses.
+
+**The round ends here.**
+
+- The first pass reviewed the whole package and found six things.
+- The second and third passes found defects in the fixes, all in one
+  assertion message.
+- The fourth to sixth passes found nothing in code. They found gaps in
+  the test and the records.
+
+Every finding was reproduced before it was worked, and none was declined.
+Hooks **332**, binding **320**. AP11 stays open until AP10. If AP10
+changes `lib/`, a further pass reads that change.

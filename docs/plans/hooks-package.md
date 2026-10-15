@@ -1199,6 +1199,11 @@ Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
     Lücke betraf nur den Backstop-Fall.
   - V5-2 (P2): Bei der Umformulierung des AP12-Abgleichs fiel die
     allgemeine Zahlenpflege für `CLAUDE.md` weg. Sie steht wieder drin.
+- **Siebter Durchgang (Sol, xhigh), über `4b05c1d`:** nichts Neues. Damit
+  endet die Runde. Insgesamt wurde jeder Befund reproduziert und keiner
+  abgelehnt. Ab dem vierten Durchgang gab es keinen Fehler mehr im Code.
+  Das Ticket bleibt offen bis AP10. Ändert AP10 `lib/`, liest ein weiterer
+  Durchgang diese Änderung.
 
 ### AP12 — Release: `query_kit_hooks` 0.1.0 und `query_kit_flutter` 1.1.0
 
