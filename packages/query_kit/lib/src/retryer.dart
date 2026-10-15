@@ -119,6 +119,10 @@ class Retryer<TData> {
   final void Function(CancelledError error)? onCancel;
 
   final Completer<TData> _completer = Completer<TData>();
+
+  /// The zone this loop was made in, which [future] belongs to: a listener
+  /// from another error zone goes through `inCurrentZone` (`zones.dart`).
+  final Zone zone = Zone.current;
   Completer<void>? _pauseCompleter;
   RetryerStatus _status = RetryerStatus.pending;
   bool _isRetryCancelled = false;

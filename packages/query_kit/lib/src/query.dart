@@ -17,6 +17,7 @@ import 'query_state.dart';
 import 'removable.dart';
 import 'retryer.dart';
 import 'structural_sharing.dart';
+import 'zones.dart';
 
 /// What a [Query] needs from an observer, without knowing what an observer is.
 ///
@@ -462,6 +463,10 @@ class Query<TQueryData> extends Removable {
   /// joined it — sees the same outcome, even when a `structuralSharing` hook
   /// throws after the transport succeeded.
   Completer<TQueryData>? _operation;
+
+  /// The zone [_operation] was made in. A caller from another error zone is
+  /// handed the outcome through [inCurrentZone], or never hears it fail.
+  Zone _operationZone = Zone.root;
   QueryState<TQueryData>? _revertState;
   bool _signalConsumed = false;
   QueryCancelToken? _activeSignal;
@@ -472,8 +477,14 @@ class Query<TQueryData> extends Removable {
   Object? get meta => _options.meta;
 
   /// The in-flight fetch, if there is one: the future every caller of [fetch]
-  /// shares, settled once the cache has been written.
-  Future<TQueryData>? get future => _operation?.future;
+  /// shares, settled once the cache has been written. Read from another error
+  /// zone than the fetch began in, it is that zone's own (`zones.dart`).
+  Future<TQueryData>? get future {
+    final operation = _operation;
+    return operation == null
+        ? null
+        : inCurrentZone(operation.future, _operationZone);
+  }
 
   /// How many observers are attached right now — zero for a query nothing
   /// on screen uses, which is what makes it collectable after `gcTime`.
@@ -610,7 +621,11 @@ class Query<TQueryData> extends Removable {
   Future<void> cancel({bool revert = false, bool silent = false}) async {
     _fetchGeneration++;
     final cancelled = _retryer;
-    final pending = cancelled?.future;
+    // Through the zone the fetch began in: a cancel from another error zone
+    // waited here for an error that never reached it.
+    final pending = cancelled == null
+        ? null
+        : inCurrentZone(cancelled.future, cancelled.zone);
     cancelled?.cancel(revert: revert, silent: silent);
     if (pending == null) {
       return;
@@ -920,7 +935,7 @@ class Query<TQueryData> extends Removable {
         if (retryer != null && operation != null) {
           // Retries stopped by an unmount can continue.
           retryer.continueRetry();
-          return operation.future;
+          return inCurrentZone(operation.future, _operationZone);
         }
       }
     }
@@ -930,8 +945,12 @@ class Query<TQueryData> extends Removable {
       if (_removed || generation != _fetchGeneration) {
         return _removed
             ? Future<TQueryData>.error(const CancelledError(silent: true))
-            : _operation?.future ??
-                Future<TQueryData>.error(const CancelledError(silent: true));
+            : switch (_operation) {
+                Completer<TQueryData>(:final future) =>
+                  inCurrentZone(future, _operationZone),
+                null =>
+                  Future<TQueryData>.error(const CancelledError(silent: true)),
+              };
       }
       return null;
     }
@@ -1053,6 +1072,7 @@ class Query<TQueryData> extends Removable {
     final operation = Completer<TQueryData>();
     _retryer = retryer;
     _operation = operation;
+    _operationZone = Zone.current;
 
     // Unconditional. Upstream skips the action when `fetchStatus !== 'idle'
     // && fetchMeta === meta`, and that never holds: a `null` fetchMeta is not
@@ -1109,7 +1129,10 @@ class Query<TQueryData> extends Removable {
           // means.
           final replacement = _operation;
           if (replacement != null && !identical(replacement, operation)) {
-            operation.complete(replacement.future);
+            // This runs in [operation]'s zone; the replacement may have
+            // begun in another.
+            operation
+                .complete(inCurrentZone(replacement.future, _operationZone));
           } else {
             operation.completeError(error, stackTrace);
           }

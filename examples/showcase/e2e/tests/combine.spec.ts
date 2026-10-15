@@ -166,3 +166,113 @@ test('the memo skips the combiner while every source holds the same data', async
   await expect(overview(page, 'counter=1')).toBeVisible()
   await expect(combined(page, 'combines=2')).toBeVisible()
 })
+
+test.describe('a list, its details and a pinned post', () => {
+  // The section sits below the combined card: tall enough that the
+  // scaffold's list builds it without a scroll.
+  test.use({ viewport: { width: 1280, height: 2400 } })
+
+  const LIST = /^\/api\/posts$/
+  const DETAILS = /^\/api\/posts\/[234]$/
+  const THIRD = /^\/api\/posts\/4$/
+  const DELETED = /^\/api\/posts\/999$/
+  const DETAIL_TITLES = [
+    'Continuous integration: setup guide',
+    'Code review: setup guide',
+    'Release notes: setup guide',
+  ].join(' · ')
+  const PINNED = 'Staging environment: setup guide'
+
+  const details = (page: Page, text: string) => factIn(page, 'details', text)
+
+  const pinned = (page: Page, text: string) => factIn(page, 'pinned', text)
+
+  async function choose(page: Page, knob: string, label: string) {
+    const choice = group(page, knob).getByRole('radio', { name: label, exact: true })
+    await choice.click()
+    await expect(choice).toBeChecked()
+  }
+
+  test('combineWith: the list and a read per item are one combination', async ({ page, open, scenario }) => {
+    // The second detail held: the list and two details are in, and the
+    // whole still waits.
+    const hold = holdRequest(page, '**/api/posts/3*')
+    await open('/combine')
+
+    // The details go out once the list is in.
+    await expect.poll(() => hold.seen).toBe(1)
+    await expect.poll(() => scenario.count('GET', DETAILS)).toBe(2)
+    await expect(details(page, 'state=pending')).toBeVisible()
+    await expect(details(page, 'isFetching=true')).toBeVisible()
+    await hold.release()
+
+    await expect(details(page, 'state=data')).toBeVisible()
+    await expect(details(page, 'items=3')).toBeVisible()
+    await expect(details(page, 'refetchError=none')).toBeVisible()
+    await expect(page.getByText(DETAIL_TITLES, { exact: true })).toBeVisible()
+    expect(await scenario.count('GET', LIST)).toBe(1)
+    expect(await scenario.count('GET', DETAILS)).toBe(3)
+  })
+
+  test('a refused detail keeps the titles as refetchError, and retry reads only that detail', async ({
+    page,
+    open,
+    scenario,
+  }) => {
+    await open('/combine')
+    await expect(details(page, 'items=3')).toBeVisible()
+    await expect(details(page, 'isFetching=false')).toBeVisible()
+    await scenario.clearRequests()
+
+    await choose(page, 'detail knob', 'the third is refused')
+    await button(page, 'Refetch details').click()
+
+    await expect(details(page, 'refetchError=Requested: 500')).toBeVisible()
+    await expect(details(page, 'isFetching=false')).toBeVisible()
+    // Not an error state: every title is still on screen.
+    await expect(details(page, 'state=data')).toBeVisible()
+    await expect(page.getByText(DETAIL_TITLES, { exact: true })).toBeVisible()
+    // `refetch()` went to the list and every detail.
+    expect(await scenario.count('GET', LIST)).toBe(1)
+    expect(await scenario.count('GET', DETAILS)).toBe(3)
+
+    await choose(page, 'detail knob', 'all answer')
+    await scenario.clearRequests()
+    await button(page, 'Retry details').click()
+
+    await expect(details(page, 'refetchError=none')).toBeVisible()
+    await expect(details(page, 'isFetching=false')).toBeVisible()
+    // `retry()` went to the refused detail alone.
+    expect(await scenario.count('GET', THIRD)).toBe(1)
+    expect(await scenario.count('GET', DETAILS)).toBe(1)
+    expect(await scenario.count('GET', LIST)).toBe(0)
+  })
+
+  test('optional: a deleted pinned post leaves the combination data, and retry still reads it', async ({
+    page,
+    open,
+    scenario,
+  }) => {
+    await open('/combine')
+    await expect(pinned(page, `pinned=${PINNED}`)).toBeVisible()
+    await expect(pinned(page, 'state=data')).toBeVisible()
+
+    await choose(page, 'pinned knob', 'a deleted post')
+
+    // A 404 with nothing to fall back on — and the whole is still data.
+    await expect(pinned(page, 'pinned=none')).toBeVisible()
+    await expect(pinned(page, 'state=data')).toBeVisible()
+    await expect(pinned(page, 'isFetching=false')).toBeVisible()
+    expect(await scenario.count('GET', DELETED)).toBe(1)
+
+    await scenario.clearRequests()
+    await button(page, 'Retry pinned').click()
+
+    // The stand-in remembers its origin: retry reached the refused read and
+    // left the list alone.
+    await expect.poll(() => scenario.count('GET', DELETED)).toBe(1)
+    await expect(pinned(page, 'isFetching=false')).toBeVisible()
+    await expect(pinned(page, 'pinned=none')).toBeVisible()
+    expect(await scenario.count('GET', LIST)).toBe(0)
+  })
+})

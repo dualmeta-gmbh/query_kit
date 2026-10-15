@@ -81,9 +81,10 @@ void showcaseTest(
   String description,
   Future<void> Function(WidgetTester tester, Harness h) body, {
   DefaultOptions? defaults,
+  String scenario = 'widget-test',
 }) {
   testWidgets(description, (tester) async {
-    final h = Harness(defaults: defaults);
+    final h = Harness(defaults: defaults, scenario: scenario);
     try {
       await body(tester, h);
     } finally {

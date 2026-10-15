@@ -4,11 +4,11 @@
 /// what a test does with them: it **reads** a `fact_group.dart` group by name,
 /// it **presses** a `controls.dart` button by name, and it does neither to
 /// anything here. That is not a coincidence of what each one looks like — it
-/// is what these four widgets are *for*, and each of them says so in its own
+/// is what these five widgets are *for*, and each of them says so in its own
 /// doc: [SectionCard] opts out of being a semantic container so the texts
 /// inside it stay findable, [SkeletonBox] excludes itself from the tree
-/// altogether, and [Pill] and [Notice] are leaf texts a test may match but
-/// never addresses as a thing.
+/// altogether, and [Pill], [Notice] and [BackendLabel] are leaf texts a test
+/// may match but never addresses as a thing.
 ///
 /// So the whole file is one sentence: the theme given a shape. Every class
 /// here is a `StatelessWidget` that reads `Theme.of(context)`, holds no state,
@@ -138,6 +138,30 @@ class SkeletonBox extends StatelessWidget {
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+      );
+}
+
+/// What an app bar says about the backend (`ShowcaseScope.backendLabel`),
+/// cut short where a phone has no room for a long scenario id.
+class BackendLabel extends StatelessWidget {
+  const BackendLabel(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
           ),
         ),
       );

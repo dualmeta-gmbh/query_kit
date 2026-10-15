@@ -280,7 +280,7 @@ reads (a key taken from another query), or a new widget from its parent.
 A rebuild caused by an `InheritedWidget` it depends on arrives through
 `didChangeDependencies`, which no read can see, so those reads are additive:
 the old key goes at the next of the three, or when the `LayoutBuilder`
-unmounts. Nothing it shows loses its subscription.
+unmounts. Nothing its builder reads loses its subscription this way.
 
 **Fix.** A key that depends on anything the builder reads belongs in a widget
 of its own below the `LayoutBuilder` — `c.maxWidth > 600 ? const WideTasks()
@@ -296,13 +296,35 @@ the page rebuilt.
 
 **Mechanism.** A read belongs to the element whose `context` it went through,
 and rebuilds that element: the page, not the dialog, which lives in another
-subtree. And the page's next own build does not read the dialog's key, so it
-is released after that frame while the dialog still shows it. Nothing a
-reader shows *in its own subtree* loses its subscription; a dialog is not in
-the page's.
+subtree. And the page's next own build that reads does not read the
+dialog's key, so it is released after that frame while the dialog still
+shows it.
 
 **Fix.** Give the dialog a reader of its own: read through the `context` the
 dialog builder is given, or in a widget of its own inside the dialog.
+
+## A nested builder kept in a field stops updating
+
+**Symptom.** A `State` keeps a `ValueListenableBuilder` (or an
+`AnimatedBuilder`, a `Builder`) in a field so it is not rebuilt, and its
+callback reads with `watchQuery` or through the outer `context`. It shows its
+data, but a change to that query shows only when its own listenable ticks;
+and after the `State` rebuilds for anything else — a `setState`, a change to
+a query its `build` reads — its `refetchInterval` stops too, and an entry
+nobody else reads is collected after its `gcTime`.
+
+**Mechanism.** The callback's read is the `State`'s, and additive: a change
+to the query rebuilds the `State`, and Flutter does not re-run a nested
+builder handed the same widget instance, so its text moves only when its own
+listenable runs it. The `State`'s own build that reads keeps only what it
+reads, and in that frame nobody reads the nested builder's key, so it is
+released while the builder still shows it — until the next tick reads it
+again. A nested builder the `build` creates anew is re-run, reads again, and
+keeps its key.
+
+**Fix.** Give the nested part a widget of its own that reads in its own
+`build`; it can then be kept in a field, or be `const`, and its reads live
+and go with it.
 
 ## "QueryClientProvider could not listen to its onlineStatus"
 

@@ -14,6 +14,7 @@ import 'query_client.dart';
 import 'query_key.dart';
 import 'removable.dart';
 import 'retryer.dart';
+import 'zones.dart';
 
 /// Where a mutation is in its life: `idle` before the first run, `pending`
 /// while running (or paused), then `success` or `error` until the next run
@@ -401,6 +402,7 @@ final class MutationState<TData, TVariables, TOnMutateResult> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is MutationState<TData, TVariables, TOnMutateResult> &&
+          other.runtimeType == runtimeType &&
           other.status == status &&
           other.hasData == hasData &&
           other.data == data &&
@@ -594,7 +596,9 @@ class Mutation<TData, TVariables, TOnMutateResult> extends Removable {
     if (retryer != null) {
       // Release the pause; the run's own future says when it has settled.
       retryer.continueFetch().ignore();
-      return _execution?.then<void>((_) {}) ?? Future<void>.value();
+      // A run installs [_execution] before it makes its retryer and drops
+      // both together, so there is a run while there is a retryer.
+      return inCurrentZone(_execution!, _executionZone).then<void>((_) {});
     }
     if (_state.status == MutationStatus.pending &&
         (_state.hasVariables || null is TVariables)) {
@@ -607,6 +611,11 @@ class Mutation<TData, TVariables, TOnMutateResult> extends Removable {
   // callbacks — for `continueMutation` to hand on. Set alongside `_retryer`
   // and cleared with it.
   Future<TData>? _execution;
+
+  // The zone [_execution] was made in. A caller from another error zone is
+  // handed it through `inCurrentZone`: a `resumePausedMutations` from one
+  // waited for good on a run that failed in another.
+  Zone _executionZone = Zone.root;
 
   /// Whether the network lets [continueMutation] get anywhere right now — the
   /// rule the cache's `resumePaused` applies before awaiting a paused
@@ -745,12 +754,13 @@ class Mutation<TData, TVariables, TOnMutateResult> extends Removable {
   /// after the callbacks have run and the settled state is dispatched.
   Future<TData> execute(TVariables variables) {
     final current = _execution;
-    if (current != null) return current;
+    if (current != null) return inCurrentZone(current, _executionZone);
     // Install before _run can synchronously publish pending/onMutate events.
     // Reentrant execution of this instance joins its existing run; separate
     // mutation calls use separate cache entries.
     final operation = Completer<TData>();
     _execution = operation.future;
+    _executionZone = Zone.current;
     _run(variables).then(operation.complete,
         onError: (Object error, StackTrace stackTrace) {
       operation.completeError(error, stackTrace);

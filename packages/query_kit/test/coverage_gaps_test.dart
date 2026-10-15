@@ -351,6 +351,54 @@ void main() {
     client.unmount();
     client.clear();
   });
+
+  group('a fetch superseded while its initial data seeds the query', () {
+    // The seed is written by `setOptions` before the fetch installs itself,
+    // and a cache listener hearing it can fetch or cancel again: the first
+    // caller hands over to whatever then holds the query.
+    Future<String?> run(Future<String> Function(Query<String>) reenter) async {
+      final client = testClient();
+      final key = queryKey();
+      final query = client.queryCache.build<String>(client,
+          client.defaultQueryOptions(QueryOptions<String>(queryKey: key)));
+      Future<String>? inner;
+      final unsubscribe = client.queryCache.subscribe((event) {
+        if (inner == null && event is QueryUpdated && query.state.hasData) {
+          inner = reenter(query);
+        }
+      });
+      final outer = query.fetch(
+        options: client.defaultQueryOptions(QueryOptions<String>(
+          queryKey: key,
+          initialData: InitialData.compute(() => 'seed'),
+          queryFn: (_) async => 'outer',
+        )),
+      );
+      try {
+        expect(await outer, await inner);
+        return await inner;
+      } finally {
+        unsubscribe();
+        client.clear();
+      }
+    }
+
+    test('joins the fetch that replaced it', () async {
+      final result = await run((query) => query.fetch(
+            options: query.client.defaultQueryOptions(QueryOptions<String>(
+                queryKey: query.queryKey, queryFn: (_) async => 'inner')),
+          ));
+      expect(result, 'inner');
+    });
+
+    test('rejects silently when it was cancelled', () async {
+      await expectLater(
+        run((query) => query.cancel().then((_) => 'cancelled')),
+        throwsA(isA<CancelledError>()
+            .having((error) => error.silent, 'silent', isTrue)),
+      );
+    });
+  });
 }
 
 class _ThrowingResumeCache extends MutationCache {

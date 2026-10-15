@@ -160,7 +160,7 @@ arguments cannot work. None of them is retried; none reaches a result.
 | `ArgumentError` | `InfiniteData` constructor | `pages` and `pageParams` differ in length. | Keep them paired. |
 | `ArgumentError` | `InfiniteData.flatten<T>` | A page is not an `Iterable<T>`. | Name the element type the pages really hold, or flatten with your own `expand`. |
 | `ArgumentError` | `copyWith` on `InfiniteQueryOptions`, `InfiniteQueryObserverOptions`, `InfiniteQuerySelectOptions` | `queryFn:` passed — an infinite query's function is `pageFn`. On the two observer option types, also `pages:` — an observer refetches as many pages as the query holds. | Change `pageFn`; pass a page count to `client.infiniteQuery` instead. |
-| `UnsupportedError` | `InfiniteQueryObserver.setOptions`, `getOptimisticResult` | Plain observer options were passed. | Use `setInfiniteOptions` with options from `client.infiniteObserverOptions`. |
+| `UnsupportedError` | `InfiniteQueryObserver.setOptions`, `getOptimisticResult` | Plain observer options were passed. | Pass the `InfiniteQueryObserverOptions` or `InfiniteQuerySelectOptions` to `setInfiniteOptions` (`getOptimisticInfiniteResult`), or pass `setOptions` what `client.infiniteObserverOptions` makes of them. |
 | `ArgumentError` | `AppFocusManager` constructor | `refetchMinBackgroundDuration` is negative. | Pass zero or more. |
 
 ## Errors from callbacks and listeners

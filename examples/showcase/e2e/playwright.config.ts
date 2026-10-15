@@ -24,7 +24,18 @@ export default defineConfig({
     baseURL: `http://localhost:${appPort}`,
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // Chromium on every push; Firefox and WebKit (Safari's engine) with
+  // E2E_BROWSERS=all, which the release-time run sets — three browsers triple
+  // the minutes, and the engine differences they catch move slowly.
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    ...(process.env.E2E_BROWSERS === 'all'
+      ? [
+          { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+          { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+        ]
+      : []),
+  ],
   webServer: [
     {
       command: 'node server.ts',

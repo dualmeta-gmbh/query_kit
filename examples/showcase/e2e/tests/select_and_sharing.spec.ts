@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factNumber, group, holdRequest, test } from './fixtures'
+import { expect, fact, factIn, factNumber, group, holdRequest, test } from './fixtures'
 
 // The five readers of the one entry, by the id of their semantics group.
 const readers = ['context', 'builder', 'mixin', 'controller', 'raw'] as const
@@ -185,4 +185,53 @@ test('with sharing off, an equal refetch moves the selection that is a new insta
     expect(after[id].builds, `${id} builds`).toBe(before[id].builds + 2)
   }
   expect(await scenario.count('GET', /^\/api\/todos$/)).toBe(2)
+})
+
+test.describe('a value class around the list', () => {
+  // The section sits below the five readers: tall enough that the
+  // scaffold's list builds it without a scroll.
+  test.use({ viewport: { width: 1280, height: 2400 } })
+
+  const boards = ['leaf board', 'shared board'] as const
+
+  test('a leaf is replaced whole, a StructurallyShareable one keeps the todos that did not change', async ({
+    page,
+    open,
+    scenario,
+  }) => {
+    await open('/select-and-sharing')
+    await loaded(page)
+    // Off at first: the five readers made the only request.
+    await expect(group(page, 'leaf board')).toBeHidden()
+    expect(await scenario.count('GET', /^\/api\/todos$/)).toBe(1)
+
+    const measure = page.getByRole('switch', { name: 'Measure a value class', exact: true })
+    await measure.click()
+    await expect(measure).toBeChecked()
+    for (const board of boards) {
+      await expect(factIn(page, board, 'todos=3')).toBeVisible()
+      await expect(factIn(page, board, 'instances=1')).toBeVisible()
+      await expect(factIn(page, board, 'kept=none yet')).toBeVisible()
+    }
+    await expect.poll(() => scenario.count('GET', /^\/api\/todos$/)).toBe(3)
+
+    // Nothing changed at the backend: equal boards, both kept whole.
+    const refetchBoards = page.getByRole('button', { name: 'Refetch boards', exact: true })
+    await refetchBoards.click()
+    await expect.poll(() => scenario.count('GET', /^\/api\/todos$/)).toBe(5)
+    for (const board of boards) {
+      await expect(factIn(page, board, 'isFetching=false')).toBeVisible()
+      await expect(factIn(page, board, 'instances=1')).toBeVisible()
+    }
+
+    // One todo renamed: the leaf renews every todo, the shareable board only
+    // the renamed one.
+    await page.getByRole('button', { name: 'Rename todo 2', exact: true }).click()
+    await expect(reader(page, 'controller').getByText('Renamed todo 2 x1', { exact: true })).toBeVisible()
+    await refetchBoards.click()
+    await expect(factIn(page, 'leaf board', 'kept=0 of 3')).toBeVisible()
+    await expect(factIn(page, 'shared board', 'kept=2 of 3')).toBeVisible()
+    await expect(factIn(page, 'leaf board', 'instances=2')).toBeVisible()
+    await expect(factIn(page, 'shared board', 'instances=2')).toBeVisible()
+  })
 })

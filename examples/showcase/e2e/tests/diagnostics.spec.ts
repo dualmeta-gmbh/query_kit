@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, test } from './fixtures'
+import { expect, fact, factIn, group, test } from './fixtures'
 
 // One fact of a card, by its group and exact text — `status=error` is said by
 // the mutation's facts and by the strip alike.
@@ -79,4 +79,44 @@ test('a default mutationFn registered for the key is the cure', async ({ page, o
   await expect(factOf(page, 'no-function', 'data=1')).toBeVisible()
   expect(await scenario.count('POST', INCREMENT)).toBe(1)
   expect((await (await scenario.api('get', '/counter')).json()).value).toBe(1)
+})
+
+test.describe('options that throw in a build', () => {
+  // The third card sits below the fold of the default viewport.
+  test.use({ viewport: { width: 1280, height: 2000 } })
+
+  const COUNTER = /^\/api\/counter$/
+
+  async function read(page: Page, label: 'the counter' | 'the String entry') {
+    const choice = group(page, 'keyed knob').getByRole('radio', { name: label, exact: true })
+    await choice.click()
+    await expect(choice).toBeChecked()
+  }
+
+  test('show the app\'s error widget, keep the observer, and recover', async ({ page, open, scenario }) => {
+    await scenario.config({ latency: 0 })
+    await open('/diagnostics')
+    await expect(factOf(page, 'keyed', 'value=0')).toBeVisible()
+    // The card's builder and the one in the first card's header.
+    await expect(fact(page, 'counter', 'observers=2')).toBeVisible()
+    const requests = await scenario.count('GET', COUNTER)
+
+    await read(page, 'the String entry')
+    const failure = group(page, 'build failure')
+    await expect(failure).toBeVisible()
+    await expect(failure).toContainText('holds String but was used as int')
+    await expect(factOf(page, 'keyed', 'value=0')).toBeHidden()
+    // Only that builder failed: the rest of the screen still answers, and
+    // the refused options left its observer on the counter.
+    await expect(page.getByText('counter=0', { exact: true })).toBeVisible()
+    await expect(fact(page, 'counter', 'observers=2')).toBeVisible()
+    await button(page, 'Read as int').click()
+    await expect(factOf(page, 'typed', 'read=int 0')).toBeVisible()
+
+    await read(page, 'the counter')
+    await expect(failure).toBeHidden()
+    await expect(factOf(page, 'keyed', 'value=0')).toBeVisible()
+    await expect(fact(page, 'counter', 'observers=2')).toBeVisible()
+    expect(await scenario.count('GET', COUNTER)).toBe(requests)
+  })
 })

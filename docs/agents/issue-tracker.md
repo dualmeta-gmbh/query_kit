@@ -2,6 +2,11 @@
 
 Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
+**Always pass `--repo dualmeta-gmbh/query_kit`** to every `gh` command below
+(and use that owner/repo in every `gh api` path). The nested `query/` clone
+points at `TanStack/query`, and `gh` infers the repository from the working
+directory, so a command run from inside it would act on upstream.
+
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.

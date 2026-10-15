@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, group, test } from './fixtures'
+import { expect, fact, factIn, group, test, typeInto } from './fixtures'
 
 // Knobs, the list, an editor and two strips are taller than the default
 // viewport, and the scaffold's list only builds what is in view.
@@ -145,8 +145,7 @@ test('add, rename and complete a todo: the list reflects each', async ({ page, o
   expect(await scenario.count('GET', todos)).toBe(1)
 
   const newTodo = page.getByRole('textbox', { name: 'New todo', exact: true })
-  await newTodo.click()
-  await newTodo.fill('Water the plants')
+  await typeInto(page, newTodo, 'Water the plants')
   await button(page, 'Add todo').click()
   await expect(reader(page, 'add', 'adding=success')).toBeVisible()
   await expect(button(page, 'Water the plants')).toBeVisible()
@@ -161,7 +160,7 @@ test('add, rename and complete a todo: the list reflects each', async ({ page, o
   const text = page.getByRole('textbox', { name: 'Text', exact: true })
   await text.click()
   await expect(text).toHaveValue('Water the plants')
-  await text.fill('Water the plants twice')
+  await typeInto(page, text, 'Water the plants twice')
   await button(page, 'Rename').click()
   await expect(reader(page, 'editor', 'saving=success')).toBeVisible()
   await expect(button(page, 'Water the plants twice')).toBeVisible()

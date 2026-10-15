@@ -194,6 +194,38 @@ void main() {
     expect(h.requests('GET', '/api/time'), 1);
   });
 
+  showcaseTest(
+      'gc zero: no shorter on an entry that had 5 s, and collected the '
+      'moment its reader leaves on a new one', (tester, h) async {
+    await h.open(tester, '/stale-and-gc');
+    await tester.tap(segment('gc-time', 'zero'));
+    await tester.pumpAndSettle();
+
+    // The entry was given 5 s and keeps the longest: zero does not shorten
+    // it.
+    await tapTooltip(tester, 'Detach reader');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(h.fact('time', 'status=success'), findsOneWidget);
+    expect(h.fact('time', 'observers=0'), findsOneWidget);
+
+    // A new entry, made by a reader with zero: gone as soon as it leaves.
+    await tapTooltip(tester, 'Remove entry');
+    expect(h.fact('time', 'status=absent'), findsOneWidget);
+    await tapTooltip(tester, 'Attach reader');
+    expect(reader('serial=2'), findsOneWidget);
+    expect(h.fact('time', 'status=success'), findsOneWidget);
+    await tester.tap(find.byTooltip('Detach reader'));
+    await tester.pump();
+    await tester.pump(Duration.zero);
+    expect(h.fact('time', 'status=absent'), findsOneWidget);
+
+    // And the next attach starts from scratch.
+    await tapTooltip(tester, 'Attach reader');
+    expect(reader('serial=3'), findsOneWidget);
+    expect(h.requests('GET', '/api/time'), 3);
+  });
+
   showcaseTest('dynamic: fresh after an odd serial, stale after an even one',
       (tester, h) async {
     await h.open(tester, '/stale-and-gc');

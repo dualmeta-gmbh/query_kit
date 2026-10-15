@@ -41,7 +41,11 @@
 /// idle; with `Ignore the signal` on, the request is not aborted — the backend
 /// answers it — while the query is cancelled all the same; and leaving the
 /// screen mid-fetch writes that answer to the cache when the signal was
-/// ignored, but cancels and reverts when it was read.
+/// ignored, but cancels and reverts when it was read. With `Search ignores
+/// the signal` on, an abandoned needle's request is not aborted and its
+/// answer reaches the app *after* the next needle's: the screen stays on the
+/// newer needle, and the late answer is thrown away (its entry still
+/// `status=pending`).
 library;
 
 import 'dart:async';
@@ -101,6 +105,7 @@ class _CancellationScreenState extends State<CancellationScreen>
   /// With this on, the query function never touches `context.signal`, which is
   /// what makes a fetch uncancellable at the transport.
   bool _ignoreSignal = false;
+  bool _searchIgnoresSignal = false;
 
   Timer? _debounce;
   String _needle = '';
@@ -169,6 +174,11 @@ class _CancellationScreenState extends State<CancellationScreen>
         // An empty box asks the backend nothing.
         enabled: needle.isEmpty ? Enabled.no : Enabled.yes,
         queryFn: (context) {
+          if (_searchIgnoresSignal) {
+            // dio is never told to stop: an abandoned needle's answer still
+            // arrives, later than the needle that replaced it.
+            return _api.search(needle, delay: searchDelay);
+          }
           final signal = context.signal;
           signal.onCancel(() => _bumpDuringAnyPhase(() => _searchCancels += 1));
           return _api.search(needle, signal: signal, delay: searchDelay);
@@ -311,6 +321,18 @@ class _CancellationScreenState extends State<CancellationScreen>
                 labelText: 'Search posts',
                 border: OutlineInputBorder(),
               ),
+            ),
+            SwitchListTile(
+              title: const Text('Search ignores the signal'),
+              contentPadding: EdgeInsets.zero,
+              value: _searchIgnoresSignal,
+              onChanged: (value) =>
+                  setState(() => _searchIgnoresSignal = value),
+            ),
+            Text(
+              'Then an abandoned needle is cancelled but its request is not: '
+              'its answer arrives after the next one, and is thrown away.',
+              style: small,
             ),
             const SizedBox(height: 12),
             QueryBuilder<List<Post>>(

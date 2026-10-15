@@ -120,6 +120,42 @@ gives back what it held as `initState` does, and the mutation check compares
 `RetryPolicy.when`/`RetryDelay.dynamic` by variant only. Core **826 VM / 822
 browser**, binding **287**.
 
+The **2026-10-15 independent reviews** — GPT-6-Astra (Codex CLI) and Fable
+5.1, each in its own worktree, then three verification passes over the fixes
+— found no P1. Core **1.0.3**: `==` of `QueryState`, `MutationState` and
+`DefaultedMutationOptions` symmetric across type arguments, and `errors.md`'s
+infinite-options remedy corrected. Binding **1.0.4**: the four builder widgets
+and `QueriesBuilder` reconcile client and options at the top of `build`
+instead of in `didUpdateWidget`, so options that throw are an ordinary build
+error — the state stays, recovers, and is disposed (the first fix, release on
+throw, was wrong under a parent that keeps the child, and the verifiers said
+so); and the docs no longer promise that a nested builder kept in a field
+keeps its subscription. PORTING_NOTES' "Independent reviews 2026-10-15" has a
+row each, with the second and third passes. The same round added a **native
+end-to-end suite** to the showcase (`integration_test/`, `e2e-native/run.sh`
+for an iOS simulator, an Android emulator and Chrome, later macOS and Linux; the showcase README's
+"Native end-to-end tests"), run by `native-e2e.yml` on Blacksmith rarely —
+Android and web weekly or on the `native-e2e` PR label, iOS monthly, all of
+it by hand before a release — and `latest-stable.yml`, the suites on
+whatever Flutter stable is, weekly. Core **1161 VM / 1157 browser**, binding
+**349**.
+
+The **2026-10-15 wider end-to-end coverage** took that suite past what a
+screen shows by default — every screen left with nothing held, answers out of
+order, the API no screen had used, options that throw in a running app, a
+mutation made in real airplane mode — and onto the desktop: `run.sh macos`
+and `run.sh linux` (under `xvfb-run`), a desktop's `inactive` standing in for
+a phone's `paused` (`isDesktop`, `canLeave`), one `flutter test` per file
+there, and `native-e2e.yml` jobs for both (Linux weekly, macOS monthly). The
+airplane case found the one library defect of the round, **E2E-Z1**: a
+shared fetch or mutation met from another Dart error zone never heard its
+error — an `await cancelQueries` hung, `clear` reported an uncaught
+`CancelledError` — fixed by `zones.dart`'s `inCurrentZone`. GPT-6-Astra's
+review of the fix added E2E-Z2 (`Query.future`) and a double interception
+by a zone's `errorCallback`; PORTING_NOTES' "Wider end-to-end coverage
+2026-10-15". Core **1175 VM / 1171 browser** (1.0.3, unpublished), binding
+**349**.
+
 ## Where the work stands (2026-09-23)
 
 | Phase | State |
@@ -183,7 +219,7 @@ The binding's example is outside the workspace (it ships; see
 `packages/query_kit_flutter/example` once before the analyzer:
 
 ```bash
-dart analyze --fatal-infos packages examples tool && dart format --set-exit-if-changed packages examples/showcase/lib examples/showcase/test examples/doc_snippets/lib examples/doc_snippets/test tool
+dart analyze --fatal-infos packages examples tool && dart format --set-exit-if-changed packages examples/task_manager/lib examples/task_manager/test examples/showcase/lib examples/showcase/test examples/showcase/integration_test examples/showcase/test_driver examples/doc_snippets/lib examples/doc_snippets/test tool
 ```
 
 ```bash

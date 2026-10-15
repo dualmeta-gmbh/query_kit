@@ -16,8 +16,8 @@ The backend first (Node 23.6 or later — it runs the TypeScript directly):
 cd examples/showcase/server && npm install && npm run dev
 ```
 
-Then the app, on any platform. Only `web/` is generated; `flutter create
---platforms=macos,android .` adds the others.
+Then the app, on any platform. `web/`, `android/`, `ios/`, `macos/` and
+`linux/` are generated; `flutter create --platforms=windows .` adds the last.
 
 ```bash
 cd examples/showcase && flutter run -d chrome
@@ -129,9 +129,9 @@ caller wants to know.
 | `dependent-queries` | `Enabled.when`: a query that waits for another's data | — |
 | `parallel-queries` | several queries in one widget; `client.isFetching` | — |
 | `query-collections` | `QueriesBuilder` over a list that grows, shrinks and reorders; duplicate keys; partial failure; the same collection as a `QueriesController` | — |
-| `combine` | `(a, b, c).combine(...)` over three reads of three types: the sealed `CombinedResult`, `retry()` for the failed sources only, `refetchError` beside kept data, `isFetching`, and a `CombineMemo` that skips the combiner | — |
+| `combine` | `(a, b, c).combine(...)` over three reads of three types: the sealed `CombinedResult`, `retry()` for the failed sources only, `refetchError` beside kept data, `isFetching`, and a `CombineMemo` that skips the combiner; below it a list and a read per item, `combineWith`, and a pinned post that may be missing, `optional()` | — |
 | `prefetching` | `client.query(...).ignore()` before the screen that needs it, `revalidateIfStale`, and `client.infiniteQuery(...).ignore()` for the first page of an infinite one | `prefetching` |
-| `select-and-sharing` | `select`, `QuerySelectBuilder`, `buildWhen`, `structuralSharing`, rebuild counts | — |
+| `select-and-sharing` | `select` through `withSelect`, `QuerySelectBuilder`, `buildWhen`, `structuralSharing`, rebuild counts; a value class around the list as a leaf and as `StructurallyShareable`, `kept=K of N` | — |
 | `build-when` | `buildWhen` on all eight keyless reads, each beside an unfiltered twin; a knob for the predicate, and the build counts either half of a pair reaches | — |
 | `initial-and-placeholder` | `InitialData` with `initialDataUpdatedAt` and its lazy `initialDataUpdatedAtCompute`, versus `PlaceholderData`, `isPlaceholderData` | — |
 | `stale-and-gc` | every `StaleTime` and `GcTime` value, watched in the inspector | — |
@@ -146,13 +146,13 @@ caller wants to know.
 | `invalidation-and-filters` | invalidate, refetch, reset, remove; prefix, exact, `type`, `predicate` | — |
 | `auto-refetching` | `RefetchInterval`, in the foreground and not | `auto-refetching` |
 | `retry` | every `RetryPolicy` (`never`, `times`, `always`, `when`) and `RetryDelay` (`fixed`, `exponential`, `dynamic`), `failureCount`, loading versus refetch errors | — |
-| `cancellation` | `signal` to the transport, `cancelQueries`, search-as-you-type | — |
+| `cancellation` | `signal` to the transport, `cancelQueries`, search-as-you-type, an abandoned needle answered after the next one | — |
 | `offline` | `NetworkMode`, paused mutations, `resumePausedMutations`, `OnlineStatus`, `refetchOnReconnect` | `offline` |
 | `focus-refetch` | `RefetchOn` for focus and mount, `refetchMinBackgroundDuration`, and the provider's own knobs on a nested `QueryClientProvider.create`: `isAppShown`, `onlineStatus`, `maybeOf` | — |
 | `four-call-styles` | the same query through `context.query`, `QueryBuilder`, `QueryMixin`, `QueryController`, plus `QueryListener` for a side effect and a batched write through `NotifyManager.shared`; the mutation and infinite counterparts — `MutationListener`, `context.infiniteQuery`, `watchInfiniteQuery`, `InfiniteQueryListener`, `client.observeInfinite` | — |
 | `global-callbacks` | `QueryCache`/`MutationCache` callbacks, `meta` | — |
-| `cache-inspector` | every entry and event of both caches, live | (devtools) |
-| `diagnostics` | what the library throws, and when: `QueryDataTypeError` on a read or write of the wrong type, `MissingMutationFunctionError` and its cure `setMutationDefaults` | — |
+| `cache-inspector` | every entry and event of both caches, live; end to end, the leak sweep over every other screen | (devtools) |
+| `diagnostics` | what the library throws, and when: `QueryDataTypeError` on a read or write of the wrong type, `MissingMutationFunctionError` and its cure `setMutationDefaults`, and a builder whose options throw in a build: the app's error widget, then recovery | — |
 
 Not here, because the port does not have them: hydration and persisters,
 `useQueries`' `combine` option as upstream spells it (the homogeneous list is
@@ -182,7 +182,7 @@ in a browser.
 
 ## Tests
 
-Three layers, nothing else:
+Four layers, nothing else:
 
 ```bash
 cd examples/showcase && flutter test
@@ -200,7 +200,10 @@ timers before any `tearDown`; the site's testing guide has the snippet). Two rul
 fake's latency is a timer, so step it with `tester.pump(duration)` —
 `pumpAndSettle` only pumps while a frame is scheduled; and a screen that polls
 or retries is stepped the same way, because `pumpAndSettle` never returns
-while a `refetchInterval` runs.
+while a `refetchInterval` runs. `test/phone_layout_test.dart` opens every
+screen at 402 and 360 logical pixels wide — an iPhone 17 Pro and the
+narrowest common Android phone — walks it to the end and fails on any
+overflow; the other widget tests run in an 800 × 600 window and never would.
 
 **The contract test** (`test/backend_contract_test.dart`) runs one list of
 cases against the fake and, with `SHOWCASE_SERVER=http://localhost:5175/api`
@@ -254,13 +257,75 @@ paints to a canvas, so the tests read the **semantics tree**, switched on by
 - A `Card` that is a semantic container folds its texts into its accessible
   name; `SectionCard` opts out so every text stays findable. Buttons are their
   tooltips; a text field mirrors its text only once focused, so click before
-  you read or `fill`; a lazily built list only has the rows in view.
+  you read, and type through `typeInto`, never a bare `fill` — a click can
+  leave Flutter's input connection inactive, and a `fill` then reaches the DOM
+  but not the app; `typeInto` waits until the focused element has Flutter's
+  `input` listener. A lazily built list only has the rows in view, and a
+  row already in the tree can still lie past the window's edge, where a
+  click misses it.
 - No `Slider` (only increment steps reach the DOM), no hover (it does not reach
   a `MouseRegion` through the semantics overlay), no `page.goBack()` (Flutter
   web keeps one history entry — use the app's back button).
 - The build passes `--pwa-strategy=none --no-web-resources-cdn`: no service
   worker serving a stale bundle after a local rebuild, no CanvasKit fetched
   from a CDN in every fresh browser context.
+
+**Native end-to-end tests** (`integration_test/`, run by `e2e-native/run.sh`)
+run the real app on an iOS simulator, an Android emulator and as a macOS and
+a Linux desktop app against the real backend, and the same files in Chrome. They are what neither layer above can
+be: the platform's own lifecycle reaching `QueryClientProvider` (a real trip
+to the background, not a `setFocused` call), a real socket that a cancel
+closes and a proxy can cut, real scroll physics, the device's own size and
+fonts — and on Android airplane mode and a turned screen.
+
+```bash
+cd examples/showcase && e2e-native/run.sh ios        # IOS_DEVICE, default "iPhone 17 Pro"
+cd examples/showcase && e2e-native/run.sh android    # AVD, default the first one listed
+cd examples/showcase && e2e-native/run.sh macos      # this Mac: the app's window is sent away
+cd examples/showcase && e2e-native/run.sh linux      # under xvfb-run when there is no DISPLAY
+cd examples/showcase && e2e-native/run.sh web        # CHROMEDRIVER matching the installed Chrome
+```
+
+`run.sh` boots the device, starts the backend (or reuses one on 5175) and
+`e2e-native/device_control.ts`, and runs the suite; `FLUTTER` names the SDK.
+On the web, `flutter drive` leaves its test build in `build/web`, where the
+Playwright suite looks for the app: run `npm run build` in `e2e/` again
+before Playwright.
+The device control is a small host process the tests call over HTTP for what
+an app cannot do to itself: `background` (another app on top, then back),
+`network` (`refuse` / `blackhole` / `up`, through a TCP proxy on 5177 that
+the app talks to instead of 5175), `aborts` (the requests the app hung up
+on, seen on the wire — a cancel that reached the socket), and on Android
+`airplane` and `rotate`. `integration_test/native_harness.dart` is the
+widget harness's twin: `nativeTest`, a fresh scenario per test, `waitForFact`
+and `reveal` for a phone that shows a fraction of each screen. Time is real
+there, so it waits by polling the tree — and the one place it measures a
+window is a background trip, bounded by the app's own `paused` and the moment
+it is focused again — its return asked for, or sooner when an emulator under
+load shows it again by itself — never by a guessed duration, and the polls it
+looks for in that window are stamped by the app as they begin, on the same
+clock: the backend's log is the host's, which an emulator's is not. A test
+that needs a device skips itself on the web; one that needs Android skips on iOS. A
+desktop app is never `paused`: with another app in front it is `inactive`,
+which a desktop counts as unfocused, so the lifecycle cases wait for that
+there (`isDesktop`), and a case that leaves the app skips only where nothing
+can send it away (`canLeave`: the web, and Linux, whose virtual display has
+no window manager). On macOS `background` brings Finder to the front and the
+app back with `open -b`; keep the window uncovered while it runs, since a
+covered one is given frames slowly. A desktop app is started once per
+`flutter test`, so `run.sh` runs each file on its own there. Text
+goes in through `typeInto`, not `tester.enterText`, which does nothing in a
+profile or release build.
+
+`MODE=profile` runs it compiled ahead of time on Android, `MODE=release` in
+Chrome. In CI it is `.github/workflows/native-e2e.yml`, on Blacksmith runners
+and rarely: Android, Linux and the web weekly and on a pull request labelled
+`native-e2e`, iOS and macOS monthly, and all of it by hand before a
+release.
+
+What it found on its first run: four screens overflowed a phone's width,
+and every app bar did with a long scenario id — the showcase had only ever
+been laid out in a desktop window.
 
 ## Writing a screen: what the catalogue learned
 

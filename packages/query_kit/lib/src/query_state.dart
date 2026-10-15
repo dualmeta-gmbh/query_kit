@@ -267,6 +267,7 @@ final class QueryState<TQueryData> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is QueryState<TQueryData> &&
+          other.runtimeType == runtimeType &&
           other.hasData == hasData &&
           other.data == data &&
           other.dataUpdateCount == dataUpdateCount &&

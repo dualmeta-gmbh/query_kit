@@ -20,6 +20,31 @@
   `InfiniteQueryBuilder`, `context.infiniteQuery` and `watchInfiniteQuery`.
   `RebuildRule` takes that part as `beside`.
 
+## 1.0.4
+
+- `QueryBuilder`, `QuerySelectBuilder`, `InfiniteQueryBuilder`,
+  `QueriesBuilder` and `MutationBuilder` apply new options, and a new
+  `client`, in `build` instead of when their parent hands them a new widget.
+  Options that throw while being applied — a new key whose
+  `InitialData.compute` throws, say, or a `client` left with no
+  `QueryClientProvider` above — used to leave the widget behind without
+  disposing it, and its observer, with any `refetchInterval`, kept running
+  after the screen was gone. Now the failure is an ordinary build error: the
+  widget shows the error and, on the same client, keeps its observer, a
+  refetch in flight and a running mutation, takes up the next options that
+  apply, and releases everything when it goes. A change of client releases
+  the old client's observer even when the new one cannot be made. `context.query` and `QueryMixin` always worked
+  this way.
+- The documentation of `QueryMixin` and `context.query` no longer promises
+  that nothing a reader shows loses its subscription. A nested builder kept
+  in a field — `late final` — and reading through the outer `State` or
+  `context` is not re-run by that reader's own build that reads, so its key
+  is released there while it is still shown, until it runs again and reads.
+  A `build` that reads nothing releases nothing, and neither does a new
+  widget from the parent on its own: the first read after it counts as the
+  own build. The fix, now in the troubleshooting guide, is a widget of its
+  own for the nested part.
+
 ## 1.0.3
 
 No change to the code. The documentation site moved to its own address,
