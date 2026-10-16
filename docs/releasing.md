@@ -180,8 +180,8 @@ What differs is how it is released:
   add-on, and a hooks tag does not redeploy the site: run `pages` by hand
   when its docs changed.
 
-**The first release, 0.1.0,** goes out with binding 1.1.0, the first
-binding version to export `adapter.dart`:
+**The first release, 0.1.0** (2026-10-16), went out with binding 1.1.0,
+the first binding version to export `adapter.dart`, in these steps:
 
 1. One commit carries both versions, the hooks' constraint `^1.1.0`, and
    the docs at the release. It is merged to `main` and checked there as
