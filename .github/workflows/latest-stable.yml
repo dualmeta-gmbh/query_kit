@@ -1,4 +1,4 @@
-# Both packages on whatever Flutter stable is today — the SDK most users
+# The packages on whatever Flutter stable is today — the SDK most users
 # have. `ci` pins its Flutter (and runs the declared floor in `floors`), so a
 # new stable release that breaks something would otherwise show up first in
 # someone else's app. Weekly and on demand, not per push: the SDK changes
@@ -26,6 +26,7 @@ jobs:
       # SDK's, so it is left behind here on purpose.
       - run: flutter pub upgrade
       - run: (cd packages/query_kit_flutter/example && flutter pub get)
+      - run: (cd packages/query_kit_hooks/example && flutter pub get)
       # Warnings fail; infos do not — a new SDK may add lints whose
       # adoption is a decision, not a breakage.
       - run: dart analyze packages examples tool
@@ -43,3 +44,9 @@ jobs:
         working-directory: examples/showcase
       - run: flutter test
         working-directory: packages/query_kit_flutter/example
+      # The hooks add-on, with the newest `flutter_hooks` this SDK resolves.
+      - name: hooks
+        run: flutter test
+        working-directory: packages/query_kit_hooks
+      - run: flutter test
+        working-directory: packages/query_kit_hooks/example

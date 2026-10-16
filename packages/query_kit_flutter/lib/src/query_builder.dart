@@ -14,8 +14,9 @@ import 'package:query_kit/query_kit.dart';
 import 'query_client_provider.dart';
 import 'query_controller.dart';
 import 'read_entry.dart';
+import 'rebuild_rule.dart';
 
-export 'read_entry.dart' show BuildWhen;
+export 'rebuild_rule.dart' show BuildWhen;
 
 /// What every builder widget here declares, and all a [_ControllerBuilderState]
 /// needs from the widget it is the state of.
@@ -267,9 +268,8 @@ class _QueryBuilderState<W extends _QueryBuilderWidget<TQueryData, TData>,
 /// The widget owns the controller from its first build until it is
 /// disposed; do not dispose the one [builder] is handed. Options are
 /// re-applied whenever the parent rebuilds it, as for [QueryBuilder]. A
-/// fetch that moves only the paging flags — `isFetchingNextPage`,
-/// `hasNextPage` and the like — rebuilds too, even when the result itself is
-/// unchanged.
+/// fetch that moves the paging flags — `isFetchingNextPage`, `hasNextPage`
+/// and the like — rebuilds too, whether the result moved with them or not.
 ///
 /// {@category Infinite queries}
 class InfiniteQueryBuilder<TPageData, TPageParam, TData> extends StatefulWidget
@@ -305,7 +305,8 @@ class InfiniteQueryBuilder<TPageData, TPageParam, TData> extends StatefulWidget
   /// Whether a change from the result last built to the current one is worth
   /// a rebuild; `null` rebuilds for every changed result. Compares the
   /// controller's results (see [QueryBuilder.buildWhen]); a change of the
-  /// paging flags alone rebuilds regardless.
+  /// paging flags rebuilds regardless, with the result or without it, since
+  /// the predicate never sees them.
   @override
   final BuildWhen<QueryResult<TData>>? buildWhen;
 

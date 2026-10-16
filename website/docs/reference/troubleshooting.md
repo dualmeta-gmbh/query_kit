@@ -125,6 +125,23 @@ matched entry holds data that is not the updater's `T?`, or when the updater
 returns a value some matched entry cannot hold. Beyond that the write is
 lenient, as `setQueryData`'s is. Filter narrowly.
 
+## `QueryDataTypeError` after a list of queries of two types
+
+**Symptom.** A `QueriesBuilder`, `QueriesController` or `useQueries` over a
+`String` query and an `int` query works. Later a read of one of those keys
+as its own type, a `getQueryData<String>` or a `QueryBuilder<String>`, throws
+`QueryDataTypeError: … holds Object but was used as String`. Or the list
+itself throws `… holds String but was used as Object`, because a typed
+reader created the entry first.
+
+**Mechanism.** A Dart `List` has one element type. For options of two data
+types Dart infers their common supertype, `Object`, and the collection
+creates the entries it does not find as `Object` entries. One key, one exact
+type: from then on the entry is an `Object` entry.
+
+**Fix.** Keep a list to one data type. For queries of different types, read
+each one on its own and combine the results with `(a, b).combine(…)`.
+
 ## A mutation that awaits another mutation never finishes
 
 **Symptom.** Inside a mutation with a `MutationScope`, `await

@@ -32,9 +32,10 @@
 /// - **A real change gets through the filter.** `Drop a post` writes a
 ///   shorter list straight into the cache; the data moved, so every reader
 ///   rebuilds, filtered ones included.
-/// - **`Load next` is two builds plain and one filtered.** The page fetch
-///   starting moves `fetchStatus` while the pages are still the pages the
-///   reader is showing — refused — and the new page is a real change.
+/// - **`Load next` is two builds, filtered or not.** The page fetch
+///   starting moves `isFetchingNextPage`, a paging flag that lives beside
+///   the result. A predicate over results never sees it, so it is not
+///   asked, and the reader rebuilds. The new page is a real change.
 /// - **A mutation run is three builds plain and two filtered.** `idle`,
 ///   `pending` and `success` are three results; only the last of them carries
 ///   data, so the `data` predicate drops the pending one. A mutation has no
@@ -47,18 +48,19 @@
 ///   `always` makes it its twin again, which is the proof that the predicate
 ///   is the only difference between the two halves of a pair.
 ///
-/// One case the screen deliberately does **not** reach: an infinite query
-/// whose paging flags move while the result stays equal — two fetches in
-/// opposite directions — rebuilds whatever the predicate says, because there
-/// is nothing there for a predicate over results to compare. `max-pages` is
-/// the screen with fetches in both directions; here every page fetch moves
-/// `fetchStatus` too, so the predicate is always the one that answers.
+/// What a predicate cannot filter: an infinite query's paging flags live
+/// beside the result, so a fetch that moves one — every page fetch does —
+/// rebuilds whatever the predicate says, with the result or without it. A
+/// "no" would leave the reader showing a stale flag, a spinner that never
+/// stops or a `Load more` with no page after it. `Refetch the pages` moves
+/// no flag, and there the predicate answers. `max-pages` is the screen with
+/// fetches in both directions.
 ///
 /// Proofs (widget tests in `test/features/build_when_test.dart`, end-to-end
 /// in `e2e/tests/build_when.spec.ts`): all sixteen readers load from one
 /// request per entry; a refetch with equal data moves the eight plain query
 /// counters by two and none of the filtered ones; `Drop a post` moves all
-/// sixteen posts-side counters by one; `Load next` is two against one; a
+/// sixteen posts-side counters by one; `Load next` is two against two; a
 /// mutation run is three against two; `never` freezes the filtered half and
 /// `always` makes both halves of every pair equal again.
 library;
@@ -359,13 +361,13 @@ class _InfiniteReadsCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Load next is two rebuilds plain and one filtered: the fetch '
-            'starting moves fetchStatus while the pages are still the pages '
-            'on screen, and the page landing is a real change. Refetching the '
-            'pages brings back the pages that are already there, so the '
-            'filtered half does not move at all. Paging goes through the '
-            'plain mixin reader, so no row carries a button its twin does '
-            'not.',
+            'Load next is two rebuilds, filtered or not: the fetch starting '
+            'moves isFetchingNextPage, a paging flag no predicate over '
+            'results sees, so it rebuilds unasked, and the page landing is a '
+            'real change. Refetching the pages brings back the pages that are '
+            'already there and moves no paging flag, so the filtered half '
+            'does not move at all. Paging goes through the plain mixin '
+            'reader, so no row carries a button its twin does not.',
           ),
           for (final filtered in <bool>[true, false]) ...<Widget>[
             _WatchInfiniteQueryReader(

@@ -3,7 +3,7 @@
 # needs. Uses pub.dev's automated publishing over GitHub OIDC: no secrets.
 #
 # Not `dart-lang/setup-dart`'s reusable publish workflow: it installs the Dart
-# SDK only, and both packages resolve inside the root workspace, whose members
+# SDK only, and the packages resolve inside the root workspace, whose members
 # include the binding and the Flutter examples — a Dart-only `pub get` there
 # fails, and the binding cannot be validated without Flutter at all. So this
 # is the custom workflow pub.dev documents
@@ -18,6 +18,7 @@ on:
     tags:
       - 'query_kit-v[0-9]+.[0-9]+.[0-9]+*'
       - 'query_kit_flutter-v[0-9]+.[0-9]+.[0-9]+*'
+      - 'query_kit_hooks-v[0-9]+.[0-9]+.[0-9]+*'
 
 jobs:
   publish:
@@ -30,6 +31,7 @@ jobs:
         run: |
           case "$GITHUB_REF_NAME" in
             query_kit_flutter-v*) echo "dir=packages/query_kit_flutter" >> "$GITHUB_OUTPUT" ;;
+            query_kit_hooks-v*) echo "dir=packages/query_kit_hooks" >> "$GITHUB_OUTPUT" ;;
             query_kit-v*) echo "dir=packages/query_kit" >> "$GITHUB_OUTPUT" ;;
             *) echo "unexpected tag $GITHUB_REF_NAME" >&2; exit 1 ;;
           esac

@@ -6,14 +6,15 @@
 > Please bear that in mind when you assess a report: no human wrote the code
 > you are looking at.
 
-This policy covers query_kit's two packages, `query_kit` and
-`query_kit_flutter`.
+This policy covers query_kit's packages: `query_kit`, `query_kit_flutter`
+and the optional add-on `query_kit_hooks`.
 
 ## Supported versions
 
-| Version | Supported |
-|---|---|
-| 1.x | yes |
+| Package | Version | Supported |
+|---|---|---|
+| `query_kit`, `query_kit_flutter` | 1.x | yes |
+| `query_kit_hooks` | 0.x | yes |
 
 Only the latest published version gets fixes. A security fix ships as a new
 patch release of the current major line; there are no backports to earlier

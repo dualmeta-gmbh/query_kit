@@ -231,10 +231,11 @@ mixin QueryMixin<T extends StatefulWidget> on State<T> {
   /// dispose it yourself.
   ///
   /// [buildWhen] compares the controller's results, as
-  /// [InfiniteQueryBuilder.buildWhen] does. A fetch that moves only the paging
-  /// flags — two fetches in opposite directions leave the result equal —
-  /// rebuilds regardless: there is nothing there for a predicate over results
-  /// to compare, and the reader is showing the stale half.
+  /// [InfiniteQueryBuilder.buildWhen] does. A fetch that moves the paging
+  /// flags rebuilds regardless, whether the result moved with them or not —
+  /// two fetches in opposite directions leave it equal. A predicate over
+  /// results never sees the flags, and a "no" would leave the reader showing
+  /// the stale ones.
   InfiniteQueryController<TPageData, TPageParam, TData>
       watchInfiniteQuery<TPageData, TPageParam, TData>(
     InfiniteQueryObserverOptionsBase<TPageData, TPageParam, TData> options, {

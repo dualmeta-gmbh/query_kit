@@ -182,7 +182,9 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES — the release of query_kit and query_kit_flutter to pub.dev.
 # The procedure this automates is docs/releasing.md; that file is the prose,
-# this one is the path. Keep them in step.
+# this one is the path. Keep them in step. query_kit_hooks is not part of it:
+# it is versioned on its own (0.x), and its first publish is the procedure in
+# docs/releasing.md's "The hooks add-on".
 # ──────────────────────────────────────────────────────────────────────────
 
 TOTAL_STAGES=10

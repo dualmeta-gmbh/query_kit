@@ -5,13 +5,23 @@ description: Which package to add, what it depends on, the Dart and Flutter floo
 
 # Installation
 
-query_kit comes as two packages, and you add the one that matches what you
-are building:
+query_kit comes as two packages and an optional add-on, and you add the one
+that matches what you are building:
 
 | Package | For | Depends on |
 |---|---|---|
 | `query_kit` | Pure Dart: a CLI, a server, a shared data package | `clock`, `meta` |
 | `query_kit_flutter` | A Flutter app | Flutter, `meta`, `query_kit` |
+| `query_kit_hooks` | Optional: a Flutter app written with `flutter_hooks` | Flutter, `flutter_hooks`, `query_kit_flutter` |
+
+For apps written with `flutter_hooks`, the optional add-on `query_kit_hooks`
+puts `useQuery` and the rest on top of the binding; it is the one package
+that depends on `flutter_hooks`, and [hooks](guides/hooks.md) covers it. An
+app that wants it adds it with `flutter_hooks`, which its files import too:
+
+```bash
+flutter pub add query_kit_hooks flutter_hooks
+```
 
 ## In a Flutter app
 
@@ -63,7 +73,8 @@ with `dart test`, no Flutter needed.
 
 ## No third-party dependency
 
-Neither package pulls in anything beyond the Dart team's `clock` and `meta` —
+Neither `query_kit` nor `query_kit_flutter` pulls in anything beyond the Dart
+team's `clock` and `meta` —
 not `flutter_hooks`, not a signals package, not `connectivity_plus`, not an
 HTTP client. You bring the HTTP client ([query
 functions](guides/query-functions.md) shows dio and `package:http`) and, if
@@ -77,10 +88,12 @@ state management to use a cache.
 |---|---|---|
 | `query_kit` | Dart SDK `^3.6.0` | No Flutter. Runs on the VM and compiled to JavaScript; both are tested. |
 | `query_kit_flutter` | Flutter `>=3.27.0` (which ships Dart 3.6) | Tested on 3.27 as well as current stable. |
+| `query_kit_hooks` | Flutter `>=3.27.0`, `flutter_hooks` `^0.21.2` | Tested on 3.27 as well as current stable. |
 
-Platforms: the core runs everywhere Dart does. The binding is exercised on the
-web by the examples' end-to-end suites; the other platforms are untested
-rather than unsupported — it uses nothing platform-specific beyond
+Platforms: the core runs everywhere Dart does. The binding is exercised by the
+examples' end-to-end suites in Chrome, Firefox and WebKit, and natively on an
+iOS simulator, an Android emulator, macOS and Linux. Windows is untested
+rather than unsupported: the binding uses nothing platform-specific beyond
 `AppLifecycleState`.
 
 ## Recommended analyzer settings
@@ -112,7 +125,10 @@ linter:
   written without its type argument.
 - **`unawaited_futures`** reports a `client.invalidateQueries(...)` or
   `client.query(...)` whose future nobody awaits. Await it, or mark a
-  deliberate fire-and-forget with `unawaited(...)` from `dart:async`.
+  deliberate fire-and-forget: `unawaited(...)` from `dart:async` for most
+  futures, `.ignore()` for a `client.query(...)`. Inside `unawaited(...)`
+  its type argument is inferred as `void`, and the cache entry is created
+  for `void` ([the trap, in full](guides/hooks.md#a-trap-unawaitedclientquery)).
 
 ## Next
 

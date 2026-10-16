@@ -26,6 +26,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'guides/queries',
             'guides/reading-queries-in-widgets',
+            'guides/hooks',
             'guides/query-keys',
             'guides/query-functions',
             'guides/query-options',

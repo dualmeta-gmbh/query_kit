@@ -160,7 +160,7 @@ test('dropping a post reaches every reader of the entry', async ({ page, open, s
   expect(await scenario.count('GET', /^\/api\/posts$/)).toBe(1)
 })
 
-test('Load next is one build filtered and two plain', async ({ page, open, scenario }) => {
+test('Load next is two builds, filtered and plain', async ({ page, open, scenario }) => {
   await open('/build-when')
   await loaded(page)
   const before = await snapshot(page, infiniteMembers)
@@ -168,9 +168,9 @@ test('Load next is one build filtered and two plain', async ({ page, open, scena
   const hold = holdRequest(page, '**/api/projects*')
   await button(page, 'Load next').click()
   await expect(fact(page, 'pages', 'fetchStatus=fetching')).toBeVisible()
-  // The page fetch starting moves `fetchStatus` while the pages on screen are
-  // still the pages the reader is showing.
-  await expectMoved(page, infiniteMembers, before, { filtered: 0, plain: 1 })
+  // The page fetch starting moves `isFetchingNextPage` beside the result,
+  // which the predicate never sees: the filtered half rebuilds unasked.
+  await expectMoved(page, infiniteMembers, before, { filtered: 1, plain: 1 })
   await hold.release()
 
   for (const member of infiniteMembers) {
@@ -178,7 +178,7 @@ test('Load next is one build filtered and two plain', async ({ page, open, scena
       await expect(readerFact(page, member, filtered, 'pages=2')).toBeVisible()
     }
   }
-  await expectMoved(page, infiniteMembers, before, { filtered: 1, plain: 2 })
+  await expectMoved(page, infiniteMembers, before, { filtered: 2, plain: 2 })
   // One reader pages; the other three joined the same fetch.
   await expect(fact(page, 'pages', 'observers=4')).toBeVisible()
   expect(await scenario.count('GET', /^\/api\/projects$/)).toBe(2)

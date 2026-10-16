@@ -122,7 +122,9 @@ result can be in.
 This is one of [four equal ways to read a
 query](guides/reading-queries-in-widgets.md). The other three are a builder
 widget, a `State` mixin and a plain `ValueListenable`; none of them is the
-default.
+default. If your widgets are already `HookWidget`s, the optional add-on
+`query_kit_hooks` reads the same query with `useQuery`; see
+[hooks](guides/hooks.md).
 
 ## 4. Write something, and invalidate
 

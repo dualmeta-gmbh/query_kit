@@ -1,0 +1,1460 @@
+# Plan: `query_kit_hooks` — React-Query-Hooks auf `flutter_hooks`
+
+**Stand:** 2026-10-15. Überarbeitet nach je einem Review durch Astra (Codex
+CLI) und Fable und nach dem Spike (AP0). Das
+[Review-Protokoll](#review-protokoll) am Ende sagt, welcher Befund
+reproduziert wurde und was aus ihm geworden ist.
+
+**Entscheider:** der Agent als Product Owner, von Christian am 2026-10-15
+dazu bestimmt („du löst mich hiermit als Entscheider ab“). Damit ist auch
+der Vorbehalt von [#21](https://github.com/dualmeta-gmbh/query_kit/issues/21)
+übertragen, der API-Fragen der Bindung Christian vorbehielt. Jede
+Entscheidung unten nennt die Optionen, die Antwort und den Grund. So lässt
+sie sich allein aus diesem Dokument wieder öffnen (Regel von Map #1,
+„AFK“).
+
+**Grundlage:**
+
+- Die Klassifikation aller 298 Fälle der Hook-Suiten von
+  `@tanstack/react-query` am Pin `50680b98c`, in
+  [`docs/research/react-query-hook-tests-inventory.md`](../research/react-query-hook-tests-inventory.md).
+  Die Zahlen dort sind Einordnungen beim Lesen, keine Messungen. Wo die
+  Inventur eine Umsetzung vorschlägt, gilt dieser Plan.
+- Der Spike, in [`docs/research/hooks-spike.md`](../research/hooks-spike.md):
+  45 Tests, alle grün. Seine Messungen stehen bei den Entscheidungen, die
+  sie betreffen.
+
+---
+
+## Ziel und Umfang
+
+**Ziel.** Ein eigenes, optionales Paket `query_kit_hooks`. Mit ihm schreibt
+ein Flutter-Entwickler, der `flutter_hooks` benutzt, seine Queries so, wie
+er es aus React Query kennt:
+
+```dart
+class TaskTile extends HookWidget {
+  const TaskTile({super.key, required this.id});
+  final String id;
+
+  @override
+  Widget build(BuildContext context) {
+    final task = useQuery(taskQuery(id));
+    final rename = useMutation(renameTask());
+    return switch (task) {
+      QueryPending() => const CircularProgressIndicator(),
+      QueryError(:final error) => Text('$error'),
+      QuerySuccess(:final data) => ListTile(
+          title: Text(data.title),
+          onTap: () => rename.mutate((id: id, title: 'Neu')),
+        ),
+    };
+  }
+}
+```
+
+Was das Paket von einem dünnen Wrapper unterscheidet, ist dasselbe wie beim
+Kern: **Die Upstream-Suiten der Hooks werden Fall für Fall portiert.** Die
+Inventur zählt etwa 258 portierbare Fälle: 146 direkt, 105 angepasst und 7
+Lücken, die dieser Plan schließt, eine davon nur teilweise. Dazu kommen 9
+Prefetch-Fälle.
+
+**Drin:**
+
+- `useQuery` und `useSelectQuery`
+- `useInfiniteQuery`
+- `useMutation`
+- `useQueries`, dazu `useCombinedQueries`. Der baut nur neu, wenn sich das
+  kombinierte Ergebnis ändert oder das, worauf sein `retry`/`refetch`
+  wirkt.
+- `useIsFetching`, `useIsMutating`, `useMutationState`, `useQueryClient`
+- `usePrefetchQuery`, `usePrefetchInfiniteQuery`
+- Portierte Suiten mit eigenen `PORTING_NOTES`
+- Doku-Seite, README, Beispiel-App, Repo- und CI-Integration
+- Ein Release
+
+**Nicht drin.** Die Gründe stehen in D14.
+
+- Suspense-Hooks und `HydrationBoundary`
+- `QueryErrorResetBoundary` und `throwOnError`
+- `IsRestoringProvider`
+- `subscribed`: steht im Backlog als HB-1
+- `skipToken`
+- `retryOnMount` als Callback
+- Ein `combine` über die rohen Ergebnisse
+- Callback-Kontext für Mutationen
+- Jede Änderung am Kern `query_kit`, die kein reproduzierter Fehler erzwingt
+
+**Randbedingung.** Kern und Bindung werden nicht nennenswert umgebaut. Die
+Bindung bekommt eine neue Bibliothek, `adapter.dart`, mit einer einzigen
+Klasse, `RebuildRule` (D4). Ihr interner `ReadEntry` benutzt diese Regel
+dann selbst. Der Kern bekommt nichts.
+
+---
+
+## Ausgangslage
+
+- **Bindung.** `query_kit_flutter` 1.0.4 hat vier gleichrangige
+  Aufrufstile: Controller, Builder, `QueryMixin` und `context.query`.
+  - Alle Controller sind `ValueListenable`.
+  - Ihre Lebensdauer regelt `ControllerLifetime`. Dass sie nicht doppelt
+    benachrichtigen, regelt `NotifyGate`.
+  - Ob neu gebaut wird, entscheidet die interne Klasse `ReadEntry`:
+    - Der beobachtete Zustand entspricht dem gebauten: kein Rebuild.
+    - Nur die Hälfte neben dem Ergebnis hat sich bewegt (die Paging-Flags):
+      Rebuild.
+    - Sonst entscheidet `buildWhen(gebaut, aktuell)`.
+  - `ReadEntry` besitzt seinen Controller und entsorgt ihn (`dispose` castet
+    auf `ChangeNotifier`).
+- **`context.query` liest flach im `build`.** Das kommt einem Hook schon
+  nahe. Es hängt aber am `QueryScope` des Providers und ordnet Controller
+  über den `QueryKey` (oder eine `id`) zu, nicht über die Aufrufposition.
+- **Benachrichtigungen.**
+  - Der Standard-Scheduler des Kerns ist `scheduleMicrotask`.
+  - Der Provider installiert einen eigenen: im Build zurückgestellt bis
+    nach dem Frame, sonst synchron.
+  - `NotifyManager.flush` behält bereits eingereihte Zustellungen, auch wenn
+    das Abo inzwischen weg ist. Wer direkt abonniert, muss sich gegen späte
+    Zustellungen selbst schützen. Die Controller tun das über
+    `ControllerLifetime`.
+- **Die Website lehnt Hooks bisher ab.**
+  - Der Abschnitt „Signals, hooks and other reactive packages“
+    (`website/docs/guides/reading-queries-in-widgets.md`) sagt: „not planned
+    as such“.
+  - Die Installationsseite sagt: kein `flutter_hooks` als Abhängigkeit.
+  - Beides bleibt für die zwei bestehenden Pakete richtig. Die Seiten müssen
+    aber auf das neue Zusatzpaket verweisen (AP9).
+- **`flutter_hooks` 0.21.x**, gemessen am Quelltext von 0.21.2 und
+  0.21.3+1. In den hier genannten Teilen sind beide gleich.
+  - `initHook`, `didUpdateHook` und `HookState.build` laufen alle im
+    `build` des Widgets.
+  - `dependOnInheritedWidgetOfExactType` löst in `initHook` eine Assertion
+    aus.
+  - Wirft `initHook`, ist der State verloren, weil er nie in die Hook-Liste
+    kommt.
+  - **Wirft der Build, wird ab dem Cursor entsorgt:**
+    - Wirft der `build` eines Hooks X, werden X und alle folgenden
+      entsorgt. Der Cursor rückt erst weiter, wenn `build` zurückkehrt.
+    - Wirft der Widget-Body nach X, werden nur die noch nicht erreichten
+      Hooks entsorgt.
+    - Ein Wurf nach dem letzten Hook entsorgt nichts.
+  - Beim `unmount` läuft erst `super.unmount`, dann `dispose` jedes Hooks.
+    In `dispose` ist `context.mounted` also schon `false`.
+  - `Hook` hat kein `==`, also läuft `didUpdateHook` bei jedem Build.
+    Ausgenommen ist eine identische Instanz, etwa ein `const`-Hook: Dann
+    läuft es nicht.
+  - Geänderte `keys` entsorgen den Hook und bauen ihn neu. **Ein Feld
+    namens `keys` an einer Hook-Unterklasse überschreibt `Hook.keys`** und
+    löst genau das aus. Im Spike passiert, und vom Analyzer gefunden.
+  - `HookState.setState` prüft nicht, ob der State schon entsorgt ist.
+  - `use()` innerhalb von `HookState.build` nimmt den Zweig für
+    Typ-Mismatch: Er entsorgt den laufenden Hook und alle folgenden, dann
+    wirft er `StateError`
+    (flutter_hooks [#215](https://github.com/rrousselGit/flutter_hooks/issues/215)).
+  - Ein `setState` in `useEffect` läuft während des Builds und geht
+    verloren.
+  - Untergrenzen: 0.21.3+1 verlangt Flutter `>=3.32.0`, 0.21.2 nur
+    `>=3.21`. Der `floors`-Job (3.27.4) löst also 0.21.2 auf, Stable löst
+    0.21.3+1 auf. Das `lib/` der beiden unterscheidet sich nicht in
+    `framework.dart`.
+  - Lizenz MIT. Letztes Release 2025-08-19. Über 1.0 wird in
+    [#486](https://github.com/rrousselGit/flutter_hooks/issues/486)
+    gesprochen. Die Abkopplung von `material` in Flutter 3.47 betrifft das
+    Paket ([#491](https://github.com/rrousselGit/flutter_hooks/issues/491)).
+- **Die Inventur.** 298 Fälle, Ergebnis je Datei:
+
+  | Datei | Fälle | P | A | N | G |
+  |---|---|---|---|---|---|
+  | `useQuery.test.tsx` | 155 | 84 | 43 | 14 | 14 |
+  | `useInfiniteQuery.test.tsx` | 28 | 6 | 22 | 0 | 0 |
+  | `useQueries.test.tsx` | 24 | 3 | 12 | 3 | 6 |
+  | `queryOptions`/`infiniteQueryOptions` | 2 | 0 | 0 | 2 | 0 |
+  | `useMutation.test.tsx` | 61 | 38 | 17 | 4 | 2 |
+  | `useMutationState.test.tsx` | 5 | 0 | 5 | 0 | 0 |
+  | `useIsFetching.test.tsx` | 5 | 1 | 4 | 0 | 0 |
+  | `QueryClientProvider.test.tsx` | 4 | 3 | 1 | 0 | 0 |
+  | `mutationOptions.test.tsx` | 14 | 11 | 1 | 2 | 0 |
+  | **Summe** | **298** | **146** | **105** | **25** | **22** |
+
+  - P = direkt portierbar, A = mit Anpassung, N = gehört nicht hierher,
+    G = Lücke.
+  - Dazu kommen `usePrefetchQuery.test.tsx` (6 Fälle) und
+    `usePrefetchInfiniteQuery.test.tsx` (3 Fälle). Alle neun bauen auf
+    Suspense. Etwa vier lassen sich ohne Suspense anpassen. Die übrigen
+    prüfen Suspense-Verhalten (Endlosschleife, Wasserfall, Reset der
+    Error-Boundary) und sind N.
+  - Beide Reviews haben die Zählung und alle Zeilennummern der Tabelle
+    unten nachgezählt und für richtig befunden.
+
+**Die 22 Lücken (G) und was aus ihnen wird:**
+
+| Fälle | Lücke | Entscheidung |
+|---|---|---|
+| useQuery 738, 2016, 2055, 2109, 2159 | `notifyOnChangeProps` und verfolgte Felder | Werden zu A: `buildWhen` am Hook (D8) |
+| useQueries 871 | Rebuild nur bei geändertem `combine`-Ergebnis | Wird zu A: `useCombinedQueries` (D10) |
+| useQueries 490 | dasselbe, mit Teil-Ergebnissen | **Teilweise A.** Die Invariante „ein Refetch mit gleichen Daten baut nicht neu“ wird portiert. Die drei ersten Ausgaben (leer, teilweise, vollständig) nicht: `CombinedResult` bleibt `pending`, bis jede Quelle Daten hat (D10) |
+| useQuery 5921, 5966, 6002, 6031; useQueries 66 | `subscribed` | Backlog HB-1, gilt für alle Aufrufstile. Hier als ausgelassen notiert |
+| useQueries 817 | `combine` über rohe Ergebnisse | Ausgelassen: `CombinedResult` ist die bewusste Form (#82) |
+| useQuery 7054; useQueries 1195, 1251 | `isRestoring` | Ausgelassen: kein Persister (#15) |
+| useQuery 6539 | `skipToken` | Ausgelassen: `Enabled.no` deckt den Zweck |
+| useQuery 6786 | Warnung bei fehlendem `queryFn` | Ausgelassen: der Kern scheitert mit `MissingQueryFunctionError` |
+| useQuery 6973, 7004 | `retryOnMount` als Callback | Ausgelassen: Kernoption ist `bool?`. Der übrige Teil von 7004 wird portiert |
+| useMutation 2533, 2555 | Callback-Kontext | Ausgelassen: Divergenz #14/#83 |
+
+Sieben Lücken werden portierbar, 490 davon nur teilweise. 15 bleiben als
+begründete Auslassung.
+
+---
+
+## Entscheidungen
+
+### D1 — Ein Zusatzpaket auf `flutter_hooks`
+
+- **Optionen:**
+  - (a) Hooks in `query_kit_flutter` selbst.
+  - (b) Ein eigenes Hook-Gerüst in der Bindung, ohne `flutter_hooks`.
+  - (c) Ein eigenes Paket, das von `flutter_hooks` abhängt.
+- **Antwort:** (c).
+- **Warum:**
+  - (a) bricht Christians Regel aus #21: Das Hauptpaket verlangt kein
+    Drittpaket. Dieselbe Regel nennt Hooks ausdrücklich als „später als
+    opt-in-Paket“.
+  - (b) erfindet `flutter_hooks` neu. Es wäre mit dem Ökosystem nicht
+    verträglich (`HookConsumerWidget`, eigene Hooks der Nutzer) und läge
+    trotzdem in der Bindung.
+  - (c) ist genau die Form, die #21 offen ließ.
+
+### D2 — Name `query_kit_hooks`
+
+- **Optionen:** `query_kit_hooks`, `query_kit_flutter_hooks`,
+  `hooks_query_kit`.
+- **Antwort:** `query_kit_hooks`. Am 2026-10-15 auf pub.dev frei geprüft,
+  ebenso `query_kit_flutter_hooks`. Vor dem ersten Publish (AP12) wird das
+  noch einmal geprüft.
+- **Warum:**
+  - Das Präfix `query_kit_` hält die Familie zusammen, auf pub.dev und
+    alphabetisch.
+  - „flutter“ im Namen sagt nichts mehr: `flutter_hooks` gibt es nur für
+    Flutter.
+  - Der kürzere Import zählt bei einem Paket, das man in jede Datei mit
+    Widgets holt.
+  - `hooks_riverpod` stellt das Wort „hooks“ voran. Das folgt Riverpods
+    Familie, nicht unserer.
+
+### D3 — Abhängigkeiten, Untergrenzen, Re-Export
+
+- **Abhängigkeiten:**
+  - `flutter_hooks: ^0.21.2`. Die Untergrenze Flutter 3.27.4 löst 0.21.2
+    auf, Stable löst 0.21.3+1 auf (Ausgangslage). Beide laufen in CI. Keine
+    Lockdatei darf den `floors`-Job auf 0.21.3+1 festlegen.
+  - `query_kit_flutter: ^1.1.0`. 1.1.0 ist die Version mit `adapter.dart`
+    (D4). Sie wird zusammen mit diesem Paket veröffentlicht (D17).
+  - `query_kit` **nicht** direkt. Das Paket importiert alles über die
+    Barrel-Datei der Bindung, die den Kern re-exportiert. So bleibt eine
+    Versionsgrenze weniger synchron zu halten.
+  - SDK `^3.6.0`, Flutter `>=3.27.0`: dieselben Untergrenzen wie die
+    Bindung, und der `floors`-Job prüft sie.
+- **Re-Export:** Die Bibliothek exportiert `query_kit_flutter`, wie
+  `hooks_riverpod` `flutter_riverpod` exportiert. `flutter_hooks` exportiert
+  sie **nicht**.
+- **Warum:**
+  - Ein Import für alles, was query_kit betrifft.
+  - Wer `HookWidget` schreibt, hängt ohnehin selbst von `flutter_hooks` ab
+    (`depend_on_referenced_packages`).
+  - Würden wir es mit exportieren, würde seine API Teil unserer
+    SemVer-Zusage.
+
+### D4 — Die Naht: `RebuildRule` in `package:query_kit_flutter/adapter.dart`
+
+- **Optionen:**
+  - (A) Nur öffentliche API. Die Rebuild-Regel wird im Hook-Paket
+    nachgebaut.
+  - (B) Eine neue öffentliche Bibliothek `adapter.dart` exportiert
+    `ReadEntry`, `ObservedState` und `observedStateOf`.
+  - (B′) `adapter.dart` exportiert nur eine besitzfreie Regel,
+    `RebuildRule<T>`. `ReadEntry` benutzt sie intern selbst.
+  - (C) Die Regel in den Kern verschieben.
+- **Antwort:** (B′). Der Spike lief auf (A).
+- **Gemessen (Spike, Messung 2):**
+  - Eine Regel von 32 Codezeilen trägt alle Hooks. Jeder Hook gibt ihr
+    seinen Wert und seinen beobachteten Zustand als Closures:
+    - der Wert bei Query und Mutation;
+    - der öffentliche `observedState`-Record beim Infinite-Hook;
+    - ein elementweiser Wrapper des Hook-Pakets bei Liste, Kombination
+      und Mutation-State.
+  - `ObservedState` und `observedStateOf` braucht kein Hook.
+  - Die Fläche von `adapter.dart` ist damit genau eine Klasse:
+    `RebuildRule<T>` mit `read()` und `shouldRebuild(buildWhen)`.
+- **Nachtrag (zweite Reviews von AP4 und AP6):** `RebuildRule` nimmt
+  optional eine dritte Closure, `beside`: den Teil des beobachteten
+  Zustands neben dem Wert, beim Infinite-Hook die Paging-Flags, bei
+  `useCombinedQueries` das, worauf `retry` und `refetch` wirken. Bewegt er
+  sich, wird ohne `buildWhen` neu gebaut, auch wenn der Wert sich mit
+  bewegt hat. Vorher hielt ein ablehnendes `buildWhen` ihn mit zurück, in
+  den Hooks wie in den Infinite-Lesern der Bindung.
+- **Warum:**
+  - Die Rebuild-Regel ist der Teil der Bindung, an dem die meisten
+    Review-Befunde hingen (C49, V-B-1 bis V5). Zwei Kopien laufen
+    auseinander. (A) bleibt deshalb nur der Weg des Spikes.
+  - (B) ist ungesund (Astra H-06). `ReadEntry` nimmt jedes
+    `ValueListenable` an, castet beim `dispose` aber auf `ChangeNotifier`
+    und entsorgt es. Ein gültiges eigenes `ValueListenable` scheitert also
+    erst spät mit einem Cast-Fehler. Die interne Konvention „wer übergibt,
+    übergibt den Besitz“ würde zur API-Pflicht.
+  - (B′) trennt die Entscheidung vom Besitz. Abo, Controller und Entsorgen
+    bleiben beim Aufrufer. Die Regel liegt an einem Ort, weil `ReadEntry`
+    sie benutzt, statt sie zu enthalten.
+  - (C) zieht Flutter-Begriffe in einen Kern ohne Flutter und ändert ihn
+    ohne Not.
+- **Folge:**
+  - `adapter.dart` fällt unter SemVer. Ihre Dartdoc sagt, für wen sie ist.
+  - Eine Änderung an `RebuildRule` ist eine Major-Version der Bindung.
+    Deshalb wird 1.1.0 erst zusammen mit dem Hook-Paket veröffentlicht,
+    nachdem die Reviews aus AP11 die Fläche gelesen haben (D17, Fable
+    P2-4).
+  - ADR-0004 hält die Entscheidung fest (AP1).
+
+### D5 — So funktioniert ein Hook
+
+- **Optionen:**
+  - (a) `useEffect` und `useState` aus `flutter_hooks` zusammensetzen.
+  - (b) Eine eigene `Hook`-Klasse mit `HookState`, der Controller entsteht
+    in `initHook`.
+  - (c) Eine eigene `Hook`-Klasse, die alles in `HookState.build` erledigt.
+- **Antwort:** (c), mit diesen Regeln:
+  1. **Kein `keys`, kein `==` am Hook.**
+     - Ein Schlüsselwechsel ist `setOptions` am selben Controller (D6),
+       kein neuer Hook.
+     - Kein Feld einer Hook-Klasse heißt `keys`. Ein solches Feld
+       überschreibt `Hook.keys` (Ausgangslage). Der öffentliche Parameter
+       `keys:` von `useCombinedQueries` landet deshalb im Feld
+       `combineKeys`.
+  2. **Nichts in `initHook`.** Der Client kommt im `build` aus
+     `hook.client ?? QueryClientProvider.of(context)`. Eine Assertion oder
+     ein Wurf in `initHook` würde den State verlieren.
+  3. **Bei jedem `build`:**
+     - Client abgleichen. Ein anderer Client entsorgt den Controller und
+       baut einen neuen, wie bei den Buildern.
+     - Sonst `setOptions` aufrufen. Unveränderte Optionen bewegen nichts,
+       weil `Defaulted*Options` Wertgleichheit haben.
+     - Den gelesenen Zustand über `RebuildRule.read()` als „gebaut“ merken.
+  4. **Rebuild sofort im Listener entscheiden**, mit
+     `RebuildRule.shouldRebuild(hook.buildWhen)`. `hook` ist dort der Hook
+     des letzten Builds. Dann `setState`.
+     - Die Alternative ist `markMayNeedRebuild`: Dann entscheidet der Hook
+       erst beim Frame, in `shouldRebuild`. Das spart einen Build bei A→B→A
+       innerhalb eines Frames. Aber `flutter_hooks` garantiert nicht, dass
+       `shouldRebuild` überhaupt läuft.
+     - Gewählt ist der Listener, weil `ReadEntry` für alle vier Aufrufstile
+       genau dort entscheidet („one decision shared by every call style“).
+       So zählen Hook und Builder dieselben Builds, und die Erwartungen aus
+       den Suiten der Bindung gelten auch für die Hooks.
+  5. **Jede Zustellung prüft, ob der Hook-State noch lebt, nicht nur
+     `context.mounted`** (Astra H-03).
+     - `HookState.setState` hat keine solche Prüfung. Nach einem Wurf vor
+       dem Hook ist der State entsorgt, das Element aber noch gemountet.
+     - Controller-Hooks sind durch das Entfernen des Listeners und durch
+       `ControllerLifetime` geschützt.
+     - Direkte Abos (D12) tragen eine Generation und ein Disposed-Flag. Beide
+       werden geprüft, wenn die eingereihte Zustellung läuft. Ein Wechsel des
+       Clients und `dispose` erhöhen die Generation.
+     - Der Spike reproduziert die späte Zustellung. Ohne den Schutz gibt es
+       einen zusätzlichen Build (Messung 8).
+  6. **`dispose`:** erst den Listener entfernen, dann den Controller
+     entsorgen. `context` wird dort nicht angefasst, denn `dispose` läuft
+     nach `super.unmount`.
+  7. **DevTools:** `debugLabel` und `debugValue` setzen.
+  8. **`use()` nie innerhalb von `HookState.build`.** Ein Hook, der einen
+     anderen braucht, ruft ihn als Funktion vor seinem eigenen `use()` auf.
+     Sonst entsorgt `flutter_hooks` den laufenden Hook und alle folgenden,
+     bevor es wirft (Ausgangslage).
+- **Warum:**
+  - (a) läuft in die Falle aus der Ausgangslage: `useEffect` läuft
+    während des Builds, und ein `setState` darin geht verloren.
+  - (b) scheitert an der Assertion beim Nachschlagen des Providers in
+    `initHook`.
+  - (c) ist das Muster, das die Builder seit den Reviews vom 2026-10-15
+    haben: Abgleich oben in `build`, Wurf als gewöhnlicher Build-Fehler.
+- **Die „+1-Build-Falle“:** Ein Hook, der im `build` Optionen anwendet,
+  darf auf eine Benachrichtigung, deren Wert dem zuletzt gebauten gleicht,
+  nicht neu bauen. Das deckt der erste Schritt der Regel. Gemessen: kein
+  zusätzlicher Build (Spike, Messung 5).
+- **Geteilt mit den Buildern, nicht erreichbar:** Fable (P3-8) nennt eine
+  Benachrichtigung, während das Element bei einem `GlobalKey`-Umzug inaktiv
+  ist. `markNeedsBuild` verwirft sie dann.
+  - Inaktiv ist ein Element aber nur innerhalb der Build-Phase eines Frames.
+  - Zustellungen kommen in dieser Phase nie synchron: Der Provider stellt
+    sie zurück, ohne Provider ist es eine Microtask.
+  - Der Spike-Test zum `GlobalKey`-Umzug ist grün.
+
+### D6 — Identität über die Aufrufposition
+
+- **Optionen:**
+  - (a) Wie `context.query`: über `QueryKey` oder `id`.
+  - (b) Wie React: über die Position des Aufrufs in `build`.
+- **Antwort:** (b).
+- **Warum:**
+  - Das ist das Hook-Modell, und `flutter_hooks` erzwingt es ohnehin.
+  - Ein neuer Schlüssel an derselben Position ist dieselbe Komponente mit
+    anderer Query. Upstream wechselt dann per `observer.setOptions` die
+    Query am selben Observer.
+  - Nur über denselben Observer kann
+    `placeholderData: (previous) => previous` die Daten der alten Query
+    weiter zeigen. Die Fälle 1185, 1606 und 5056 prüfen genau das und sind
+    im Spike grün.
+  - Ein neuer Controller pro Schlüssel würde das zerstören.
+
+### D7 — Woher der Client kommt
+
+- **Antwort:**
+  - Jeder Hook hat einen optionalen Parameter `client:`, so wie upstream
+    `queryClient?`. Fehlt er, gilt `QueryClientProvider.of(context)`.
+  - Ein Wechsel des Clients baut den Controller neu.
+  - **`useQueryClient()`** gibt den Client des Providers zurück.
+- **Warum:** So halten es die Builder schon. Fälle mit eigenem Client
+  laufen in einer `MaterialApp` ohne Provider, wie die Inventur festhält.
+- **Folge ohne Provider:**
+  - Der Kern stellt dann über seinen Standard-Scheduler zu, eine Microtask.
+    Eine Microtask läuft nie mitten in einem synchronen Build, also gibt es
+    auch ohne Provider kein „setState during build“.
+  - Es fehlt nur die synchrone Zustellung außerhalb eines Builds. Das kostet
+    eine Microtask Verzögerung, im Test ein zusätzliches `pump()`. Die
+    Builder verhalten sich genauso.
+  - (Die erste Fassung behauptete, ohne Provider fehle der Schutz. Beide
+    Reviews haben das widerlegt.)
+
+### D8 — Rebuilds und `buildWhen`
+
+- **Antwort:**
+  - Jeder Hook, der ein einzelnes Ergebnis liest, nimmt
+    `BuildWhen<…>? buildWhen` mit genau dem Typ der Bindung:
+    - `useQuery` und `useSelectQuery`: `BuildWhen<QueryResult<TData>>`
+    - `useInfiniteQuery`: `BuildWhen<QueryResult<TData>>`. Eine Bewegung
+      nur der Paging-Flags baut immer neu, wie bei `ReadEntry`.
+    - `useMutation`: `BuildWhen<MutationResult<TData, TVariables>>`
+  - `useQueries` nimmt **keins**. Begründung wie bei `QueriesBuilder`: Ein
+    Prädikat über die ganze Liste sagt nicht, welche Query sich bewegt hat.
+  - `useCombinedQueries` nimmt eins über das `CombinedResult` (D10).
+- **Warum:**
+  - Damit werden die fünf `notifyOnChangeProps`-Fälle portierbar.
+  - #15 hat entschieden, dass `buildWhen` in Dart `notifyOnChangeProps` und
+    die verfolgten Felder ersetzt. Ein Hook bekommt kein zweites Konzept.
+- **Takt der Frames:**
+  - React rendert nicht einmal pro Benachrichtigung. Es bündelt
+    Aktualisierungen: 2316 erwartet zwei Renderings für zwei Observer.
+  - In den Tests mit Fake-Timern rendert React aber nach jedem
+    Timer-Makrotask. Flutter baut einmal pro Frame, und ein
+    `tester.pump(d)` ist ein Frame für alle Timer in `d`.
+  - Die Portierung pumpt deshalb gestaffelt, eine Millisekunde pro Frame
+    (`advance` im Harness).
+  - **Gemessen (Spike, Messung 1):** Mit einem einzigen `pump(d)`
+    scheitern 2 von 21 useQuery-Fällen (1932, 4100). Gestaffelt scheitert
+    keiner, und keine Zählung musste sich ändern. Die einzige geänderte
+    Zählung ist 490, durch D10 gewollt.
+  - **Nachgetragen in AP3:** `advance` baut zusätzlich einen Frame, bevor
+    Zeit vergeht. `act` rendert, was Microtasks schon angestoßen haben,
+    vor dem ersten Timer. Ohne diesen Frame teilten sich in Fall 159 eine
+    per Microtask zugestellte Ausfallmeldung und der Ausfall eines
+    1-ms-Retrys einen Frame. Mit ihm hält 159 die drei Builds von upstream,
+    und keine andere Zählung im Paket ändert sich. Über alle 155 Fälle
+    bleibt eine einzige geänderte Zählung: 4291. Dort landen ein
+    nachgereichtes `setState` aus einem Effekt und synchrone Daten im
+    selben Frame.
+  - Weicht eine Zählung trotz Staffelung ab, wird die Assertion angepasst
+    und in den `PORTING_NOTES` begründet. Das Hook-Verhalten wird dafür
+    nicht verbogen.
+  - Der Harness zeichnet Übergänge am Observer getrennt von den Builds auf
+    (Astra H-02). Sonst könnte das Bündeln im Frame einen Zwischenzustand
+    verschlucken, der am Observer falsch war.
+
+### D9 — Die Hooks und was sie zurückgeben
+
+| Hook | Rückgabe | Spiegelt |
+|---|---|---|
+| `useQuery<TData>(QueryObserverOptions<TData>, {buildWhen, client})` | `QueryResult<TData>` | `context.query` |
+| `useSelectQuery<TQueryData, TData>(QuerySelectOptions<…>, {buildWhen, client})` | `QueryResult<TData>` | `context.selectQuery` (ADR-0001) |
+| `useInfiniteQuery<TPageData, TPageParam, TData>(InfiniteQueryObserverOptionsBase<…>, {buildWhen, client})` | `InfiniteQueryController<…>` | `context.infiniteQuery`, `InfiniteQueryBuilder` |
+| `useMutation<TData, TVariables, TOnMutateResult>(MutationOptions<…>, {buildWhen, client})` | `MutationController<…>` | `context.mutation` |
+| `useQueries<TQueryData, TData>(List<QueryObserverOptionsBase<…>>, {client})` | `List<QueryResult<TData>>` | `QueriesBuilder` |
+| `useCombinedQueries<TQueryData, TData, R>(queries, combiner, {required keys, buildWhen, client})` | `CombinedResult<R>` | neu, D10 |
+| `useIsFetching({filters, client})` | `int` | `IsFetchingController`, D12 |
+| `useIsMutating({filters, client})` | `int` | neu, D12 |
+| `useMutationState<TSelected>({filters, required select, client})` | `List<TSelected>` | `MutationStateController` |
+| `useTypedMutationState<TData, TVariables, TOnMutateResult, TSelected>(…)` | `List<TSelected>` | `MutationStateController.typed` |
+| `useQueryClient()` | `QueryClient` | `QueryClientProvider.of` |
+| `usePrefetchQuery<TData>(QueryOptions<TData>, {client})` | `void` | neu, D11 |
+| `usePrefetchInfiniteQuery<TPageData, TPageParam>(InfiniteQueryOptions<…>, {client})` | `void` | neu, D11 |
+
+- **Grundsatz:** Ein Hook gibt zurück, was der entsprechende flache
+  Aufrufstil der Bindung zurückgibt. Wer von `context.query` kommt, lernt
+  nichts Neues. Die Doku kann denselben Code zeigen.
+- **`useInfiniteQuery` gibt den Controller zurück, nicht ein Ergebnis.**
+  - Paging-Flags und `fetchNextPage` liegen am Controller, so wie bei
+    `context.infiniteQuery`.
+  - Ein Record aus Ergebnis und Controller wäre ein neuer Typ für denselben
+    Zweck.
+  - Die portierten Fälle lesen die Flags je Build vom Controller.
+- **`useMutation` gibt den `MutationController` zurück.**
+  - Er hat `value`, `mutate`, `mutateAsync`, `reset` und `cancel`.
+  - `dispose` bricht die Mutation nicht ab, wie upstream: Eine Mutation
+    überlebt ihr Widget.
+- **`useMutationState`** geht über `MutationStateController` und dessen
+  `setOptions({filters, select})`, aufgerufen bei jedem Build.
+  - Filter und `select`, die bei jedem Build neu sind, erzeugen weder ein
+    neues Abo noch einen Build (Spike, Messung 11).
+  - Es verlangt `select`, wie der Controller. Upstream wählt als Standard
+    `mutation.state`. In Dart müsste `TSelected` dann ein fester
+    `MutationState<Object?, …>` sein. Angepasste Fälle übergeben
+    `(m) => m.state`.
+
+### D10 — `useCombinedQueries`: Rebuild nur bei geändertem Ergebnis
+
+- **Optionen:**
+  - (a) Ein `combine` über die rohen Ergebnisse,
+    `R Function(List<QueryResult<TData>>)`, mit Rebuild bei
+    `R`-Ungleichheit nach Structural Sharing. Das entspricht upstream.
+  - (b) Ein `combiner` über die Werte mit `CombinedResult<R>` als
+    Rückgabe. Rebuild, wenn sich das `CombinedResult` oder das, worauf seine
+    Aktionen wirken, ändert und das optionale `buildWhen` zustimmt.
+  - (c) Keiner. Wer kombinieren will, ruft `useQueries` und
+    `results.combine(…)` im `build` auf.
+- **Antwort:** (b).
+- **Warum:**
+  - #82 hat entschieden, dass ein `CombinedResult` die Zustandslogik trägt
+    (pending, error, data, Refetch-Fehler) und nicht jeder Aufrufer sie
+    selbst schreibt. Der Hook bekommt kein zweites `combine` mit anderer
+    Bedeutung.
+  - (c) baut für jede Query neu, die sich bewegt. Genau das schließen die
+    Fälle 490 und 871 aus.
+- **Das Gate (Astra H-01):**
+  - **Gleichheit des Werts reicht nicht.** Die Gleichheit von
+    `CombinedResult` sieht nur Variante, Fetch-Flags und den ersten Fehler.
+    `retry()` wirkt aber auf die erfassten Quellen, die gerade fehlschlagen,
+    und `refetch()` auf alle erfassten Quellen.
+  - Beispiel: A und B schlagen fehl, dann repariert ein `setQueryData` B.
+    Das neue `CombinedError(errorA)` gleicht dem gebauten. Ein Gate nur auf
+    dem Wert behielte das alte `retry`, das B mit abruft. Das ist ADR-0003:
+    „value equality does not imply callback ownership equality“.
+  - **Deshalb ist der beobachtete Zustand ein Paar:** das `CombinedResult`
+    und je Quelle `(isError, refetch)`.
+  - Hat sich nur die Aktionshälfte bewegt, wird ohne `buildWhen` neu
+    gebaut, so wie `ReadEntry` bei den Paging-Flags. Der gebaute Wert ist
+    dann zwar gleich, aber seine Aktionen sind veraltet.
+  - Gemessen: Der Spike reproduziert das Beispiel. Mit dem Wert allein
+    scheitert der Test (Messung 7).
+- **Umsetzung:**
+  - Der Hook hält ein `CombineMemo<R>`. Im `build` ruft er
+    `controller.value.combine(combiner, memo: _memo, keys: keys)` auf.
+  - Der Listener rechnet mit `combiner` und `keys` des **letzten** Builds
+    über dasselbe Memo.
+  - Das Memo hält die kombinierten **Daten** fest, nicht das
+    `CombinedResult`. Jedes `combine` baut ein neues `CombinedResult`, und
+    verglichen wird mit `==`. (Die erste Fassung sprach von „derselben
+    Instanz“. Das war falsch.)
+- **`keys` ist Pflicht (Fable P3-9).**
+  - In React läuft ein inline `combine` bei jedem Rendern neu. Hier läuft
+    der Combiner nur neu, wenn sich ein Wert oder ein Schlüssel geändert hat.
+  - Ein Combiner, der Zustand aus dem Build einfängt, lieferte ohne `keys`
+    still ein veraltetes Ergebnis.
+  - `const []` sagt „fängt nichts ein“, so wie bei `useMemoized`.
+- **Portierung:**
+  - 871 wird voll portiert (zwei Renderings).
+  - 490 wird teilweise portiert (Lückentabelle). `buildWhen: (p, c) =>
+    p.dataOrNull != c.dataOrNull` hält die Invariante am Ende.
+  - 1142 läuft über das schlichte `useQueries`: Sein Identitäts-Combiner
+    über rohe Ergebnisse *ist* `useQueries`, und die Länge pro Build wird
+    geprüft wie upstream (Astra H-05).
+- **Ausgelassen:** 817 verlangt einen rohen Combiner, der `'foo'` schon im
+  ersten Rendering liefert. Nach #82 nicht im Umfang.
+- **Backlog HB-2:** Dieselbe Regel für `QueriesBuilder` und
+  `QueriesController`.
+  - Die Hooks dürfen sie zuerst haben, weil sie kein fünfter Aufrufstil
+    sind (D15). Die Gleichrangigkeit gilt für die vier Stile der Bindung.
+  - Die Bindung übernimmt die Regel für alle vier zugleich, sobald sie sich
+    bewährt hat.
+
+### D11 — `usePrefetchQuery`, `usePrefetchInfiniteQuery`
+
+- **Antwort:** Wie upstream.
+  - Im `build` wird geprüft, ob der Schlüssel einen Cache-Eintrag hat:
+    **`client.queryCache.find(filters: QueryFilters(queryKey: key, exact:
+    true)) == null`**.
+  - Fehlt er, wird `client.query(options).ignore()` aufgerufen,
+    beziehungsweise `client.infiniteQuery(…)`.
+  - Die Hooks geben nichts zurück, bauen nie neu und halten keinen
+    Observer.
+- **Nicht `getQueryState(key) == null` (Fable P2-1).**
+  - Upstreams `getQueryState` ist untypisiert, unseres nicht. Ohne
+    Typargument fragt es nach einem `dynamic`-Eintrag. Den gibt es nie.
+    Darum wirft es `QueryDataTypeError`, sobald der Eintrag existiert, also
+    beim zweiten Build.
+  - Gemessen: Der Spike reproduziert den Wurf, und `find` wirft nicht
+    (Messung 10).
+- **Warum:**
+  - Der Sinn ist „fetch-then-render“: Ein Elternwidget startet den Abruf,
+    bevor das Kind, das die Daten liest, gebaut wird. Upstream braucht dafür
+    Suspense, hier reicht die Reihenfolge der Builds.
+  - Bei jedem Build ist das günstig: ein Nachschlagen in einer Map.
+  - **Der Prefetch-Hook selbst** ruft einen fehlgeschlagenen oder
+    laufenden Eintrag nicht erneut ab. Das ist upstreams ausdrückliche
+    Zusage. Ein lesender Hook kann denselben Eintrag unabhängig davon neu
+    abrufen.
+- **Benachrichtigungen:** Ein Abruf, der im `build` startet, benachrichtigt
+  den Cache.
+  - Mit Provider wird die Zustellung bis nach dem Frame zurückgestellt.
+  - Ohne Provider ist sie eine Microtask (D7).
+  - AP8 prüft beides mit einem `useIsFetching` im selben Baum.
+
+### D12 — `useIsFetching` und `useIsMutating` lesen den Client
+
+- **Optionen:**
+  - (a) `IsFetchingController` je Hook, neu gebaut, wenn sich die Filter
+    ändern.
+  - (b) Direkt `client.queryCache.subscribe` beziehungsweise
+    `mutationCache.subscribe`. Gezählt wird mit
+    `client.isFetching(filters: …)` und den Filtern des letzten Builds.
+- **Antwort:** (b).
+- **Warum:**
+  - `QueryFilters` und `MutationFilters` haben kein `==`. (a) würde bei
+    jedem Build mit einem neuen Filter-Objekt einen neuen Controller bauen.
+    `IsFetchingController` hat keinen Setter. Seine Filter sind „fixed for
+    the controller's life“.
+  - (b) ist upstreams Form: `useSyncExternalStore` über
+    `client.isFetching(filters)`.
+  - `MutationStateController` dagegen *hat* `setOptions`. Darum geht
+    `useMutationState` über ihn (D9).
+- **Takt:** Der Listener übergibt an `client.notifyManager.schedule` und
+  baut nur neu, wenn sich die Zahl geändert hat. Es gilt also dieselbe
+  Taktung wie bei den Controllern.
+- **Schutz vor späten Zustellungen (Astra H-03):**
+  - Jedes Abo trägt eine Generation. Ein Wechsel des Clients und `dispose`
+    erhöhen sie, `dispose` setzt außerdem ein Disposed-Flag.
+  - Die eingereihte Zustellung prüft beides, bevor sie Filter liest oder
+    `setState` ruft.
+  - Ein Umzug per `GlobalKey` behält das Abo.
+  - Gemessen: Ohne den Schutz baut eine Zustellung, die vor dem Entsorgen
+    eingereiht war, das Element neu (Messung 8).
+- **Fall 60** („should not update state while rendering“) prüft genau den
+  Fall, den der Provider zurückstellt. Er ist im Spike grün.
+- **Backlog HB-3:** Ein `IsMutatingController` für die übrigen
+  Aufrufstile, falls er gebraucht wird.
+
+### D13 — Ein Wurf im Build: abweichendes Verhalten, dokumentiert
+
+- **Befund:** Wirft der Build eines `HookWidget`, entsorgt `flutter_hooks`
+  Hooks ab dem Cursor (Ausgangslage). Unsere Builder behalten dagegen ihren
+  State und erholen sich (Bindung 1.0.4).
+- **Antwort:** Nicht umgehen. Das liegt in `flutter_hooks` und ist dort
+  Absicht. Die Doku nennt die Folgen unten, und Tests halten jede fest.
+- **Folgen, getrennt nach dem, was überlebt** (Astra H-04, im Spike
+  gemessen, Messung 9):
+
+  | Was | Ein Wurf vor dem Hook |
+  |---|---|
+  | Cache-Eintrag einer Query | Bleibt `gcTime` lang. Bei `gcTime: 0` ist er weg, wenn der letzte Observer geht |
+  | Laufender Abruf einer Query | Hat der Query-Funktion das Signal benutzt, wird er abgebrochen und zurückgesetzt, sobald der letzte Observer geht. Sonst läuft er weiter. Der nächste Build ruft neu ab |
+  | Laufende Mutation | Läuft weiter. Ihre Options-Callbacks laufen |
+  | Per-Call-Callbacks von `mutate` | Fallen weg: Der Controller ist entsorgt |
+  | Was der Hook zeigt | Der Ersatz-Hook beginnt neu. Bei einer Mutation ist er `idle`, auch wenn die alte noch läuft. Er findet sie nicht über den Schlüssel wieder |
+  | Am Observer gemerkt | `placeholderData` mit vorherigen Daten und das `select`-Memo sind weg |
+
+- **Genau:** Entsorgt werden nur Hooks ab der Wurfstelle. Ein Wurf nach dem
+  letzten Hook entsorgt nichts, und der Spike-Test dazu ist grün.
+- **Empfehlung in der Doku:** Code, der werfen kann, gehört hinter die
+  Hooks oder in ein eigenes Widget.
+
+### D14 — Was nicht kommt
+
+| Upstream | Warum nicht |
+|---|---|
+| `useSuspenseQuery`, `useSuspenseQueries`, `useSuspenseInfiniteQuery`, Suspense in `usePrefetch*` | Flutter hat kein Suspense. Ein Ersatz wäre ein eigenes Produkt |
+| `QueryErrorResetBoundary`, `throwOnError` | #15: Fehler sind Daten im Ergebnis |
+| `HydrationBoundary`, `IsRestoringProvider` | Kein Persister und keine Hydration im Kern (#15) |
+| `subscribed` | Backlog HB-1, für alle Aufrufstile zugleich |
+| `skipToken` | `Enabled.no` und eine bedingte Option decken das ab |
+| `retryOnMount` als Callback | Die Kernoption ist `bool?`. Ein Callback wäre eine Kernänderung ohne Befund |
+| Rohes `combine` | #82 |
+| Callback-Kontext für Mutationen | Divergenz #14/#83 |
+| `queryOptions`/`mutationOptions` als Hooks | In Dart sind das Funktionen, die Options zurückgeben. Die portierbaren Fälle aus `mutationOptions.test.tsx` laufen gegen die Hooks |
+
+### D15 — Hooks sind kein fünfter Aufrufstil
+
+- **Optionen:**
+  - (a) Hooks werden der fünfte gleichrangige Aufrufstil, mit Spalte in
+    `catalogue_test.dart` und Bildschirm im Showcase.
+  - (b) Hooks sind ein eigenes Zusatzpaket mit eigener Doku-Seite, eigener
+    Beispiel-App und eigener Suite.
+- **Antwort:** (b).
+- **Warum:**
+  - Die Gleichrangigkeit der vier Stile ist eine Zusage der Bindung (C49),
+    nachgewiesen in der Bindung und im Showcase.
+  - Ein Zusatzpaket mit Drittabhängigkeit gehört nicht in diesen Nachweis.
+    Der Showcase dürfte es nach #21 nicht einmal als Abhängigkeit haben.
+  - Christians zweite Regel aus #21, keine Voreinstellung in der Doku,
+    bleibt: Die Hooks-Seite empfiehlt Hooks nicht über die vier Stile.
+- **Doku:**
+  - Eine Seite `guides/hooks.md`.
+  - Eine Spalte „mit `query_kit_hooks`“ in `coming-from-react-query.md`.
+    Wer von React kommt, sucht genau das.
+  - Eine Zeile auf `installation.md`.
+  - Der Abschnitt „Signals, hooks…“ wird neu geschrieben: Hooks gibt es als
+    Zusatzpaket, für Signals gilt weiter das Bisherige.
+- **Wo die Doku-Beispiele kompiliert werden (Fable P3-5):**
+  - Optionen:
+    - (i) `examples/doc_snippets` bekommt `query_kit_hooks` als
+      Abhängigkeit.
+    - (ii) Ein Zwilling von `site_fences_test.dart` im Hook-Paket liest
+      `website/docs/guides/hooks.md` und die README des Pakets.
+  - Antwort: (ii).
+  - (i) holte `flutter_hooks` transitiv in ein Beispiel. Das bräche die
+    Regel aus #21, die laut CLAUDE.md für alles darauf Gebaute gilt.
+  - (ii) braucht AP9 ohnehin für die README, und `_readmes` in
+    `doc_snippets` bleibt bei zwei Paketen.
+  - ADR-0004 hält das fest.
+
+### D16 — Tests: wie im Kern
+
+- **Eigene `test/PORTING_NOTES.md`.**
+  - Eine Dart-Datei pro Upstream-Datei, die Upstream-Namen bleiben.
+  - Jede Auslassung und jede geänderte Assertion steht mit Grund darin.
+  - Paketeigenes Verhalten steht in `hook_specifics_test.dart`.
+  - Reproduktionen von Review-Befunden stehen in eigenen Dateien je Runde,
+    so wie `review_reproductions_test.dart` im Spike.
+- **Harness `test/harness.dart`**, wie im Spike:
+  - `hookTest` wickelt ein: Client, Provider und den Teardown aus ADR-0002.
+  - `HookProbe` ist `flutter_hooks`' `HookBuilder` (Fable P3-6). Es wird
+    nicht nachgebaut. Der Harness fügt nur den Recorder hinzu: jeden Build
+    (`states`, upstreams `states.push`) und, getrennt davon, die Übergänge
+    am Observer (D8).
+  - `advance(ms)` pumpt gestaffelt, eine Millisekunde pro Frame (D8).
+    `click` ist Tap plus `pump`.
+  - Fehler, die in der Zone landen, fängt `runZonedGuarded`.
+- **Keine Abhängigkeit auf `flutter_hooks_test`:** Es wird von der
+  Community gepflegt, und der Harness braucht nur `pumpWidget`.
+- **Upstream geht vor:** Scheitert ein portierter Fall, liegt der Fehler
+  zuerst im Hook. Nur eine Entscheidung dieses Plans (D8 Takt, D10, D14)
+  rechtfertigt eine geänderte Assertion.
+
+### D17 — Version und Release
+
+- **Antwort:**
+  - 0.1.0, wenn AP3 bis AP11 abgeschlossen sind.
+  - **`query_kit_flutter` 1.1.0 erscheint am selben Tag** (Fable P2-4).
+    `adapter.dart` liegt bis dahin unveröffentlicht auf `main`. AP3 bis
+    AP11 laufen über den Pfad im Workspace dagegen, und die Reviews aus
+    AP11 lesen die exportierte Fläche, bevor sie unter SemVer fällt.
+  - 1.0.0, wenn eine echte App das Paket benutzt hat und ein Review über
+    ihre Befunde gelaufen ist. Das ist der Weg, den der Kern mit BR64
+    gegangen ist.
+  - Tag `query_kit_hooks-v*`.
+  - Das erste Publish macht Christian von Hand, weil pub.dev das
+    automatisierte Publish erst für ein existierendes Paket erlaubt
+    (`docs/releasing.md`). Danach „Transfer to publisher“ an dualmeta.io und
+    die Einstellung für automatisches Publish.
+- **Warum 0.x:**
+  - Die Hook-API hat noch keine Nutzer.
+  - Sie hängt an einem Paket vor 1.0.
+  - In 0.x ist ein Bruch ein Minor-Sprung (0.1 → 0.2). Die Regel der
+    beiden 1.x-Pakete, ein Bruch sei eine Major-Version, gilt hier erst ab
+    1.0.0.
+
+### D18 — Beispiel: eine eigene App, kein Showcase-Bildschirm
+
+- **Antwort:**
+  - `packages/query_kit_hooks/example/` liegt außerhalb des Workspace und
+    wird mit veröffentlicht, wie das Beispiel der Bindung.
+  - Es ist ein kleiner Bildschirm mit Liste und Detail. Er deckt `useQuery`,
+    `useMutation` mit optimistischem Update, `useInfiniteQuery` und
+    `usePrefetchQuery` ab.
+  - Dazu kommt ein Widget-Test gegen einen Fake.
+- **Warum:** D15. Der Showcase darf `flutter_hooks` nicht einbinden, und
+  ein Beispiel im Paket ist das, was pub.dev zeigt.
+
+---
+
+## Arbeitspakete
+
+Jedes Paket wird ein Ticket der neuen Wayfinder-Map. Die Map wird erst
+angelegt, wenn Christian den Plan freigegeben hat, weil das nach außen
+sichtbar ist. Die Gates gelten für jedes Paket in demselben Commit: Tests,
+Analyzer, Formatter und `PORTING_NOTES`-Eintrag.
+
+### AP0 — Spike (POC) — **erledigt, Ergebnis: weiter**
+
+- **Ort:** `packages/query_kit_hooks/`, nicht im Workspace.
+  - Pfad-Abhängigkeiten über `pubspec_overrides.yaml` (`../query_kit`,
+    `../query_kit_flutter`).
+  - Keine Änderung an der Root-`pubspec.yaml`, kein Commit, bis AP2 das
+    Paket aufnimmt.
+- **Gebaut**, nur auf öffentlicher API (D4, Pfad A):
+  - `useQuery`, `useSelectQuery`, `useInfiniteQuery` und `useMutation`
+  - `useQueries` und `useCombinedQueries`
+  - `useIsFetching`, `useIsMutating` und `useMutationState`
+  - `usePrefetchQuery`
+  - der Harness aus D16
+- **Portiert, 31 Fälle:**
+  - useQuery: 72, 435, 700, 738, 1128, 1185, 1606, 1932, 1956, 2300, 2316,
+    3763, 3871, 4100, 4447, 4622, 5056, 6068, 6191, 6378, 6570
+  - useInfiniteQuery: 48, 180
+  - useQueries: 490 (teilweise), 871, 1142
+  - useMutation: 34, 999, 1578
+  - useIsFetching: 60
+  - useMutationState: 17
+- **Dazu:** 8 eigene Fälle und 6 Reproduktionen von Review-Befunden, zwei
+  davon mit Gegenprobe.
+- **Ergebnis:** 45 von 45 grün, gegen den committeten Stand (Bindung
+  1.0.3) und, bis auf den zuletzt geschriebenen Fall, gegen den
+  Arbeitsstand 1.0.4. Messungen und Bericht in
+  [`docs/research/hooks-spike.md`](../research/hooks-spike.md).
+- **Das Gate, nach den Reviews neu gefasst** (Astra H-02, Fable P3-4). Die
+  erste Fassung ließ bis zu 20 % rote Fälle zu und zählte geänderte
+  Assertionen statt geänderter Builds.
+  - **Jede Verhaltens-Invariante ist grün.** Das ist eine Bedingung, keine
+    Quote.
+  - Der Anteil angepasster Assertionen ist eine **Messung**, keine Schwelle:
+    3 von 31 (738, 6068, 490).
+  - Gezählt wird, ob sich **Zahl oder Reihenfolge der Builds** ändern: 1 von
+    31 (490, durch D10).
+  - 4447 zählt nicht mit. Ein doppeltes `select` wäre eine Eigenschaft von
+    Kern und Bindung, kein Urteil über den Spike. Es lief ohnehin nicht
+    doppelt.
+  - Kein Hook braucht verborgene API.
+  - Kein Timer und keine Build-Assertion bleibt übrig.
+  - Geprüft sind außerdem:
+    - Client-Wechsel, Umzug per `GlobalKey`, Hot Reload, Unmount
+    - späte Zustellung nach dem Entsorgen
+    - Erholung nach einem Wurf vor, zwischen und nach Hooks
+
+### AP1 — `RebuildRule` in `query_kit_flutter` (`adapter.dart`) — **erledigt** (#94)
+
+- **Inhalt:**
+  - Die neue Bibliothek `lib/adapter.dart` exportiert `RebuildRule<T>`, in
+    der Form des Spikes: Closures für Wert und beobachteten Zustand,
+    `read()` und `shouldRebuild(buildWhen)`.
+  - `ReadEntry` behält Abo und Besitz und delegiert die Entscheidung an
+    `RebuildRule`. Damit gibt es eine Regel, nicht zwei.
+  - Eine Dartdoc, die sagt, für wen die Bibliothek ist.
+  - ADR-0004 „Hooks als Zusatzpaket über eine Adapter-Bibliothek“, mit D4
+    und D15.
+  - CHANGELOG-Eintrag unter „Unreleased“. Die Version wird erst in AP12
+    gesetzt (D17).
+- **Akzeptanz:**
+  - Die Barrel-Datei bleibt unverändert, und alle Tests der Bindung bleiben
+    grün: 299 auf diesem Zweig (`859fbdc`, Bindung 1.0.3), 349 mit der
+    1.0.4-Arbeit aus dem Haupt-Checkout.
+  - Ein neuer Test importiert nur `adapter.dart`. Er prüft die drei Zweige
+    der Regel: gleich, nur die Nebenhälfte bewegt, `buildWhen`.
+  - `dart doc` und die Probeläufe fürs Publish sind grün. pana bleibt bei
+    160/160.
+
+### AP2 — Paket-Gerüst und Integration ins Repo — **erledigt** (#95)
+
+- **Inhalt:** Das Paket kommt in den Workspace, mit `pubspec`, `LICENSE`,
+  `LICENSE-TANSTACK`, `README`, `CHANGELOG`, `analysis_options` und
+  `dartdoc_options`. Dazu die Stellen, die heute nur zwei Pakete kennen:
+  - `tool/rename_packages.dart` (Z. 172–175)
+  - `.gitignore` (Z. 10 und 14, `pubspec_overrides` des Beispiels)
+  - `publish.yml` (Z. 19–20, 31–35)
+  - `scripts/release.sh` (Z. 194–197, kennt nur zwei Pakete)
+  - `ci.yml`: Gates, `floors` (mit `flutter_hooks` 0.21.2, D3) und
+    `latest-stable.yml`
+  - `dependabot`, die PR-Vorlage, `docs/releasing.md`, `CLAUDE.md`
+- **Akzeptanz:** CI ist grün über alle Jobs mit drei Paketen, und die
+  Probeläufe fürs Publish laufen für alle drei.
+- **Abweichungen, gemessen:**
+  - `query_kit_flutter: ^1.1.0` lässt sich im Workspace nicht auflösen,
+    solange die Bindung 1.0.3 ist. Die Einschränkung ist `^1.0.3` und wird
+    in AP12 auf `^1.1.0` gehoben.
+  - `scripts/release.sh` bleibt bis auf einen Kommentar unverändert. Es ist
+    der Erst-Release-Assistent der beiden 1.x-Pakete mit gemeinsamer
+    Version. Das erste Publish der Hooks steht in `docs/releasing.md`.
+  - `latest-stable.yml` gibt es auf diesem Zweig nicht (`859fbdc`). Es
+    bekommt seinen Hooks-Lauf, wenn der Zweig `main` trifft.
+  - Der Floor ist lokal gemessen: Flutter 3.27.4 löst `flutter_hooks`
+    0.21.2 auf, trotz 0.21.3+1 im Lockfile. Hooks 45 und Bindung 308 sind
+    grün. CI selbst läuft erst mit einem Push.
+
+### AP3 — `useQuery`, `useSelectQuery` und die Portierung von `useQuery.test.tsx` — **erledigt**
+
+- **Inhalt:** Die Hooks auf `RebuildRule` aus `adapter.dart` (D4). Die
+  Suite wird in zwei Dateien portiert, entlang der Teilung der Inventur bei
+  Zeile 3600.
+- **Akzeptanz:**
+  - Jeder Fall ist portiert oder mit Grund ausgelassen.
+  - Die Folgen aus D13 sind als Tests festgehalten: Wurf im Hook, zwischen
+    Hooks und nach dem letzten Hook, mit einem Abruf, der das Signal
+    benutzt.
+  - Die Spike-Fälle laufen gegen die endgültigen Hooks.
+- **Ergebnis, gemessen:**
+  - **155 Fälle:** 122 portiert, 11 angepasst, 22 ausgelassen. Kein
+    Defekt in Hooks, Bindung oder Kern, und kein Fall übersprungen.
+  - Angepasst sind:
+    - sechs `notifyOnChangeProps`-Fälle, die zu `buildWhen` werden, ohne
+      geänderte Assertion
+    - 4291 (D8)
+    - 4912, 6495 und 7004 (D14)
+    - 4189, verschärft, weil upstreams Assertion nichts prüft
+  - Ausgelassen sind 22 Fälle, alle nach D14 oder der Lückentabelle.
+    Einzeln stehen sie in den `PORTING_NOTES` des Pakets.
+  - Die Inventur war vorsichtiger als nötig: 38 ihrer 43 A-Fälle sind hier
+    unverändert portiert.
+  - Zwei ihrer Notizen waren falsch:
+    - Einen `setTimeout`-Spion gibt es doch, als Zone-`createTimer`.
+    - In 5546 bricht upstream ab, ob das Signal gelesen wurde oder nicht.
+  - Der Harness nutzt `HookBuilder` und einen `Recorder` (Builds und
+    zugestellte Ergebnisse getrennt).
+  - Der Takt ist um einen führenden Frame korrigiert (D8, nachgetragen).
+  - Gegenprobe mit eingebauten Fehlern im Hook:
+    - Rebuild-Regel ignoriert: 18 von 133 Fällen rot.
+    - Kein `setOptions` bei späteren Builds: 26 rot.
+    - Controller nicht entsorgt: in den Ports 0 rot, in
+      `hook_specifics_test.dart` 1 rot. Die Bindung meldet beim letzten
+      Listener ohnehin ab.
+  - Das Paket hat jetzt 160 Tests.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** drei Befunde, alle reproduziert.
+  - `delivered` war zu stark beschrieben: Zwei Ergebnisse in einem
+    `notifyManager.batch` kommen als das letzte an. React rendert einen
+    Batch ebenfalls einmal; nur die Beschreibung ist korrigiert.
+  - 6805 und 6923 sind ohne ihr `throwOnError` portierbar und jetzt
+    angepasst (D14). Damit: 122 portiert, 13 angepasst, 20 ausgelassen,
+    162 Tests.
+  - Plan-Kennungen standen in `///` von `controller_hook.dart`; der
+    Jargon-Scan kannte sie nicht.
+
+### AP4 — `useInfiniteQuery` — **erledigt** (#97)
+
+- **Inhalt:** Die 28 Fälle, davon 22 angepasst. Die Tests zeichnen die
+  Paging-Flags je Build vom Controller auf, wie 48 und 180 im Spike.
+- **Ergebnis, gemessen:**
+  - **28 Fälle:** 27 portiert, 1 angepasst (1807, D14: `skipToken`). Von
+    den 22 A-Urteilen des Inventars sind 21 reine Schreibweise. Kein
+    Defekt aus der Portierung, kein Fall übersprungen, der Hook nur in
+    der Dartdoc geändert.
+  - `buildWhen` bleibt `BuildWhen<QueryResult<TData>>`, der Typ der
+    Bindung. Gemessen: 73 Zustellungen bewegen das Ergebnis, eine nur die
+    Flags, zwei nichts; die Portierung unterscheidet die drei Optionen
+    nicht.
+  - Gegenprobe: zwei Fehler in `use_infinite_query.dart`, je 2 Tests rot.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** zwei Befunde, beide
+  reproduziert.
+  - Ein `buildWhen`, das eine Änderung des Ergebnisses ablehnt, hält eine
+    gleichzeitige Änderung der Flags zurück: „Load more“ bleibt stehen,
+    obwohl `hasNextPage` falsch ist. Derselbe Fehler der Regel wie bei
+    AP6; behoben in der Bindung mit `RebuildRule.beside` (Nachtrag zu D4).
+  - Der `PORTING_NOTES`-Abschnitt fehlte; er steht jetzt dort.
+  - Aus dem Sparring: Die Dartdoc sagt jetzt, dass ein gehaltenes
+    `fetchNextPage` nach einem Key-Wechsel den neuen Key lädt und nach dem
+    Unmount weiter lädt, wie upstream.
+
+### AP5 — `useMutation` — **erledigt** (#98)
+
+- **Inhalt:** 61 Fälle aus `useMutation.test.tsx` und 14 aus
+  `mutationOptions.test.tsx`.
+- **Akzeptanz:**
+  - 2533 und 2555 sind als Divergenz #14/#83 eingetragen.
+  - Ein Test belegt, dass `dispose` eine laufende Mutation nicht abbricht.
+  - Ein Test belegt die Mutations-Zeilen aus D13: Die Per-Call-Callbacks
+    fallen weg, und der Ersatz-Hook beginnt `idle`.
+- **Ergebnis, gemessen:**
+  - **75 Fälle:** 61 portiert, 6 angepasst (D14, der Callback-Kontext:
+    1117, 1650, 1761, 1841, 2479; 1176 verschärft), 8 ausgelassen
+    (`throwOnError` ×4, 2533 und 2555 als Divergenz #14/#83,
+    `mutationOptions` 20 und 29 als TypeScript). Kein Defekt aus der
+    Portierung, kein Fall übersprungen, der Hook nur in der Dartdoc
+    geändert.
+  - Alle drei Akzeptanzkriterien als Tests in `hook_specifics_test.dart`,
+    dazu `setOptions` bei jedem Build: Kein upstream-Fall fängt einen Hook,
+    der es auslässt.
+  - Klicks ohne Zeit dazwischen teilen sich einen Frame, wie Reacts
+    Benachrichtigungen per `setTimeout(0)`; in drei Fällen tragend.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** zwei Befunde, beide
+  reproduziert.
+  - Die Zone um den Tap in 1796 und 1841 schluckte jeden Fehler, auch
+    einen werfenden Timer. Jetzt nimmt sie nur den erwarteten
+    Callback-Fehler; alles andere lässt den Fall rot werden.
+  - Der `PORTING_NOTES`-Abschnitt fehlte; er steht jetzt dort.
+
+### AP6 — `useQueries` und `useCombinedQueries` — **erledigt** (#99)
+
+- **Inhalt:**
+  - Die 24 Fälle.
+  - 871 läuft über `useCombinedQueries`, 490 teilweise (D10).
+  - 1142 läuft über `useQueries`, mit der Länge je Build.
+  - 817 ist als Auslassung nach #82 eingetragen.
+- **Akzeptanz:**
+  - Eine Query, deren Änderung das kombinierte Ergebnis nicht bewegt, löst
+    keinen Build aus.
+  - Eine Änderung nur dessen, worauf `retry` wirkt, löst einen aus (H-01,
+    aus dem Spike übernommen).
+- **Ergebnis, gemessen:**
+  - **24 Fälle:** 4 portiert, 13 angepasst (D8: 94; D10: 337, 381, 454,
+    490, 630, 674, 753, 871, 926, 993; D14: 589; 434 verschärft), 7
+    ausgelassen. Kein Defekt aus der Portierung, kein Fall übersprungen.
+  - Beide Akzeptanzkriterien als Tests in `hook_specifics_test.dart`.
+  - Gegenprobe: vier Fehler in `use_queries.dart`, je 2 bis 3 Tests rot.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** drei Befunde, alle reproduziert.
+  - Ein `buildWhen`, das eine Wertänderung ablehnt, hielt eine gleichzeitige
+    Änderung dessen zurück, worauf `retry` wirkt. Das ist ein Fehler der
+    Regel in `RebuildRule`, nicht des Hooks; AP4s Review fand ihn auch für
+    die Paging-Flags. Behoben in der Bindung mit `RebuildRule.beside`
+    (Nachtrag zu D4).
+  - Ein Combiner, der auf zugestellten Daten wirft, warf im Listener; das
+    Widget blieb `pending`. Jetzt baut der Hook neu, und der Build wirft
+    (D13).
+  - Der `PORTING_NOTES`-Abschnitt fehlte; er steht jetzt dort.
+
+### AP7 — `useIsFetching`, `useIsMutating`, `useMutationState`, `useQueryClient` — **erledigt** (#100)
+
+- **Inhalt:** Die Dateien `useIsFetching.test.tsx` (5),
+  `useMutationState.test.tsx` (5) und `QueryClientProvider.test.tsx` (4).
+- **Akzeptanz:**
+  - Filter und `select`, die bei jedem Build neu sind, erzeugen weder ein
+    neues Abo noch einen zusätzlichen Build.
+  - Eine Zustellung, die vor dem Entsorgen des Hooks eingereiht war, und
+    eine für den alten Client nach einem Client-Wechsel bewirken nichts
+    (H-03).
+- **Ergebnis, gemessen:**
+  - **14 Fälle, alle portiert.** 147 prüft die Meldung der Bindung,
+    vollständig: Diagnose und Abhilfe, wie upstreams.
+  - Neu: `useTypedMutationState` und `useQueryClient` (eine Funktion über
+    `useContext()`, ohne `client:`).
+  - Ein Spike-Defekt, beim Lesen gefunden: Beide Zähler teilten einen
+    Hook-Typ, also behielt ein Hot Reload von `useIsFetching` auf
+    `useIsMutating` das Abo des Query-Caches. Jetzt hat jeder Hook seinen
+    eigenen Typ.
+  - Beide Akzeptanzkriterien als Tests; neun eingebaute Fehler in
+    `use_counts.dart`, jeder macht 1 bis 6 Tests rot.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** vier Befunde, alle reproduziert.
+  - Eine vor einem Filterwechsel eingereihte Zustellung liest die neuen
+    Filter: Prädikat-Aufrufe, kein Build, keine veraltete Zahl. Behalten,
+    weil D12 mit den Filtern des letzten Builds zählt und upstreams
+    `useSyncExternalStore` dasselbe tut.
+  - 147 prüfte nur die Diagnose der Meldung; jetzt die ganze.
+  - Eine falsche Zählung in den Notizen des Agenten, korrigiert.
+  - Die Reihenfolge der Listener fand ein erneutes Abo, aber kein
+    zusätzliches. Jetzt wird jeder Hook so oft gefragt wie sein Zwilling.
+
+### AP8 — `usePrefetchQuery`, `usePrefetchInfiniteQuery` — **erledigt** (#101)
+
+- **Inhalt:** Die vier anpassbaren der neun Prefetch-Fälle, dazu ein Test
+  mit `useIsFetching` im selben Baum, mit und ohne Provider (D11).
+- **Akzeptanz:**
+  - Ein Build mit vorhandenem Eintrag wirft nicht (P2-1).
+  - Der Prefetch-Hook ruft einen fehlgeschlagenen Eintrag nicht erneut ab.
+  - Keine Assertion „setState during build“.
+- **Ergebnis, gemessen:**
+  - **9 Fälle:** 6 angepasst (D14, Suspense: der Leser über `suspense(…)`
+    mit den Optionen, die upstreams Suspense-Hooks setzen), 3 ausgelassen.
+    240 und 88 waren als N geführt und sind portierbar.
+  - `usePrefetchInfiniteQuery` neu; beide Hooks teilen eine untypisierte
+    Suche `queryCache.find(exact)`.
+  - Alle drei Akzeptanzkriterien als Tests; jeder Fall wird unter
+    mindestens einem von sieben eingebauten Fehlern rot.
+  - Falle für die Doku (AP9): `unawaited(client.query(options))` legt einen
+    Eintrag vom Typ `void` an.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** ein Befund, 66s zusätzliche
+  Assertion. Behalten als Verschärfung wie 4189, weil upstreams eigene
+  Assertion dort nichts prüft.
+
+### AP9 — Doku — **erledigt** (#102)
+
+- **Inhalt:**
+  - Das, was D15 aufzählt.
+  - Die README des Pakets.
+  - Der Fence-Test im Hook-Paket über README und `guides/hooks.md` (D15).
+  - Ein Eintrag in den Unterschieden zu TanStack.
+  - Die Folgen aus D13 auf der Hooks-Seite.
+- **Mitgenommen aus AP4 bis AP8:**
+  - Die README sagt „Every hook that reads a result takes a `buildWhen`“.
+    `useQueries` nimmt keins, wie `QueriesBuilder`. Den Satz entsprechend
+    einschränken.
+  - Die Falle `unawaited(client.query(options))` aus AP8 kommt auf die
+    Hooks-Seite.
+  - Die Regel zu `beside`: Paging-Flags und die Ziele von `retry` bauen
+    neu, ohne dass `buildWhen` gefragt wird.
+- **Akzeptanz:** Der Site-Build, die Fences beider Orte und `doc_snippets`
+  sind grün.
+- **Ergebnis, gemessen:**
+  - `guides/hooks.md` neu, mit 15 Dart-Fences, jede ein Zwilling in
+    `test/doc_twins/`. Dazu ein Abschnitt `## Hooks` in den Unterschieden
+    zu TanStack, eine dritte Spalte in `coming-from-react-query.md`, ein
+    Absatz in `installation.md` und die README des Pakets.
+  - Der Fence-Test des Pakets bleibt per `.pubignore` aus dem Archiv,
+    weil er `website/` liest; die Zwillinge werden ausgeliefert und laufen.
+  - Hooks 328 Tests, `doc_snippets` 48.
+- **Zweites Review (GPT-6.1-Sol, xhigh):** drei Befunde, alle reproduziert
+  und behoben.
+  - Die Zeile zu `gcTime: 0` nach einem Wurf stimmte nur für eine Abfrage
+    ohne laufenden Fetch.
+  - Beide Fence-Tests übersahen andere Schreibweisen still: Tilden, vier
+    Backticks, Attribute ohne doppelte Anführungszeichen. Beide lehnen sie
+    jetzt ab, mit Negativkontrollen.
+  - Die Zeile „React rendert nach jedem Timer“ war falsch; React rendert
+    jede gemeldete Änderung für sich.
+
+### AP10 — Beispiel-App, mit End-to-End-Tests
+
+- **Inhalt:**
+  - Die App, wie D18 sie beschreibt.
+  - **End-to-End-Tests (Christian, 2026-10-15: „Alles muss dann mit E2E
+    Tests abgesichert [sein], wie auf dem Branch, der parallel läuft“).**
+    Sie nutzen die Infrastruktur des Branches `e2e-coverage`, statt eine
+    eigene zu bauen:
+    - Playwright gegen den Web-Build, in jeder Engine, über den
+      Semantik-Baum und ohne Uhr in einer Assertion, wie
+      `examples/showcase/e2e/`;
+    - eine native Suite über `integration_test`, mit `run.sh` und dem
+      nativen Harness des Showcase als Vorlage;
+    - je ein Bein in `ci.yml` (`e2e`) und `native-e2e.yml`.
+- **Wartete auf** den Merge von `e2e-coverage` nach `main` (#107, am
+  2026-10-15 gemergt). `main` ist in diesen Branch **gemergt, nicht
+  rebased** (`5736426`): Die Hashes des Branches stehen in den
+  `PORTING_NOTES`, in diesem Plan und in den Issues, und ein Rebase hätte
+  jede dieser Angaben ungültig gemacht und PR #106 per Force-Push
+  überschrieben. Die drei erwarteten Konflikte kamen; alle Gates blieben
+  grün.
+- **Entschieden (#103, Startkommentar):**
+  - **Ort:** Die E2E-Dateien liegen im Repository, aber per `.pubignore`
+    außerhalb des Archivs. Das gilt für `e2e/`, `integration_test/`,
+    `e2e-native/`, `test_driver/`, die Plattformordner, den
+    Katalogtest und `pubspec_overrides.yaml`. Im Archiv bleiben `lib/`,
+    `test/` und `assets/`. Jeder Nutzer lädt das Archiv; eine Node-Suite
+    und fünf Plattformordner sind Werkzeug, kein Beispiel.
+  - **Backend:** Der Server des Showcase, mit Szenario-Isolation, auf
+    eigenem Port (5178). Er hat schon jede Route, die die App braucht,
+    dazu `failNext` und das Request-Log; ein dritter Server wäre Pflege
+    ohne Gewinn. Ohne `--dart-define=BACKEND=…` läuft die App gegen einen
+    Fake in `lib/` über eine Kopie von `seed.json`, damit `flutter run`
+    aus dem Archiv funktioniert. Ein Vertragstest prüft beide.
+  - **Schriften:** keine im Archiv. Playwright beantwortet die eine
+    Roboto-Anfrage der Web-Engine aus der Datei des Showcase.
+  - **Nativ:** ein eigener `run.sh` und ein eigener Harness;
+    `device_control.ts` des Showcase wird per Pfad genutzt, mit `APP_ID`
+    und Ports aus der Umgebung (5179, 5180).
+- **Akzeptanz:**
+  - Das Beispiel lebt im veröffentlichten Archiv und läuft dort mit
+    `flutter test`.
+  - Jeder exportierte Hook wird von mindestens einem E2E-Schritt erreicht.
+    Ein Test vergleicht die Exporte mit den Specs, wie `catalogue_test.dart`
+    im Showcase.
+  - Beide E2E-Beine sind in CI grün.
+- **Gebaut:** `example/`, mit allen 13 Hooks an ihrem Platz. Der
+  Katalogtest heißt `test/repository_test.dart`. Er liest die Hooks aus
+  ihren Deklarationen in `lib/src/` und verlangt zu jedem drei Dinge:
+  einen Aufruf in `lib/`, ein `describe` in `e2e/tests/` und eine `group`
+  in `integration_test/`.
+  - **Tests:** 10 Widget-Tests, 10 Vertragsfälle je Backend,
+    15 Playwright-Tests und 13 native Flows mit 2 Lebenszyklus-Fällen.
+  - **Läufe vor dem Commit:**
+    - Playwright: 135 von 135 Läufen (drei Engines, jeder Test dreimal).
+    - Nativ auf dem iOS-Simulator: 15 von 15.
+    - Das simulierte Archiv bleibt nach `flutter create .` grün.
+  - **Nicht vor dem Commit gelaufen:** nativ auf Android, macOS, Linux und
+    im Browser, dazu die `floors`. Das übernimmt die CI.
+  - Was der Bau gefunden hat (keine Fehler im Paket), steht in den
+    `PORTING_NOTES` unter „The example app (AP10)“.
+  - `lib/` des Pakets blieb unberührt, deshalb ist kein weiterer
+    AP11-Durchgang fällig. Es folgt das Review durch Sol.
+- **Review durch Sol (GPT-6.1-Sol, xhigh):** sechs Befunde, S-1 bis S-6,
+  alle reproduziert und behoben. Die Tabelle steht in den `PORTING_NOTES`
+  unter „The example app (AP10)“, „Second review“.
+  - **S-1 (P1):** Überlappende Häkchen auf der Todo-Liste konnten einander
+    löschen. Jetzt schreibt ein Häkchen nur sein eigenes Todo und nimmt
+    auch nur dieses zurück. Die Liste lädt der letzte Schreibvorgang neu,
+    der sich erledigt (`isMutating == 1`, nach TkDodo). Ein Todo mit
+    laufendem Schreibvorgang nimmt kein zweites Häkchen.
+  - **S-2 bis S-6 (P2):** einfachere Ersatzlösungen, die die Beweise
+    durchließen; der Katalogtest; die native Prefetch-Probe; Zeitfenster;
+    der Vertrag. Jede Mutante und die Fassung vor dem Fix sind jetzt rot.
+  - **Tests danach:** 17 Widget-Tests, 10 Vertragsfälle je Backend,
+    17 Katalogfälle, 18 Playwright-Tests und 17 native Flows mit
+    2 Lebenszyklus-Fällen.
+  - **Offen:** macOS in `native-e2e` ist für beide Suiten rot, weil das
+    App-Fenster nie vorn steht
+    ([#109](https://github.com/dualmeta-gmbh/query_kit/issues/109), die
+    Geräte-Steuerung des Showcase).
+- **Verifikation durch Sol:** vier Befunde, V-1 bis V-4, alle reproduziert
+  und behoben. Die Tabelle steht in den `PORTING_NOTES` unter „Third pass“.
+  - **V-1 (vom S-1-Fix eingeführt):** Ein Häkchen wartete in `onSettled`
+    auf sein Neuladen. Ein Todo, das währenddessen hinzukam, verschwand
+    dadurch vom Bildschirm. Jetzt bricht jeder Schreibvorgang laufende
+    Lesevorgänge ab und setzt die Antwort des Backends für sein Todo ein.
+    Wer sich als einziger erledigt, lädt neu, ohne darauf zu warten.
+  - **V-2:** Ein Tab-Wechsel oder die Rückkehr in die App las die Liste,
+    während ein Häkchen lief, und nahm es zurück. Jetzt beginnt kein
+    Lesevorgang der Liste, solange ein Schreibvorgang läuft
+    (`RefetchOn.when`).
+  - **V-3:** Der Katalog-Scanner hatte sechs Lücken. Unter anderem lief
+    seine Interpolation nie.
+  - **V-4:** Der Vertrag prüft jetzt den gespeicherten Zustand nach jedem
+    Schreibvorgang und die Kommentare aller Posts.
+  - **Entschieden:** Zwei Schreibvorgänge, die im selben Turn fertig werden,
+    laden nicht neu. Die Antwort jedes Schreibvorgangs steht trotzdem in der
+    Liste. (Im vierten Durchgang zurückgenommen, siehe W-1.)
+  - **Tests danach:** 19 Widget-Tests, 2 Interleaving-Fälle, 10
+    Vertragsfälle je Backend, 19 Katalogfälle, 19 Playwright-Tests und 18
+    native Flows mit 2 Lebenszyklus-Fällen.
+- **Zweite Verifikation durch Sol:** fünf Befunde, W-1 bis W-5, alle
+  reproduziert und behoben. Die Tabelle steht in den `PORTING_NOTES` unter
+  „Fourth pass“.
+  - **W-1 und W-2 (von V-1 eingeführt):** Zwei Hinzufügungen vor dem ersten
+    Laden der Liste ließen sie für immer im Ladezustand. Eine späte Antwort
+    auf eine Hinzufügung überschrieb ein neueres Häkchen.
+  - **Behoben:** Die Schreibvorgänge zählen sich selbst statt
+    `isMutating`, also lädt immer genau der letzte neu. Jeder bricht beim
+    Erledigen die laufenden Lesevorgänge ab, der letzte vor dem Neuladen.
+    Eine Hinzufügung hängt ihr Todo nur an, wenn die Liste es noch nicht
+    hat. Damit ist auch die Entscheidung zum selben Turn zurückgenommen.
+  - **W-3 und W-4:** Der Scanner hielt eine Division nach einem Namen auf
+    `return` für einen regulären Ausdruck, `.test(` für einen Test und einen
+    regulären Ausdruck nach `if (…)` für eine Division. Ein bedingter Export
+    blieb unbemerkt. Alle vier sind behoben. Ein Test, den ein Helfer
+    registriert, wird nicht gesehen, und der Hook scheitert dann: das ist
+    so dokumentiert.
+  - **W-5:** Der Vertrag vergleicht jetzt jede Antwort vollständig, jeden
+    Post einzeln.
+  - **Tests danach:** 19 Widget-Tests, 8 Interleaving-Fälle, 10
+    Vertragsfälle je Backend, 20 Katalogfälle, 19 Playwright-Tests und 18
+    native Flows mit 2 Lebenszyklus-Fällen.
+- **Dritte Verifikation durch Sol:** drei Befunde, X-1 bis X-3, alle
+  reproduziert und behoben. Die Tabelle steht in den `PORTING_NOTES` unter
+  „Fifth pass“.
+  - **X-1 (vom W-1-Fix eingeführt):** Ein Lesevorgang, der direkt nach der
+    Antwort auf eine Hinzufügung ankam, nahm das Todo wieder vom
+    Bildschirm. Jetzt bricht jeder Schreibvorgang die laufenden
+    Lesevorgänge ab, wenn seine Antwort eintrifft, bevor er sie einsetzt.
+    Beim Erledigen bricht er nichts mehr ab.
+  - **X-2:** Der Scanner hatte drei weitere Lücken. Er liest die
+    End-to-End-Suiten jetzt Token für Token. Wo nur ein Parser zwischen
+    Division und regulärem Ausdruck unterscheiden könnte, schlägt er fehl,
+    statt zu raten.
+  - **X-3:** Ein Hook, der direkt in der Bibliotheksdatei steht, entging
+    dem Katalog. Jetzt wird die Datei mitgelesen.
+  - **Entschieden:** Das ist der letzte volle Verifikationsdurchgang von
+    AP10. Der nächste prüft nur diesen Diff. Was die Fixes nicht selbst
+    eingeführt haben, wird nur festgehalten.
+  - **Tests danach:** 19 Widget-Tests, 11 Interleaving-Fälle, 10
+    Vertragsfälle je Backend, 21 Katalogfälle, 19 Playwright-Tests und 18
+    native Flows mit 2 Lebenszyklus-Fällen.
+- **Letzte Verifikation durch Sol, auf den Diff begrenzt:** X-1 bis X-3
+  bestätigt. Die neue Skip-Regel hatte zwei eingeführte Fehler: Y-1, ein
+  `test.describe['skip']` blieb unerkannt, und Y-2, eine Variable `only`
+  galt als Skip. Beide sind behoben, ebenso der ältere maskierte Name
+  (`test.s\u006bip()`), den der Tokenizer jetzt ablehnt. Die Tabelle steht
+  in den `PORTING_NOTES` unter „Sixth pass“. Damit endet AP10.
+
+### AP11 — Review-Runde
+
+- **Inhalt:**
+  - Zwei unabhängige Reviews mit verschiedenen Modellen, jedes in einem
+    eigenen Worktree, gegen upstream, gegen diesen Plan und gegen die
+    Fläche von `adapter.dart`.
+  - Jeder Befund wird erst reproduziert, dann bearbeitet.
+  - Danach frische Verifikationsdurchgänge über die Fixes, bis ein Durchgang
+    keinen neuen Fehler findet.
+- **Akzeptanz:** Die `PORTING_NOTES` haben einen Abschnitt je Durchgang.
+- **Vorgezogen (Christian, 2026-10-15):** Die Review-Runde lief vor AP10.
+  Das Ticket schließt trotzdem erst nach AP10: Ändert AP10 etwas in `lib/`,
+  muss der letzte Verifikationsdurchgang das mit abdecken.
+- **Erster Durchgang (Astra über die Codex CLI auf xhigh, Fable 5.1), auf
+  `bc9e9f5`:** sechs Befunde, kein P1, alle reproduziert.
+  - A-1: `RebuildRule.read()` speicherte halb, wenn `value` warf. Behoben
+    in der Bindung.
+  - A-2: 2814 und 2841 sind ohne `throwOnError` portierbar und jetzt
+    angepasst (D14).
+  - F-1: Eine Liste mit zwei Datentypen wird zu `Object`, und ihre
+    Einträge sind `Object`-Einträge. Dokumentiert an jeder Listen-API. Eine
+    Debug-Prüfung braucht ein Feld an den Optionen des Kerns und ist
+    deshalb Backlog HB-4.
+  - F-2: `adapter.dart` exportiert jetzt auch `BuildWhen`.
+  - F-3: `RebuildRule.of(controller)` ist die Regel der Bindung für einen
+    Controller. Die Hooks kopieren die Paging-Flags nicht mehr. Fable
+    schlug vor, `observedStateOf` und `besideOf` zu exportieren; ein
+    Konstruktor hält die Fläche bei der Regel (D4, ADR-0004).
+  - F-4: Die Top-Type-Meldung nennt das Typargument an den Optionen.
+  - Hooks 332, Bindung 320.
+- **Zweiter Durchgang (Sol, xhigh), über `1f1a7d9`:** kein Laufzeitfehler
+  durch die Fixes. Zwei P3, beide reproduziert und behoben:
+  - V1-1: Bei einem Select, der `dynamic` liefert, nennt die Meldung jetzt
+    den Rückgabetyp des Selects.
+  - V1-2: „Jeder typisierte Leser“ war zu breit. Gemeint ist ein Lesen als
+    eigener Typ; als `Object` gelesen funktioniert es.
+- **Dritter Durchgang (Sol, xhigh), über `35cb27e`:** Der Fix von V1-1
+  richtete die Meldung am falschen Merkmal aus. Beide Befunde sind
+  reproduziert und behoben.
+  - V2-1 (P2): Die Meldung hing daran, ob der gecachte Typ benannt ist.
+    Richtig ist, ob es einen Select gibt.
+    - Ein Select mit zwei `dynamic`-Typen bekam deshalb den Rat für
+      einfache Optionen.
+    - Einfache Optionen, die erst beim Lesen verbreitert werden, bekamen
+      einen Rat zu einem Select, den sie gar nicht haben.
+    - Jetzt entscheidet `options is QuerySelectOptions`.
+  - V2-2 (P3): Unter `strict-casts` kompiliert ein Typargument allein über
+    `jsonDecode` nicht. Der Rat zum Select nennt jetzt den Cast, in
+    `QueryController` wie in `InfiniteQueryController`.
+- **Vierter Durchgang (Sol, xhigh), über `3d225e0`:** kein Fehler im Code.
+  Drei ungenaue Einträge, alle nachgeprüft und behoben:
+  - V3-1 (P2): Der Test baute nicht jede Abhilfe, die die Meldungen nennen.
+    Jetzt baut er alle und liest ihre Daten, `QueryBuilder<String>` und
+    beide Infinite-Abhilfen eingeschlossen.
+  - V3-2 (P2): Der AP12-Abgleich übersah die Hinweise „In development“.
+    Er nennt sie jetzt, zusammen mit zwei korrigierten Punkten.
+  - V3-3 (P3): eine falsche Zahl von Analyzer-Fehlern in den Notes.
+- **Fünfter Durchgang (Sol, xhigh), über `9c51acb`:** kein Fehler im
+  Code. Drei Lücken in den Einträgen, alle nachgeprüft und behoben:
+  - V4-1 (P2): Die Abhilfe von `QueryController.observing`, der vierten
+    Meldung, war nicht gebaut. Jetzt lehnt der Test einen untypisierten
+    Observer ab und baut einen typisierten. Die Gegenprobe ist rot.
+  - V4-2 (P2): `docs/releasing.md` sagt noch „not released yet“. Der
+    AP12-Abgleich nennt die Stelle jetzt, und die Suche enthält „not
+    released“.
+  - V4-3 (P3): eine Zählung in der Zeile zu V2-1.
+- **Sechster Durchgang (Sol, xhigh), über `59021f3`:** kein Fehler im
+  Code. Zwei Fehler in den Einträgen, beide nachgeprüft und behoben:
+  - V5-1 (P2): Die Zeile zu V4-1 behauptete, kein Test baue `.observing`
+    mit einem gewöhnlichen Observer. Zwei Lifetime-Tests tun es. Die
+    Lücke betraf nur den Backstop-Fall.
+  - V5-2 (P2): Bei der Umformulierung des AP12-Abgleichs fiel die
+    allgemeine Zahlenpflege für `CLAUDE.md` weg. Sie steht wieder drin.
+- **Siebter Durchgang (Sol, xhigh), über `4b05c1d`:** nichts Neues. Damit
+  endet die Runde. Insgesamt wurde jeder Befund reproduziert und keiner
+  abgelehnt. Ab dem vierten Durchgang gab es keinen Fehler mehr im Code.
+  Das Ticket bleibt offen bis AP10. Ändert AP10 `lib/`, liest ein weiterer
+  Durchgang diese Änderung.
+
+### AP12 — Release: `query_kit_hooks` 0.1.0 und `query_kit_flutter` 1.1.0
+
+- **Inhalt:**
+  - Beide Versionen setzen und beide Tags am selben Commit:
+    `query_kit_flutter-v1.1.0` und `query_kit_hooks-v0.1.0`.
+  - Die Bindung veröffentlicht `publish.yml` wie gewohnt.
+  - Das Hook-Paket veröffentlicht Christian zum ersten Mal von Hand, mit
+    der Bindung 1.1.0 schon auf pub.dev. Danach Transfer an den Publisher
+    und die Einstellung für automatisches Publish.
+  - Vorher wird der Name auf pub.dev noch einmal geprüft (D2).
+  - Die Einschränkung `query_kit_flutter:` des Hook-Pakets geht von
+    `^1.0.3` auf `^1.1.0`, die erste Version mit `adapter.dart` (AP2).
+  - **Doku und Website auf den Release-Stand bringen (Christian,
+    2026-10-15: „Wenn all das fertig ist, dürfen wir nicht vergessen,
+    Doku/Website etc. anzupassen“).** Das passiert vor dem Tag, im selben
+    Release-Commit, und erst, wenn AP10 und AP11 abgeschlossen sind. Der
+    Hooks-Guide (AP9) und die Release-Mechanik (`publish.yml`,
+    `docs/releasing.md`) stehen schon. Eine Bestandsaufnahme am 2026-10-15
+    hat diese Lücken gefunden:
+    - `adapter.dart` (`RebuildRule`, `RebuildRule.of`, `BuildWhen`) ist die
+      neue öffentliche Bibliothek der Bindung 1.1.0. Weder die Website
+      (`reference/widgets-and-controllers.md`, `reference/api.md`) noch die
+      README der Bindung erwähnen sie.
+    - Diese Seiten kennen das Add-on nicht: `overview.md`, `quick-start.md`,
+      `reference/api.md` (Link zur API-Doku auf pub.dev),
+      `reference/feature-matrix.md`, `project/fidelity.md` (269 von 305
+      Fällen) und die Startseite `website/src/pages/index.tsx`.
+    - `project/examples.md` braucht die Beispiel-App aus AP10, mit ihren
+      E2E-Suiten.
+    - Die Hinweise auf den Entwicklungsstand fallen weg: das
+      `:::note[In development]` im Hooks-Guide („not on pub.dev yet“), der
+      Hinweis „In development“ in der README des Hook-Pakets und „In
+      development, not yet on pub.dev“ in der README des Repos sowie „is
+      not released yet“ in der Einleitung von `docs/releasing.md`.
+    - `installation.md` nimmt das Add-on in die Paket-Tabelle auf, mit
+      einer Zeile zur Installation.
+    - Folgende Stände werden auf den Release gezogen: die CHANGELOGs
+      (Bindung „Unreleased“ → 1.1.0, Hooks „0.1.0-dev … not yet published“
+      → 0.1.0). In `CLAUDE.md` ändert sich der Status des Hook-Pakets in
+      der Statustabelle („in development“).
+    - Jede Zahl in der Statustabelle von `CLAUDE.md` geht auf den
+      gemessenen Stand: Kern, Bindung (dort stehen noch 287 Tests) und
+      Hooks.
+    - Der Abschnitt „The hooks add-on“ in `docs/releasing.md` beschreibt den
+      ersten Release im Futur (`0.1.0-dev`, `^1.0.3` → `^1.1.0`). Er wird
+      zur Anleitung für spätere Releases, mit dem ersten als Rückblick.
+    - Kein Tag von AP12 stößt `pages.yml` an, denn das tut nur ein Tag des
+      Kerns. Die Website wird deshalb von Hand über das Actions-Tab
+      ausgerollt (`docs/releasing.md`).
+    - Vor dem Commit läuft eine Suche über das ganze Repo, ohne `query/`,
+      die Lockfiles (`*.lock`, `package-lock.json`) und die historischen
+      Notes und Pläne, nach
+      `0.1.0-dev`, `^1.0.3`, den alten Testzahlen und Worten zum
+      Entwicklungsstand („In development“, „not on pub.dev“, „not yet“,
+      „unreleased“, „not released“, „not been released“).
+- **Akzeptanz:**
+  - Beide Versionen sind auf pub.dev.
+  - Die Website ist ausgerollt, und jede Lücke oben ist geschlossen.
+  - Die Liste oben ist abgehakt, und jeder Punkt ist im Abschlusskommentar
+    der Karte belegt.
+
+**Reihenfolge:**
+
+- AP0 bis AP8 sind erledigt.
+- Die übrigen Hooks bauen auf dem Muster von AP3 auf, auch auf seinem Harness.
+- AP4 bis AP8 waren voneinander unabhängig.
+- AP9, sobald die Hooks stehen. AP10, sobald `e2e-coverage` in `main` ist.
+- Dann AP11, dann AP12.
+
+---
+
+## Risiken
+
+| Risiko | Gegenmaßnahme |
+|---|---|
+| `flutter_hooks` vor 1.0. Die Abkopplung von `material` (#491) kann es brechen, und ein 0.22 fällt aus `^0.21.2` heraus | Das Paket läuft in `latest-stable.yml` mit. Dependabot meldet neue Versionen. Die Hooks nutzen nur `Hook`, `HookState`, `use` und `useContext`, wenig Fläche |
+| `^0.21.2` löst je nach Flutter zwei Versionen auf (D3) | `floors` und Stable laufen beide. Keine Lockdatei legt den `floors`-Job fest |
+| Takt der Frames: Upstream rendert nach jedem Timer-Makrotask | Gestaffeltes Pumpen. Im Spike reichte das für 31 von 31 Fällen, die einzige geänderte Zählung ist durch D10 gewollt |
+| `adapter.dart` macht eine interne Regel öffentlich | Eine besitzfreie Klasse (D4). Erst nach AP11 veröffentlicht (D17). Dartdoc und ADR-0004. Eine Änderung daran ist eine Major-Version der Bindung |
+| Abweichung bei einem Wurf im Build (D13) | Folgen einzeln dokumentiert und als Tests festgehalten |
+| Späte Zustellung an einen entsorgten Hook-State (D5, D12) | Generation und Disposed-Flag bei direkten Abos, Listener und `ControllerLifetime` bei Controllern. Tests mit Gegenprobe |
+| Ein Combiner ohne passende `keys` liefert ein veraltetes Ergebnis (D10) | `keys` ist Pflicht und in der Dartdoc des Hooks erklärt |
+| Umfang: etwa 260 Fälle | Die Pakete AP4 bis AP8 lassen sich parallel bearbeiten. Die Fälle mit P zuerst, die mit A danach |
+
+## Offene Punkte
+
+Werden im genannten Paket entschieden und dort begründet:
+
+- **Ob `useInfiniteQuery` die Paging-Flags in `buildWhen` sieht.** Bisher
+  folgt es `context.infiniteQuery`: `buildWhen` sieht das Ergebnis, und
+  eine Bewegung nur der Flags baut immer neu. Entschieden in AP4.
+- **Die echten Fallzahlen.** Die Inventur ordnet ein, die Portierung zählt.
+  Die `PORTING_NOTES` sind die Zahl, die gilt.
+
+---
+
+## Review-Protokoll
+
+Zwei unabhängige Reviews des ersten Entwurfs, beide nur lesend, mit
+demselben Auftrag:
+
+- Astra (GPT-6-Astra über die Codex CLI)
+- Fable (Fable 5.1)
+
+**Kein Befund wurde übernommen, ohne ihn am Code zu prüfen.** Wo möglich,
+wurde er im Spike als Test reproduziert, bei zwei Befunden mit Gegenprobe:
+Der Test scheitert, wenn man die Maßnahme herausnimmt.
+
+| Befund | Quelle | Geprüft | Wie | Ergebnis |
+|---|---|---|---|---|
+| Combine-Gate behält veraltetes `retry` | Astra H-01 (P1) | **reproduziert** | Spike-Test mit Gegenprobe (Messung 7) | D10: Aktionsschlüssel im Gate. Aussage „dieselbe Instanz“ korrigiert |
+| Spike kann sein Gate nicht begründen; 80 %-Schwelle; D8-Prämisse | Astra H-02 (P1) | bestätigt | Gelesen; 2316 zeigt Bündelung | AP0 erweitert (Infinite, Liste, Kombination, Zähler, Prefetch, Lebenszyklus). Gate neu gefasst. D8 korrigiert. Observer-Übergänge getrennt aufgezeichnet |
+| `context.mounted` belegt nicht, dass der Hook lebt | Astra H-03 | **reproduziert** | Spike-Test mit Gegenprobe (Messung 8) | D5 Regel 5, D12: Generation und Disposed-Flag |
+| Folgen eines Wurfs untertrieben | Astra H-04 | **reproduziert** | Zwei Spike-Tests (Messung 9) | D13 als Tabelle der Folgen. AP3 und AP5 prüfen sie |
+| 490 und 1142 behalten ihre Assertionen nicht | Astra H-05 | bestätigt | `_combine` gelesen; im Spike portiert | 490 teilweise, 1142 über `useQueries` |
+| `ReadEntry` zu exportieren veröffentlicht einen unsoliden Besitzvertrag | Astra H-06 | bestätigt | `read_entry.dart` gelesen: Cast und Entsorgen | D4: (B′), besitzfreie `RebuildRule` |
+| Backlog widerspricht sich; falsche Verweise | Astra H-07, Fable P3-2 | bestätigt | Zeilen nachgezählt | Backlog korrigiert: Einleitung, HB-1 (5921–6031, useQueries 66), HB-2 (D10) |
+| `getQueryState` ohne Typargument wirft | Fable P2-1 | **reproduziert** | Spike-Test (Messung 10) | D11: `queryCache.find(…exact)`. AP8-Akzeptanz |
+| `useMutationState` kann nicht über `MutationStateController` gehen | Fable P2-2 | **nicht reproduziert** | Der Controller hat `setOptions({filters, select})`. Spike-Test: neue Filter je Build, kein Abo, kein Build (Messung 11) | D9 unverändert, Begründung ergänzt |
+| AP0 misst die Fläche mit den trivialen Hooks | Fable P2-3 | bestätigt | Gelesen | Spike um Infinite, Liste und Kombination erweitert. Fläche gemessen: nur `RebuildRule` |
+| Bindung 1.1.0 vor dem ersten Nutzer veröffentlicht | Fable P2-4 | bestätigt | Reihenfolge der APs | D17, AP1, AP12: 1.1.0 erscheint mit dem Hook-Paket |
+| Risiko ohne Provider übertrieben | Fable P3-1, Astra (geprüft-Liste) | bestätigt | `notify_manager.dart:76` | D7 und D11 neu gefasst |
+| `^0.21.2` löst zwei Versionen auf | Fable P3-3 | bestätigt | Beide `pubspec.yaml` gelesen | D3, Ausgangslage, Risiken |
+| Gate zählt das Falsche; 4447 gehört nicht in die Quote | Fable P3-4 | bestätigt | — | AP0-Gate |
+| `doc_snippets` bräche #21 still | Fable P3-5 | bestätigt | `examples/doc_snippets/pubspec.yaml` | D15: Fence-Test im Hook-Paket |
+| `HookProbe` gibt es als `HookBuilder` | Fable P3-6 | bestätigt | `framework.dart:627` | D16 |
+| Wurf in einem Hook entsorgt diesen Hook mit; `use()` im `build` entsorgt vor dem Wurf | Fable P3-7, Astra H-04 | bestätigt | `framework.dart` 430–492 gelesen | Ausgangslage, D5 Regel 8, D13 |
+| Benachrichtigung bei inaktivem Element verworfen | Fable P3-8 (i) | **nicht erreichbar** | Inaktiv nur innerhalb der Build-Phase. Zustellungen dort nie synchron. Spike-Test zum `GlobalKey`-Umzug grün | D5, als geteilt und nicht erreichbar notiert |
+| `dispose` nach `super.unmount` | Fable P3-8 (ii) | bestätigt | `framework.dart` 508–520 | D5 Regel 6 |
+| `keys:`-Falle trifft React-Gewohnheiten | Fable P3-9 | bestätigt | `combined_result.dart` 225–229 | D10: `keys` Pflicht |
+| Issue-Nummern, Release-Datum, Namen auf pub.dev | Fable P3-10 | offline nicht geprüft | — | Bleibt aus der Recherche. Der Name wird vor AP12 erneut geprüft (D2) |
+| Identische Hook-Instanzen überspringen `didUpdateHook` | Astra (geprüft-Liste) | bestätigt | Upstream-Test von `flutter_hooks` | Ausgangslage. Die Hooks sind nie identisch, weil jeder Build sie mit neuen Optionen erzeugt |
+
+Beide Reviews fanden die übrigen Behauptungen richtig: den Lebenszyklus von
+`flutter_hooks`, die API der Bindung, die Inventur und die Verweise ins
+Repo.

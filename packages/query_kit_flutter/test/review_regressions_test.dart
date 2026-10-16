@@ -1453,6 +1453,49 @@ void main() {
                 contains('QueryController.create<Task>')),
           )),
         );
+        // Options with a select: the cure is the select's return type,
+        // whether or not the cached type is named (hooks review, V1-1 and
+        // V2-1), with the cast `strict-casts` asks for where the select
+        // returns `dynamic` (V2-2). Every cure is built below.
+        var cure = 0;
+        QueryKey cured() => QueryKey(<Object?>['cured', cure++]);
+        final selectAdvice = isA<AssertionError>().having(
+          (e) => e.message.toString(),
+          'message',
+          allOf(
+              contains('selected type is a top type'),
+              contains('as Selected'),
+              contains('withSelect<Selected>'),
+              isNot(contains('QueryObserverOptions<Task>'))),
+        );
+        expect(
+          () => QueryController(
+            client,
+            QueryObserverOptions<String>(queryKey: key, queryFn: (_) => 'a')
+                .withSelect((text) => jsonDecode('"$text"')),
+          ),
+          throwsA(selectAdvice),
+        );
+        expect(
+          () => QueryController(
+            client,
+            QueryObserverOptions<dynamic>(queryKey: key)
+                .withSelect((raw) => jsonDecode(raw as String)),
+          ),
+          throwsA(selectAdvice),
+        );
+        // Options without one, widened where they are read: no select to
+        // name, so the advice is where the query is read.
+        final plain = QueryObserverOptions<String>(queryKey: key);
+        expect(
+          () => QueryController<String, Object?>(client, plain),
+          throwsA(isA<AssertionError>().having(
+            (e) => e.message.toString(),
+            'message',
+            allOf(contains('the data type is a top type'),
+                contains('where the query is read'), isNot(contains('select'))),
+          )),
+        );
         // A plain infinite shape's data is always an `InfiniteData`, never a
         // top type; the infinite backstop is reachable only through a select
         // whose return type is one — `jsonDecode` returns `dynamic`.
@@ -1470,11 +1513,164 @@ void main() {
           throwsA(isA<AssertionError>().having(
             (e) => e.message.toString(),
             'message',
-            allOf(contains('top type'), contains('select')),
+            allOf(contains('top type'), contains('select'),
+                contains('as Selected')),
           )),
         );
-        // Neither refusal touched the cache.
+        // No refusal touched the cache.
         expect(cached(client), isNull);
+
+        // Each cure the four messages name, built and read: it compiles under
+        // this package's `strict-casts`, passes the backstop and delivers
+        // what it promises (hooks review, V3-1).
+        void reads<R, S>(
+          QueryController<R, S> Function(QueryKey at) make,
+          R raw,
+          S selected,
+        ) {
+          final at = cured();
+          final controller = make(at);
+          client.setQueryData<R>(at, raw);
+          expect(controller.value.dataOrNull, selected);
+          controller.dispose();
+        }
+
+        // The select's: a cast where it returns `dynamic`, whatever the
+        // cached type, or a type argument on either select shape.
+        reads(
+          (at) => QueryController(
+            client,
+            QueryObserverOptions<String>(queryKey: at, queryFn: (_) => 'a')
+                .withSelect((text) => jsonDecode('"$text"') as String),
+          ),
+          'b',
+          'b',
+        );
+        reads(
+          (at) => QueryController(
+            client,
+            QueryObserverOptions<dynamic>(queryKey: at)
+                .withSelect((raw) => jsonDecode(raw as String) as int),
+          ),
+          '1',
+          1,
+        );
+        reads(
+          (at) => QueryController(
+            client,
+            QueryObserverOptions<String>(queryKey: at)
+                .withSelect<int>((text) => text.length),
+          ),
+          'abc',
+          3,
+        );
+        reads(
+          (at) => QueryController(
+            client,
+            QuerySelectOptions<String, int>(
+                queryKey: at, select: (text) => text.length),
+          ),
+          'abc',
+          3,
+        );
+        // The plain ones: a queryFn whose return type names it, the options'
+        // type argument, or the reader's.
+        reads(
+          (at) => QueryController(
+              client, QueryObserverOptions(queryKey: at, queryFn: (_) => 'a')),
+          'b',
+          'b',
+        );
+        reads(
+          (at) => QueryController(
+              client, QueryObserverOptions<String>(queryKey: at)),
+          'b',
+          'b',
+        );
+        reads(
+          (at) => QueryController.create<String>(
+              client, QueryObserverOptions(queryKey: at)),
+          'b',
+          'b',
+        );
+        final read = cured();
+        await tester.pumpWidget(app(
+          client,
+          QueryBuilder<String>(
+            options: QueryObserverOptions(queryKey: read, enabled: Enabled.no),
+            builder: (_, result) => Text('read:${result.dataOrNull}'),
+          ),
+        ));
+        client.setQueryData<String>(read, 'b');
+        await tester.pump();
+        expect(find.text('read:b'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        // The infinite ones: a cast in the select, or explicit type
+        // arguments.
+        final pages =
+            InfiniteData<int, int>(pages: <int>[1, 2], pageParams: <int>[0, 1]);
+        final castAt = cured();
+        final castFeed = InfiniteQueryController(
+          client,
+          InfiniteQuerySelectOptions(
+            queryKey: castAt,
+            pageFn: (_) async => 1,
+            initialPageParam: 0,
+            getNextPageParam: (_, __, ___, ____) => null,
+            select: (data) => jsonDecode('${data.pages.length}') as int,
+          ),
+        );
+        client.setQueryData<InfiniteData<int, int>>(castAt, pages);
+        expect(castFeed.value.dataOrNull, 2);
+        castFeed.dispose();
+        final typedAt = cured();
+        final typedFeed = InfiniteQueryController(
+          client,
+          InfiniteQuerySelectOptions<int, int, int>(
+            queryKey: typedAt,
+            pageFn: (_) async => 1,
+            initialPageParam: 0,
+            getNextPageParam: (_, __, ___, ____) => null,
+            select: (data) => data.pages.length,
+          ),
+        );
+        client.setQueryData<InfiniteData<int, int>>(typedAt, pages);
+        expect(typedFeed.value.dataOrNull, 2);
+        typedFeed.dispose();
+        // `.observing`'s: the refusal, then its cure, an explicit type
+        // argument on the observer (hooks review, V4-1). Its value before
+        // the first listener is the observer's last result, so the cure is
+        // read through a subscription.
+        final untyped = QueryObserver(
+          client,
+          // ignore: inference_failure_on_instance_creation
+          QueryObserverOptions(queryKey: cured(), enabled: Enabled.no),
+        );
+        expect(
+          () => QueryController.observing(client, untyped),
+          throwsA(isA<AssertionError>().having(
+            (e) => e.message.toString(),
+            'message',
+            contains('give the observer an explicit type argument'),
+          )),
+        );
+        untyped.destroy();
+        final observedAt = cured();
+        final observed = QueryController.observing(
+          client,
+          QueryObserver<String, String>(
+            client,
+            QueryObserverOptions<String>(
+                queryKey: observedAt, enabled: Enabled.no),
+          ),
+        );
+        void onChange() {}
+        observed.addListener(onChange);
+        client.setQueryData<String>(observedAt, 'b');
+        await tester.pump();
+        expect(observed.value.dataOrNull, 'b');
+        observed.removeListener(onChange);
+        observed.dispose();
       } finally {
         client.clear();
       }
@@ -1616,7 +1812,7 @@ void main() {
     // without naming the interface. Read from the source: Flutter has no
     // `dart:mirrors`, and the positive half — every name a consumer may
     // write — is this file's import compiling.
-    test('ObservedState and observedStateOf are not exported', () {
+    test('ObservedState, observedStateOf and besideOf are not exported', () {
       final barrel = File('lib/query_kit_flutter.dart').readAsStringSync();
       Set<String> hidden(String file) {
         final export =
@@ -1629,7 +1825,8 @@ void main() {
             : list.split(',').map((name) => name.trim()).toSet();
       }
 
-      expect(hidden('query_controller'), {'ObservedState', 'observedStateOf'});
+      expect(hidden('query_controller'),
+          {'ObservedState', 'besideOf', 'observedStateOf'});
       expect(hidden('query_context'), {'QueryScope', 'QueryScopeElement'});
       // Reads the barrel through dart:io: excluded from the browser run.
     }, tags: 'vm-only');
@@ -4347,4 +4544,111 @@ void _releaseReview20260923() {
       expect(tester.takeException(), isA<FlutterError>());
     });
   });
+  // Map #92's second reviews (hooks AP4 and AP6, S-1): `RebuildRule` asked
+  // `buildWhen` whenever the result moved, so a predicate over results could
+  // decline a change of the paging flags made in the same notification. A
+  // refetch that keeps the selected data and finds no next page left "Load
+  // more" on screen while the controller said `hasNextPage == false`. The
+  // flags are now `beside` the result, and their move rebuilds unasked.
+  group('map #92: a declined result does not hold back the paging flags', () {
+    for (final (style, reader) in <(String, _FlagsReader)>[
+      (
+        'InfiniteQueryBuilder',
+        (options, buildWhen, onBuild) => InfiniteQueryBuilder(
+              options: options,
+              buildWhen: buildWhen,
+              builder: (_, feed) => onBuild(feed),
+            ),
+      ),
+      ('context.infiniteQuery', _FlagsContextReader.new),
+      ('QueryMixin.watchInfiniteQuery', _FlagsMixinReader.new),
+    ]) {
+      queryWidgetTest('$style shows hasNextPage moving with a declined result',
+          (tester, client) async {
+        late InfiniteQueryController<_FlagsPage, int, String> feed;
+        var builds = 0;
+        var asked = 0;
+
+        await tester.pumpWidget(app(
+          client,
+          reader(
+            InfiniteQuerySelectOptions<_FlagsPage, int, String>(
+              queryKey: QueryKey(<Object?>['map92', style]),
+              pageFn: (_) async => (text: 'same', next: null),
+              initialPageParam: 0,
+              initialData: InitialData.value(InfiniteData(
+                pages: [(text: 'same', next: 1)],
+                pageParams: [0],
+              )),
+              staleTime: StaleTime.infinite,
+              select: (data) => data.pages.first.text,
+              getNextPageParam: (page, _, __, ___) => page.next,
+            ),
+            (previous, current) {
+              asked++;
+              return previous.dataOrNull != current.dataOrNull;
+            },
+            (controller) {
+              feed = controller;
+              builds++;
+              return Text(controller.hasNextPage ? 'Load more' : 'End');
+            },
+          ),
+        ));
+        expect(find.text('Load more'), findsOneWidget);
+
+        await feed.refetch();
+        await tester.pump();
+
+        expect(feed.value.dataOrNull, 'same');
+        expect(feed.hasNextPage, isFalse);
+        expect(find.text('End'), findsOneWidget);
+        // The refetch's start moved the result alone, and was declined; its
+        // end moved the flags with it, and was not asked about.
+        expect(builds, 2);
+        expect(asked, 1);
+      }, createClient: newClient);
+    }
+  });
+}
+
+typedef _FlagsPage = ({String text, int? next});
+
+/// One infinite reading style with a `buildWhen`, its builds handed to
+/// [onBuild].
+typedef _FlagsReader = Widget Function(
+  InfiniteQuerySelectOptions<_FlagsPage, int, String> options,
+  BuildWhen<QueryResult<String>> buildWhen,
+  Widget Function(InfiniteQueryController<_FlagsPage, int, String>) onBuild,
+);
+
+class _FlagsContextReader extends StatelessWidget {
+  const _FlagsContextReader(this.options, this.buildWhen, this.onBuild);
+
+  final InfiniteQuerySelectOptions<_FlagsPage, int, String> options;
+  final BuildWhen<QueryResult<String>> buildWhen;
+  final Widget Function(InfiniteQueryController<_FlagsPage, int, String>)
+      onBuild;
+
+  @override
+  Widget build(BuildContext context) =>
+      onBuild(context.infiniteQuery(options, buildWhen: buildWhen));
+}
+
+class _FlagsMixinReader extends StatefulWidget {
+  const _FlagsMixinReader(this.options, this.buildWhen, this.onBuild);
+
+  final InfiniteQuerySelectOptions<_FlagsPage, int, String> options;
+  final BuildWhen<QueryResult<String>> buildWhen;
+  final Widget Function(InfiniteQueryController<_FlagsPage, int, String>)
+      onBuild;
+
+  @override
+  State<_FlagsMixinReader> createState() => _FlagsMixinReaderState();
+}
+
+class _FlagsMixinReaderState extends State<_FlagsMixinReader> with QueryMixin {
+  @override
+  Widget build(BuildContext context) => widget
+      .onBuild(watchInfiniteQuery(widget.options, buildWhen: widget.buildWhen));
 }

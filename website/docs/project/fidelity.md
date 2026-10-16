@@ -51,6 +51,24 @@ The gap is almost entirely React-specific tests, JavaScript-helper tests with
 no Dart counterpart, and features [deliberately not
 ported](../reference/feature-matrix.md). Each is enumerated.
 
+React Query's own hook tests are ported the same way, and run against the
+optional [hooks add-on](../guides/hooks.md): **269 of the 305** cases in ten
+suites.
+
+| upstream suite | ported | upstream suite | ported |
+|---|---|---|---|
+| `useQuery` | 137 / 155 | `useMutation` | 55 / 61 |
+| `useInfiniteQuery` | 28 / 28 | `mutationOptions` | 12 / 14 |
+| `useQueries` | 17 / 24 | `useMutationState` | 5 / 5 |
+| `useIsFetching` | 5 / 5 | `QueryClientProvider` | 4 / 4 |
+| `usePrefetchQuery` | 4 / 6 | `usePrefetchInfiniteQuery` | 2 / 3 |
+
+The 36 left out mostly test what is deliberately not here — `throwOnError`
+and error boundaries, Suspense, `subscribed`, `skipToken`, hydration — or
+React rendering and TypeScript types, which have no Dart counterpart. Each is
+listed with its reason in the add-on's
+[`PORTING_NOTES.md`](https://github.com/dualmeta-gmbh/query_kit/blob/main/packages/query_kit_hooks/test/PORTING_NOTES.md).
+
 ## What porting found
 
 **23 bugs**, none of which a test written from the Dart side would have caught —
@@ -120,13 +138,14 @@ Measured by running each suite, not by counting `test(` in the sources.
 
 | | |
 |---|---|
-| core | **826** Dart VM tests; **822** also compiled to JavaScript (a few barrel checks are VM-only). 414 of them are ported upstream cases; the rest are the port-only files, the review regressions and the integration regressions |
-| binding | **287** tests, widget tests behind one harness |
+| core | **1175** Dart VM tests; **1171** also compiled to JavaScript (a few barrel checks are VM-only). 414 of them are ported upstream cases; the rest are the port-only files, the review regressions and the integration regressions |
+| binding | **370** tests, widget tests behind one harness |
+| hooks add-on | **332** tests. 269 of them are ported upstream cases; the rest are the package's own cases, the review regressions and the check that holds the hooks guide's samples to compiled code |
 | examples | a widget test per showcase screen and per task-manager checklist row, Playwright end-to-end tests in Chromium against each example's real server, and contract cases run against both the fake backend and the real server |
 | documentation | every Dart sample on this site is compiled, and held equal to its compiled twin by a test |
 
 Every push runs all of it, plus the analyzer at `--fatal-infos`, the formatter,
-`dart doc --validate-links`, both publish dry-runs, a web build of each example
+`dart doc --validate-links`, a publish dry-run of each package, a web build of each example
 — and the whole suite again on the declared Flutter floor, because a floor
 nobody tests is a guess.
 

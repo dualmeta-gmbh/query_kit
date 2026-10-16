@@ -35,6 +35,7 @@ reference](api.md) pages, with their types and defaults.
 | Offline behaviour | `NetworkMode`, paused mutations, `resumePausedMutations` |
 | Per-client focus / online / notify managers | not module-level singletons |
 | A Flutter binding with four equal call styles | and no dependency beyond Flutter |
+| React Query's hooks: `useQuery`, `useMutation` and the rest | `query_kit_hooks`, an optional add-on on `flutter_hooks` — see [hooks](../guides/hooks.md) |
 | Widget tests | the teardown is a documented snippet, not an export — see [Testing](../guides/testing.md) |
 
 ## Deliberately not in 1.0

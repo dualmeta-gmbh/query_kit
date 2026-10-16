@@ -250,7 +250,12 @@ symptom, with the fix.
 
 ## Signals, hooks and other reactive packages
 
-Not dependencies here, and not planned as such. Because a controller is a
+Neither is a dependency of this package. Hooks come as a separate add-on:
+[`query_kit_hooks`](hooks.md) puts `useQuery` and the rest on
+`flutter_hooks`, for an app whose widgets are already `HookWidget`s. The
+four call styles above do the same job without it.
+
+A signals package needs nothing from either. Because a controller is a
 `ValueListenable`, a signals package reads it with whatever it offers for
 listenables — `signals_flutter` has `valueListenableToSignal`, for one:
 

@@ -81,7 +81,9 @@ final task = context.query(
 ```
 
 It is the counterpart of `notifyOnChangeProps`, expressed as a function of two
-results. The same predicate and the same semantics in all twelve places — the
+results. Compare what the widget shows: `dataOrNull` alone also declines the
+move from pending to an error, where both sides have no data, so a widget that
+shows a spinner or the error compares `status` as well. The same predicate and the same semantics in all twelve places — the
 difference is only *whose* rebuild it decides. A builder's
 is its own subtree, because a builder reads exactly one query or one mutation.
 A keyless read's is per read, and its reader is the whole widget or the whole
@@ -100,9 +102,10 @@ it was built.
 
 An equal result is skipped before the predicate is even asked, so `buildWhen`
 only ever sees a real change. The one exception is an infinite query, whose
-paging flags live beside the result: a fetch that moves only those rebuilds
-regardless, because there is nothing there for a predicate over results to
-compare and the reader is showing the stale half.
+paging flags live beside the result: a fetch that moves them rebuilds
+regardless, whether the result moved with them or not. A predicate over
+results never sees the flags, and a "no" would leave "Load more" on screen
+with no next page to load.
 
 ### On a mutation
 

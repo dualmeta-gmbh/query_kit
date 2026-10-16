@@ -167,7 +167,7 @@ void main() {
     expectBuilds(queryMembers, filtered: 3, plain: 3);
   });
 
-  showcaseTest('Load next is one build filtered and two plain',
+  showcaseTest('Load next is two builds, filtered and plain',
       (tester, h) async {
     tall(tester);
     await h.open(tester, '/build-when');
@@ -176,10 +176,10 @@ void main() {
     await tester.tap(find.byTooltip('Load next'));
     await tester.pump();
 
-    // The page fetch starting moves `fetchStatus` while the pages are still
-    // the pages on screen, so the filtered half refuses it.
+    // The page fetch starting moves `isFetchingNextPage` beside the result,
+    // which the predicate never sees: the filtered half rebuilds unasked.
     expect(h.fact('pages', 'fetchStatus=fetching'), findsOneWidget);
-    expectBuilds(infiniteMembers, filtered: 2, plain: 3);
+    expectBuilds(infiniteMembers, filtered: 3, plain: 3);
 
     await tester.pump(slow);
     await tester.pumpAndSettle();
@@ -191,7 +191,7 @@ void main() {
             findsOneWidget);
       }
     }
-    expectBuilds(infiniteMembers, filtered: 3, plain: 4);
+    expectBuilds(infiniteMembers, filtered: 4, plain: 4);
     // One reader pages; the other three joined the same fetch.
     expect(h.fact('pages', 'observers=4'), findsOneWidget);
   });

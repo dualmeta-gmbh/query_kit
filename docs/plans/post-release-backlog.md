@@ -54,6 +54,24 @@ realistic-path slowdown.
 | AR-10 | 15 of 29 `lib/src` modules form one import cycle with `query_client` at its centre |
 | AR-13–18 | Duplicated helpers, `toString` gaps on `Defaulted*Options`, per-success future allocation in `MutationCache`, a 0 ms periodic timer from `RefetchInterval.every` below 1 ms |
 
+## Binding feature candidates (from the hooks plan, 2026-10-15)
+
+Charting the hooks package ([plan](hooks-package.md)) classified every case
+of upstream's `react-query` hook suites. It found three gaps that belong to
+the binding as a whole, not to the hook package, and the package's
+deep-dive review a fourth (HB-4). The four call styles are
+equal (C49), so the binding takes each one for all four styles in the same
+release, never for one style alone. The hook package is not a fifth style
+(plan, D15), so it may ship its own version first; HB-2 is the case where it
+does.
+
+| ID | Feature | Upstream | Why it waits |
+|---|---|---|---|
+| HB-1 | `subscribed: false`: a reader that keeps its observer and result but stops listening. A query on a hidden tab or an offstage route then stops refetching on focus, reconnect and interval until it is shown again | `useQuery({ subscribed })`, `useQuery.test.tsx` 5921, 5966, 6002, 6031; `useQueries.test.tsx` 66 | Needs an option on every call style and a decision on what `TickerMode` and visibility should do by default. Until then the hook package records the cases as omitted |
+| HB-2 | A combine-gated rebuild for `QueriesBuilder` and `QueriesController`: rebuild only when the `CombinedResult` changes, or when what its `retry`/`refetch` act on does, not whenever any query moves | `useQueries({ combine })`, `useQueries.test.tsx` 490, 871 | The hook package ships it first as `useCombinedQueries` (plan, D10), with the action key the plan review found necessary. The binding takes the same rule for all four styles once it has met real use |
+| HB-3 | An `IsMutatingController`, the mutation twin of `IsFetchingController` | `useIsMutating` | `MutationStateController` filtered to pending covers it. It is worth a class only if a count without the states turns out to be a measured cost. The hook package's `useIsMutating` reads `client.isMutating` directly (plan, D12) |
+| HB-4 | A debug check for a list of queries of two data types. Dart infers their common supertype, `Object`, and the collection creates the entries as `Object` entries, so a reader of one of those keys as its own type throws `QueryDataTypeError` later and elsewhere. A check would name the key on the first build instead. It checks the cached type, `TQueryData`: selects with different results over one cached type are fine | — (TypeScript types each query of the list on its own) | Found by the hooks package's deep-dive review (AP11, F-1); documented for now on `QueriesBuilder`, `QueriesController`, `useQueries`, `useCombinedQueries`, the hooks guide and the troubleshooting page. `Object` stays a legal data type, so the check has to see the element's own type argument. That needs a member on the core's options, such as `Type get dataType`, so it is a core minor and a binding minor at once, for all four styles |
+
 ## Upstream-identical, recorded, no action
 
 IN-03, IN-04, IN-05, MU-04, MU-05, MU-06, AR-11 (one timer per retained

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.0
+
+- A new library, `package:query_kit_flutter/adapter.dart`, exports
+  `RebuildRule`: the decision every call style makes about whether a
+  notification is worth a rebuild, for packages that read queries in a shape
+  of their own, such as `query_kit_hooks`. It owns no controller and
+  listens to nothing. `RebuildRule.of(controller)` is the rule the call
+  styles use for one of the binding's controllers, and `BuildWhen`, the
+  predicate it asks, is exported with it. Apps do not need the library, and
+  the main library is unchanged.
+- The four call styles now make that decision through `RebuildRule`. Their
+  behaviour does not change, but for the fix below.
+- Fixed: a `buildWhen` on an infinite query that declined a change of the
+  result also held back a change of the paging flags made with it. A refetch
+  that kept the data and found no next page left "Load more" on screen while
+  `hasNextPage` was `false`. A move of the paging flags now rebuilds without
+  asking `buildWhen`, whether the result moved with it or not, in
+  `InfiniteQueryBuilder`, `context.infiniteQuery` and `watchInfiniteQuery`.
+  `RebuildRule` takes that part as `beside`.
+
 ## 1.0.4
 
 - `QueryBuilder`, `QuerySelectBuilder`, `InfiniteQueryBuilder`,

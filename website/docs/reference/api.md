@@ -28,13 +28,20 @@ needs explaining.
 
 ## The generated dartdoc
 
-Every public member of both packages carries a dartdoc comment, and pub.dev
+Every public member of each package carries a dartdoc comment, and pub.dev
 builds and hosts the reference for every published version:
 
 - [pub.dev/documentation/query_kit](https://pub.dev/documentation/query_kit/latest/)
   — the core: client, caches, observers, options, results.
 - [pub.dev/documentation/query_kit_flutter](https://pub.dev/documentation/query_kit_flutter/latest/)
   — the binding. It re-exports the core, so an app imports only this one.
+  Its second library,
+  [`adapter`](https://pub.dev/documentation/query_kit_flutter/latest/adapter/),
+  is for packages that read queries in a shape of their own; see
+  [widgets and controllers](widgets-and-controllers.md#the-adapter-library).
+- [pub.dev/documentation/query_kit_hooks](https://pub.dev/documentation/query_kit_hooks/latest/)
+  — the optional hooks add-on, on `flutter_hooks`. It re-exports the
+  binding. See [hooks](../guides/hooks.md).
 
 `dart doc` in a package's directory writes the same reference to `doc/api/`;
 open `doc/api/index.html`. For a package in your pub cache, run it there.

@@ -1,5 +1,6 @@
 // Fails when user-facing documentation carries the project's internal
-// bookkeeping: review rounds, dates, finding and ticket IDs, the upstream pin.
+// bookkeeping: review rounds, dates, finding and ticket IDs, a plan's
+// decision and work-package IDs, the upstream pin.
 //
 //   dart run tool/check_docs_jargon.dart              # scan, exit 1 on a hit
 //   dart run tool/check_docs_jargon.dart --self-test  # check the patterns
@@ -7,15 +8,16 @@
 // What a user reads, and so what is scanned:
 //
 // * the site's pages, `website/docs/**/*.md` and `*.mdx`;
-// * each package's `README.md`;
+// * each package's `README.md`, and its example's when it has one;
 // * each package's `CHANGELOG.md`, its top entry only — older entries are
 //   history and may say what they said;
 // * every `///` line under `packages/*/lib`, which `dart doc` publishes;
 // * the example apps' sources — `examples/showcase/lib`,
-//   `examples/task_manager/lib` and `packages/query_kit_flutter/example/lib`
-//   — which the site shows whole on its Examples pages: every `//` and `///`
-//   comment and every string literal in them (a string is what the running
-//   demo puts on screen).
+//   `examples/task_manager/lib`, `packages/query_kit_flutter/example/lib`
+//   and `packages/query_kit_hooks/example/lib` — which the site shows whole
+//   on its Examples pages, or pub.dev in a package's archive: every `//` and
+//   `///` comment and every string literal in them (a string is what the
+//   running demo puts on screen).
 //
 // A line that must keep its reference says so with `<!-- jargon-ok -->`
 // (Markdown), `{/* jargon-ok */}` (MDX, which has no HTML comments) or
@@ -51,7 +53,11 @@ final List<(String, RegExp)> patterns = [
   (
     'finding ID',
     RegExp(r'\b(?:LIB|MU|AR|QE|BIND|REL|API|IN)-\d+\b|\bV-[BC]-\d+\b|'
-        r'\b[LBRV]\d-\d+\b'),
+        r'\b[LBRVP]\d-\d+\b|\bH-\d\d\b'),
+  ),
+  (
+    'plan decision',
+    RegExp(r'\bplan, D\d+\b|\(D\d{1,2}[),]|\bAP\d{1,2}\b'),
   ),
 ];
 
@@ -61,6 +67,7 @@ const shownSources = [
   'examples/showcase/lib',
   'examples/task_manager/lib',
   'packages/query_kit_flutter/example/lib',
+  'packages/query_kit_hooks/example/lib',
 ];
 
 /// The markers that let one line keep a reference.
@@ -153,8 +160,10 @@ void main(List<String> args) {
       .toList()
     ..sort((a, b) => a.path.compareTo(b.path));
   for (final package in packages) {
-    final readme = File('${package.path}/README.md');
-    if (readme.existsSync()) scan(readme);
+    for (final path in ['README.md', 'example/README.md']) {
+      final readme = File('${package.path}/$path');
+      if (readme.existsSync()) scan(readme);
+    }
     final changelog = File('${package.path}/CHANGELOG.md');
     if (changelog.existsSync()) scan(changelog, topOnly: true);
     final name = package.path.substring(root.path.length + 1);
@@ -206,6 +215,12 @@ int _selfTest() {
     'a pre-release review said': 'review round',
     'it came home (#69).': 'issue number',
     'the suites already read (C56, #51).': 'issue number',
+    'the lookup is untyped (review P2-1)': 'finding ID',
+    'and does nothing (review H-03).': 'finding ID',
+    'the one shape every hook has (plan, D5):': 'plan decision',
+    'is setOptions on the same controller (D6).': 'plan decision',
+    '(D10, P3-9)': 'plan decision',
+    'ported in AP3': 'plan decision',
   };
   const clean = [
     'Call refetch to fetch again.',
@@ -225,6 +240,8 @@ int _selfTest() {
     'Take a second look at the review.',
     "title: 'Post #1',",
     'Comments on post #1',
+    'a 3D chart, the AP style guide, pH-10 water, D-Day',
+    'a P-value, H-bridge, H-1 visa',
   ];
   // What a shown source contributes: its strings and its comment, never its
   // code.

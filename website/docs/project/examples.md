@@ -1,13 +1,13 @@
 ---
 title: How the examples are built
-description: How the examples are built and tested — the one-file tour, the showcase against a real backend, and the acceptance demo.
+description: How the examples are built and tested — the one-file tour, the showcase against a real backend, the acceptance demo, and the hooks add-on's example.
 ---
 
 # How the examples are built
 
-Three, of increasing size. [Examples](../examples/index.md) lists what each
-showcase screen shows and which guide it belongs to; this page is about how
-they are built and proven.
+Three, of increasing size, and a fourth for the optional hooks add-on.
+[Examples](../examples/index.md) lists what each showcase screen shows and
+which guide it belongs to; this page is about how they are built and proven.
 
 ## The one-file tour
 
@@ -93,3 +93,33 @@ It is also where the four call styles are each used once, in the place each one
 genuinely fits — a controller for the list two siblings share, `context.query`
 per row, the mixin on the already-stateful detail screen, a select builder for
 the header badge.
+
+## The hooks example
+
+`packages/query_kit_hooks/example/` — a small app of posts, todos and
+projects on the optional [hooks add-on](../guides/hooks.md). It calls every
+hook the package exports, each where an app would call it, and its README
+has a table of which hook is used where.
+
+It ships in the package archive, and there it runs against an in-memory
+backend in the app's own process: the same requests, 300 ms each, so the
+loading states are there to see. The archive holds no platform folders, so
+create the ones you want first:
+
+```bash
+flutter create . --platforms=web,android,ios
+flutter run
+```
+
+Its widget tests walk every tab against the in-memory backend on a fake
+clock, and a contract test checks that backend against the real one.
+
+In the repository the app also runs against the showcase's server, and two
+end-to-end suites, which are not in the archive, prove every hook against
+it:
+
+- **Playwright** in Chromium, Firefox and WebKit against the web build, each
+  test with a backend scenario of its own.
+- **`integration_test`** on a device — an iOS simulator, an Android
+  emulator, macOS, Linux or Chrome — with real frames and a real trip to the
+  background and back.

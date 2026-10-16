@@ -6844,3 +6844,242 @@ manager 30).
   before `paused` was logged inside the window. The case now stamps each
   poll as it begins, from the client's query cache, on the device's clock,
   and asserts it hears the polls after the return.
+
+## The hooks add-on (map #92)
+
+[Map #92](https://github.com/dualmeta-gmbh/query_kit/issues/92) builds
+`query_kit_hooks`, React Query's hooks on `flutter_hooks`, as a package of its
+own; its ported suites keep their own `PORTING_NOTES` in that package. What
+the map changes in the binding is recorded here, one row per ticket. The plan
+is `docs/plans/hooks-package.md`, and ADR-0004 holds its two lasting
+decisions.
+
+### AP1 — `RebuildRule` in `adapter.dart` (#94)
+
+**What.** The rebuild decision every call style makes — skip a notification
+whose observed state equals the one built, rebuild when only the half beside
+the value moved, otherwise ask `buildWhen` — moves out of `ReadEntry` into
+`RebuildRule<T>` (`lib/src/rebuild_rule.dart`), which a new library,
+`lib/adapter.dart`, exports alone. `ReadEntry` keeps the subscription and the
+controller's ownership and delegates the decision. `BuildWhen` moves with the
+rule; the barrel still exports it through `query_builder.dart` and is itself
+unchanged.
+
+**Options** (plan D4): rebuild the rule in the hooks package on public API
+(the spike's path, two copies that drift); export `ReadEntry`,
+`ObservedState` and `observedStateOf` (unsound — `ReadEntry` casts any
+`ValueListenable` to `ChangeNotifier` and disposes it, Astra H-06); move the
+rule into the core (Flutter's notion of a rebuild in a core without Flutter);
+or **an ownership-free rule the binding itself uses**. Chosen: the last. The
+spike measured that this one rule of 32 code lines carries every hook, and
+that no hook needs `ObservedState` or `observedStateOf`.
+
+**Evidence.** No binding test changed; the 299 at `859fbdc` are green as they
+were. `adapter_test.dart` (9 cases, VM and browser) imports nothing of the
+package but `adapter.dart` and holds every branch: nothing read, equal
+observed state with `buildWhen` unasked, a value moved and back, only the side
+half moved with `buildWhen` unasked, a moved value with and without
+`buildWhen`, a declined change compared against what is still shown, and a
+read recording both halves anew. The spike's hooks, switched from their own
+copy to `adapter.dart`, stay 45 of 45 green. Binding line coverage 99.77 %
+(862 / 864), above its floor.
+
+**Counts after:** binding **308** VM.
+
+### AP2 — the hooks package joins the workspace (#95)
+
+**What.** `packages/query_kit_hooks` is a workspace member, at `0.1.0-dev`,
+with its licences, README, CHANGELOG, analysis and dartdoc options and a
+`.pubignore` for the example AP10 brings. CI runs its suite on the VM,
+compiled to JavaScript and on the Flutter floor, its publish dry-run and its
+`dart doc`; `publish.yml` knows the tag `query_kit_hooks-v*`; dependabot
+watches its one third-party dependency, `flutter_hooks`; the rename tool
+carries it along with the core's name instead of refusing three packages.
+The spike's `pubspec_overrides.yaml` and own lockfile are gone.
+
+**Two departures from the ticket, each measured.**
+
+- *`query_kit_flutter: ^1.1.0` cannot resolve in the workspace* while the
+  binding is 1.0.3: pub refuses a member whose version the constraint
+  excludes. The constraint is `^1.0.3` and goes to `^1.1.0` at release
+  (AP12, `docs/releasing.md`). Nothing in the workspace would notice a
+  forgotten bump; pana's lower-bound check would, against 1.0.3 on pub.dev.
+- *`scripts/release.sh` is unchanged* but for a comment. It is the
+  bootstrap wizard of the two 1.x packages, which share a version; the
+  hooks have their own 0.x line, and their first publish is a procedure in
+  `docs/releasing.md`. `latest-stable.yml` does not exist at `859fbdc`; it
+  gains a hooks leg when this branch meets `main`.
+
+**The floor, measured, not assumed.** The root lockfile holds
+`flutter_hooks` 0.21.3+1, which needs Flutter 3.32 and raises the lockfile's
+`sdks.flutter` to `>=3.32.0`. On Flutter 3.27.4 (Dart 3.6.2), `flutter pub
+get` resolves 0.21.2 anyway, and there the hooks' 45 tests and the binding's
+308 pass. The lockfile otherwise stays as committed: the local SDK's pins of
+`characters`, `matcher` and the test packages are not part of the change.
+
+**Counts after:** hooks **45** VM / **45** browser / **45** floor; binding
+**308** VM / **308** floor.
+
+### `RebuildRule.beside` — a declined result held back the paging flags (AP4 and AP6, second reviews)
+
+**What was wrong.** `RebuildRule` asked `buildWhen` whenever the value moved,
+and its "rebuild unasked" branch covered only a move of the half beside the
+value *alone*. So a predicate over results could decline a notification that
+moved the result and the paging flags together, and the flags went with it.
+Reproduced through all three infinite call styles: an `InfiniteQueryBuilder`,
+`context.infiniteQuery` and `watchInfiniteQuery` over a select, with
+`buildWhen: (p, c) => p.dataOrNull != c.dataOrNull`, and a refetch that keeps
+the selected text but finds no next page. The controller says `hasNextPage ==
+false`; the screen kept "Load more", one build, the predicate asked twice. The
+hooks' `useCombinedQueries` had the same flaw for what `retry` acts on: a
+declined fetch of one source held back the repair of another, and `retry`
+refetched the repaired one.
+
+**Options.**
+- Narrow the documentation to "a move of the flags *alone*" and leave the rule.
+  That is a trap: a refetch moves the result's `dataUpdatedAt` whenever it
+  moves `hasNextPage`.
+- Let `buildWhen` see the flags, a predicate over `(result, flags)`. That is a
+  new public type, and a predicate written for one style no longer fits the
+  others.
+- **Chosen: tell the rule which part is beside the value.** `RebuildRule`
+  takes an optional third closure, `beside`. When it moved, the reader
+  rebuilds before `buildWhen` is asked, whether the value moved with it or
+  not. `ReadEntry` passes the hidden `besideOf(controller)`: an infinite
+  query's six paging flags, `null` for every other controller. A rule
+  without `beside` keeps its old fallback, which still rebuilds when the
+  observed state moved and the value is equal.
+
+**Evidence.**
+- `adapter_test.dart` gains six cases:
+  - `beside` moved with the value;
+  - `beside` moved alone;
+  - `beside` where it was;
+  - `beside` moved and back;
+  - no `beside` with both halves moved;
+  - a read recording `beside` anew.
+- `review_regressions_test.dart` gains "map #92: a declined result does not
+  hold back the paging flags", one case per infinite call style. All three
+  go red with `beside` taken out of `ReadEntry`.
+- `besideOf` joins `ObservedState` and `observedStateOf` behind the barrel's
+  `hide`, and C23.7's test checks it.
+- One existing binding assertion changed: C23.7's list of what the barrel
+  hides gains `besideOf`. "buildWhen on every builder" still holds: a
+  refetch moves no flag there, so its predicate still decides.
+- **The showcase taught the defect.** Its `build-when` screen said `Load
+  next` was one build for a filtered infinite reader and two for a plain
+  one, because the page fetch starting "moves only `fetchStatus`". It moves
+  `isFetchingNextPage` too, and the filtered reader swallowed it. A reader
+  showing a spinner from that flag would never have shown it. Now `Load
+  next` is two builds for both halves. The screen's text, its widget test,
+  its Playwright spec and the site's example page say so. `Refetch the
+  pages` moves no flag, and there the predicate still answers. The cost
+  for a filtered reader that shows no flag is up to two builds per page
+  fetch, one as `isFetchingNextPage` goes up and one as it comes down. When
+  the new page changes what the reader selected, as on this screen, the
+  second is the value's own. The binding cannot tell which readers show a
+  flag.
+- The hooks pass `beside` from `ControllerHookState.besideOf`: the flags for
+  `useInfiniteQuery`, and for `useCombinedQueries` which sources are in error
+  and their refetch targets. Their `PORTING_NOTES` record the two hook
+  regressions.
+
+**Counts after:** binding **317** VM; hooks **315** VM; showcase **256**
+widget tests, the same count, one of them changed.
+
+**Second review (GPT-6.1-Sol, xhigh).** It ran both suites, put the new
+branch out of action and saw all five regressions go red. It probed the rule
+with a decision matrix, `useCombinedQueries`' refetch tear-offs (stable
+equality) and a predicate replaced across a key swap, all green. Two
+findings, both reproduced:
+
+- **S-1 (P2 as filed, pre-existing): a reread through an outer `context`
+  can take the outer reader's rebuild.** A nested `ValueListenableBuilder`
+  writes the cache during its build, then reads the same entry through the
+  outer builder's `context`. That read records the new state as built for
+  the outer element, so the notification that follows compares equal, and
+  the outer text stays stale. Reproduced with Sol's case and again with a
+  plain `context.query`, no `buildWhen` and no flags. So it is not
+  `beside`'s and not the infinite query's. It needs a cache write *during a
+  build*: the same reread after a write outside the build is green, because
+  the notification arrives before the frame. Through the nested builder's
+  own `context` it is green either way. Not fixed here: it is the binding's
+  additive-read rule, released in 1.0.x and under parallel change for 1.0.4.
+  Filed for the binding as #108 with the reproduction, which is red as well
+  at `669c911`, before `beside`, and on `e2e-coverage` (binding 1.0.4).
+- **S-2 (P3, the orchestrator's notes only): "a flag that moves and moves
+  back between two builds does not rebuild" was too strong.** It holds when
+  both moves arrive before a delivery. Once the first delivery has
+  scheduled a rebuild, the move back does not cancel it (builds 1 → 2). That
+  was already true of the value, and it is the right behaviour: a scheduled
+  frame is not withdrawn. No dartdoc made the claim, and no code changed.
+
+From the sparring:
+
+- The cost was understated. The notes said one build per page fetch; with
+  the selected value unchanged it is two. Corrected above and pinned in the
+  hooks' `hook_specifics_test.dart`: "a page fetch that keeps the selected
+  value is two builds, the predicate unasked". Without the fix that case
+  measures (1, 1, 2) for builds before, builds after and predicate calls.
+- "No existing binding test changed" was wrong by one: C23.7's hide list.
+  Corrected above.
+- A backport to 1.0.x: Sol reads it as a correctness fix with an
+  observable change in build counts, which semver allows in a patch. It
+  warns that 1.0.x documents the unasked rebuild for flags moving *alone*.
+  That is left to the maintainer.
+
+**Counts after the review:** hooks **316** VM.
+
+### The hooks' deep-dive review — what it changed in the binding (AP11)
+
+Two independent reviews of the whole hooks package read `adapter.dart` as the
+contract binding 1.1.0 will publish: GPT-6-Astra via the Codex CLI at xhigh,
+and Fable 5.1. The hooks package's PORTING_NOTES has the full record; here is
+what changed in the binding, each finding reproduced first.
+
+- **A-1 (P2): a `value` that threw left `RebuildRule.read()` half
+  recorded.** The observed state and `beside` were stored before the value
+  was read. After a failed first read, `shouldRebuild` threw a
+  `LateInitializationError`. After a failed later read, it answered `false`
+  for a value no build had shown. The binding's own readers never met it,
+  because a controller's `value` does not throw, but an adapter's closures
+  may. `read()` now reads all three before it records any. Two cases in
+  `adapter_test.dart`, both red without the fix.
+- **F-2 (P3): `adapter.dart` did not export `BuildWhen`,** the type
+  `shouldRebuild` takes. It does now. An adapter_test case spells it with
+  `adapter.dart` as the only import of the binding.
+- **F-3 (P3): the hooks copied the infinite controller's paging flags as
+  their `beside`.** A hooks release resolves against any binding of the same
+  major, so a flag a later binding added would be missing from the copy.
+  `RebuildRule.of(controller)` is the rule the call styles use for a
+  controller, built from the binding's own `observedStateOf` and `besideOf`.
+  `ReadEntry` now uses it, and so do the hooks over a single controller.
+  With the binding's `besideOf` switched off, three hooks cases go red, so
+  the hooks no longer carry a copy. ADR-0004 has a paragraph on it.
+- **F-4 (P3): the top-type assertion named only the binding's spellings as
+  the remedy.** For a plain query it now names the options' type argument
+  first, `QueryObserverOptions<Task>(…)`, which a hooks user writes as well.
+  The verification pass (V1-1) found the select's case unserved: typed raw
+  options with a select that returns `dynamic` got the same advice, which
+  does not help. Where the cached type is named and only the selected one
+  is a top type, the message now names the select's return type instead
+  (`withSelect<Selected>(…)`, `QuerySelectOptions<Raw, Selected>(…)`).
+  The third pass (V2-1, V2-2) found that branch keyed on the wrong thing.
+  It now keys on the options' shape: a `QuerySelectOptions` is told about
+  its select, however its cached type stands, and options without a select
+  are never told about one. The select's advice now carries a cast,
+  `(raw) => jsonDecode(raw) as Selected`, because under `strict-casts` a
+  type argument alone does not compile over `jsonDecode`.
+  `InfiniteQueryController`'s message carries the same cast. Since the
+  fourth and fifth passes (V3-1, V4-1), the binding's case builds and reads
+  every cure the four messages name. The four messages are the select's,
+  the plain options', the infinite query's and `.observing`'s. The cures
+  include `QueryBuilder<String>`, both infinite cures and a typed
+  `QueryObserver`.
+- **F-1 (P2), in the docs only:** a list of queries of two data types
+  infers `Object`, and its entries are created as `Object` entries.
+  `QueriesBuilder` and `QueriesController` now say so in their dartdoc. A
+  debug check needs a member on the core's options, so it is the backlog's
+  HB-4.
+
+**Counts after the fixes:** binding **320**.

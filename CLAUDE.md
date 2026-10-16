@@ -160,8 +160,9 @@ by a zone's `errorCallback`; PORTING_NOTES' "Wider end-to-end coverage
 
 | Phase | State |
 |---|---|
-| **`packages/query_kit/`** — the pure-Dart core | **1.0.0, published on pub.dev (2026-09-23, publisher dualmeta.io, tag `query_kit-v1.0.0` at `f6b163d`)** — 826 VM / 822 browser tests since; the rest of this cell is the 2026-09-12 state. **Pre-release deep-dive review done (2026-09-12).** Eight independent lenses, every P1/P2 reproduced and verified by a second fresh agent, then fresh passes over each round of fixes — which found defects the fixes themselves introduced (six in round 1, three in round 2, one in round 3), all fixed, and one older hashing defect those passes surfaced. 742 VM tests / 738 compiled-JavaScript tests, green on the Dart 3.6.2 floor; 414 of 536 upstream cases ported; original ported assertions unchanged. See PORTING_NOTES' "Pre-release deep-dive review" and "Final review" sections; test counts alone are not a release verdict. |
-| **`packages/query_kit_flutter/`** — the Flutter binding | **1.0.0, done, nine times reviewed, restructured by map #49, release-reviewed 2026-09-23.** 287 tests behind one harness (`test/harness.dart`); four call styles for queries, infinite queries and mutations — **equal, and proven so** (C49): every one of them takes a `buildWhen` and none rebuilds for a notification that carries nothing. No dependency beyond Flutter — `flutter_test` is a dev dependency, and the widget-test teardown a user writes is a documented snippet (ADR-0002) |
+| **`packages/query_kit/`** — the pure-Dart core | **1.0.0, published on pub.dev (2026-09-23, publisher dualmeta.io, tag `query_kit-v1.0.0` at `f6b163d`)**; 1.0.2 is the last tagged, 1.0.3 is not — 1175 VM / 1171 browser tests now (2026-10-16); the rest of this cell is the 2026-09-12 state. **Pre-release deep-dive review done (2026-09-12).** Eight independent lenses, every P1/P2 reproduced and verified by a second fresh agent, then fresh passes over each round of fixes — which found defects the fixes themselves introduced (six in round 1, three in round 2, one in round 3), all fixed, and one older hashing defect those passes surfaced. 742 VM tests / 738 compiled-JavaScript tests, green on the Dart 3.6.2 floor; 414 of 536 upstream cases ported; original ported assertions unchanged. See PORTING_NOTES' "Pre-release deep-dive review" and "Final review" sections; test counts alone are not a release verdict. |
+| **`packages/query_kit_flutter/`** — the Flutter binding | **1.0.0, done, nine times reviewed, restructured by map #49, release-reviewed 2026-09-23.** 1.0.3 is the last tagged; **1.1.0 is prepared (2026-10-16)** — 1.0.4's changes and `adapter.dart`, its first public library beside the main one — and goes out with the hooks' 0.1.0; its tag is Christian's. 370 tests behind one harness (`test/harness.dart`); four call styles for queries, infinite queries and mutations — **equal, and proven so** (C49): every one of them takes a `buildWhen` and none rebuilds for a notification that carries nothing. No dependency beyond Flutter — `flutter_test` is a dev dependency, and the widget-test teardown a user writes is a documented snippet (ADR-0002) |
+| **`packages/query_kit_hooks/`** — React Query's hooks on `flutter_hooks`, an add-on | **0.1.0 prepared, with binding 1.1.0 (2026-10-16), map [#92](https://github.com/dualmeta-gmbh/query_kit/issues/92); not yet on pub.dev — the tags and the add-on's first publish, by hand, are Christian's.** A workspace member; its `query_kit_flutter:` constraint is `^1.1.0`, the first binding to export `adapter.dart` (`RebuildRule`, ADR-0004). Not a fifth call style: no showcase screen, no catalogue column, its own suite and `PORTING_NOTES`. Every upstream hook suite is ported in full (AP3–AP8, eleven files): 269 of 305 cases, 36 omitted with their reasons; 332 tests, the site's hooks guide and the README held by a fence test of the package's own, which refuses a fence spelling it cannot read (AP9). The second reviews of AP4 and AP6 found one defect, and it was the binding's: a `buildWhen` declining a result also held back the infinite paging flags, and `useCombinedQueries`' retry targets, that moved with it. `RebuildRule` now takes what is `beside` the value, and a move there rebuilds unasked (the showcase's `build-when` screen had taught the defect, and now teaches the fix). The deep-dive review of the whole package (AP11, by Astra and Fable, brought forward before AP10) found six things and no P1; six verification passes followed, the last of which found nothing new (the fixes' own defects were all in one assertion message). Two more `useQuery` cases port. `RebuildRule.read` records nothing a throwing value did not finish. `RebuildRule.of` gives an adapter the binding's own rule, so the hooks no longer copy the paging flags. A list of queries of two data types is documented; its debug check is backlog HB-4. The example app (AP10, `example/`) — posts, todos and projects, every hook where an app would call it — ships in the archive against an in-memory backend. In the repository its `flutter test` runs 61 and skips the 10 contract cases that need the showcase's server (the repository test's 21 stay out of the archive); its Playwright (19) and native (18 flows, 2 lifecycle cases) end-to-end suites stay in the repository. Sol's review and four verification passes, the last scoped to the fixes before it, found a P1 in the overlapping todo writes and gaps in the proofs, all fixed; every todo write cancels the list's reads when its answer arrives, and the catalogue's scanner fails where only a parser could tell (PORTING_NOTES' "The example app (AP10)"). Every ticket ends in a second review by another model (GPT-6.1-Sol, reasoning effort xhigh), each finding reproduced first. Plan: `docs/plans/hooks-package.md` |
 | **`examples/showcase/`** — every feature as a screen | **done (2026-09-09, #25; catalogue gaps closed 2026-09-11, #46; deduplicated 2026-09-12, map #49).** 30 screens (`combine` and `mutation-cancel` joined on 2026-09-20), 247 widget tests against a dio fake of the backend and 177 Playwright end-to-end tests against the real one; a scenario-isolated dummy backend under `server/`; a contract test running the same 25 cases against fake and server, and `catalogue_test.dart`, which holds the **five** per-feature artefact sets level. It found two library bugs no ported test could reach |
 | **`examples/task_manager/`** — the acceptance demo, one whole app | **done.** A small to-do app: 16 widget tests, one per row of the MVP checklist plus two regressions found by review, **15 contract cases** run against its fake and its real server (map #49 — twelve of the fourteen were red against the fake), and 10 Playwright end-to-end tests in a real browser against that server; iOS and web generated |
 
@@ -198,6 +199,14 @@ cd packages/query_kit_flutter && flutter test
 ```
 
 ```bash
+cd packages/query_kit_hooks && flutter test
+```
+
+```bash
+cd packages/query_kit_hooks/example && flutter test
+```
+
+```bash
 cd examples/task_manager && flutter test
 ```
 
@@ -209,9 +218,10 @@ cd examples/showcase && flutter test
 cd examples/doc_snippets && flutter test
 ```
 
-The binding's example is outside the workspace (it ships; see
-`docs/releasing.md`), so after a fresh clone run `flutter pub get` in
-`packages/query_kit_flutter/example` once before the analyzer:
+The binding's example and the hooks add-on's are outside the workspace
+(they ship; see `docs/releasing.md`), so after a fresh clone run
+`flutter pub get` in `packages/query_kit_flutter/example` and
+`packages/query_kit_hooks/example` once before the analyzer:
 
 ```bash
 dart analyze --fatal-infos packages examples tool && dart format --set-exit-if-changed packages examples/task_manager/lib examples/task_manager/test examples/showcase/lib examples/showcase/test examples/showcase/integration_test examples/showcase/test_driver examples/doc_snippets/lib examples/doc_snippets/test tool
@@ -229,8 +239,9 @@ floor — it caught three dependency pins and a `foundation` export that current
 stable hides); and an `e2e` matrix job runs each example's Playwright
 end-to-end suite (the real web build in Chromium against the real express
 backend — read the example's README before touching one; they read Flutter's
-semantics tree, not the canvas, and nothing in them asserts on a clock). The
-showcase leg also runs `backend_contract_test.dart` against the real server.
+semantics tree, not the canvas, and nothing in them asserts on a clock). Every
+leg also runs its `backend_contract_test.dart` against the real server; the
+hooks add-on's example runs against the showcase's, on ports of its own.
 **1.0.0 of both packages is published** (2026-09-23), and the site is live
 at <https://query-kit.dualmeta.io/>. A breaking change is now a
 major. How a later release goes — bump, merge, tag; `publish.yml` and
@@ -295,6 +306,18 @@ exactly like an open one.
 
 **Charting the next one** starts from #49's fog, not from a reopened map: a
 new map is a new issue, as #33 was to #1 and #49 to #33.
+
+**Map [#92](https://github.com/dualmeta-gmbh/query_kit/issues/92) is
+running** (since 2026-10-15): `query_kit_hooks`, the hooks add-on #21 left
+open, in thirteen `wayfinder:task` tickets AP0–AP12. The agent is product
+owner and decider (Christian, 2026-10-15). The plan is the spec —
+`docs/plans/hooks-package.md`, decisions D1–D18 with a review record — and
+ADR-0004 holds its two lasting decisions. AP0–AP11 are done; AP10's example
+app reuses the merged `e2e-coverage` infrastructure rather than its own.
+AP12, the release, is prepared: binding 1.1.0 and hooks 0.1.0 set, the docs
+and the site brought to the release. The tags and the add-on's first publish,
+by hand, are Christian's; after them the site is deployed by hand
+(`docs/releasing.md`).
 
 **What map #49 changed, in one paragraph**, because it touched almost every
 module: the binding's two reader registries are one `ReadSet` and its six
@@ -372,6 +395,7 @@ by `/domain-modeling` when the first term or decision is resolved. See
 |---|---|---|
 | `packages/query_kit/` | The pure-Dart core. | yes |
 | `packages/query_kit_flutter/` | The Flutter binding. | yes |
+| `packages/query_kit_hooks/` | The hooks add-on, on `flutter_hooks` (map #92). The only package with a third-party dependency; #21 keeps it out of the other two and out of every example. | yes |
 | `examples/showcase/` | Every feature as a screen, its dummy backend (`server/`), its widget and end-to-end tests. | yes |
 | `examples/task_manager/` | The acceptance demo — one small to-do app — its dummy backend (`server/`) and the acceptance suite. | yes |
 | `website/` | The documentation site (Docusaurus). Built in CI; deployed to GitHub Pages by `pages.yml` on a `query_kit-v*` tag. | yes — its `build/` and `.docusaurus/` are ignored |

@@ -1,0 +1,33 @@
+name: query_kit_hooks_example
+description: >-
+  Posts, todos and projects on query_kit_hooks: every hook the package
+  exports, each in the place an app would use it.
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+
+dependencies:
+  dio: ^5.7.0
+  flutter:
+    sdk: flutter
+  flutter_hooks: ^0.21.2
+  query_kit_hooks: ^0.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  lints: '>=5.1.1 <7.0.0'
+
+flutter:
+  uses-material-design: true
+
+  # The in-memory backend's seed: a copy of the showcase server's
+  # `seed.json`, which the end-to-end suites run against, so the app holds
+  # the same posts and todos with a server or without one.
+  # `test/repository_test.dart` keeps the copy equal to the original.
+  assets:
+    - assets/seed.json

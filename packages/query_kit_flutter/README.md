@@ -243,6 +243,24 @@ testWidgets('the list loads', (tester) async {
 The [testing guide](https://query-kit.dualmeta.io/docs/guides/testing)
 wraps these steps once per suite.
 
+## Building on the binding
+
+An app does not need this section. A package that reads queries in a shape
+of its own, over the binding's controllers, imports the binding's second
+library:
+
+```dart snippet="prose-only: an import line, with nothing beside it to compile"
+import 'package:query_kit_flutter/adapter.dart';
+```
+
+It exports `RebuildRule`, the rebuild decision every call style makes:
+nothing rebuilds for a notification carrying what the reader is already
+showing. `RebuildRule.of(controller)` is the rule the call styles use for one
+of the binding's controllers, and `BuildWhen` is the predicate it asks. The
+optional hooks add-on, [`query_kit_hooks`](https://pub.dev/packages/query_kit_hooks),
+is built on it. See the
+[`adapter` API reference](https://pub.dev/documentation/query_kit_flutter/latest/adapter/).
+
 ## Learn more
 
 - [Overview](https://query-kit.dualmeta.io/docs/overview),

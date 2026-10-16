@@ -1,0 +1,38 @@
+name: query_kit_hooks
+description: >-
+  TanStack Query's hooks for Flutter: useQuery, useMutation, useInfiniteQuery
+  and the rest on flutter_hooks, over query_kit_flutter. AI-coded, not
+  affiliated with TanStack.
+version: 0.1.0
+homepage: https://query-kit.dualmeta.io/
+documentation: https://query-kit.dualmeta.io/docs/overview
+repository: https://github.com/dualmeta-gmbh/query_kit
+issue_tracker: https://github.com/dualmeta-gmbh/query_kit/issues
+topics:
+  - hooks
+  - flutter-hooks
+  - data-fetching
+  - tanstack-query
+  - react-query
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # 0.21.3 needs Flutter 3.32; 0.21.2 is what the Flutter floor resolves.
+  flutter_hooks: ^0.21.2
+  # 1.1.0 is the first version that ships `adapter.dart`; in the workspace
+  # it resolves to the checkout's binding.
+  query_kit_flutter: ^1.1.0
+
+dev_dependencies:
+  clock: ^1.1.1
+  flutter_test:
+    sdk: flutter
+  lints: '>=5.1.1 <7.0.0'
+  meta: ^1.15.0

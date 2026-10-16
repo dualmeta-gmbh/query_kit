@@ -15,6 +15,10 @@ with a Flutter binding on top.
 - **`query_kit_flutter`** — the binding: a provider, listenable controllers,
   builder widgets, a `State` mixin and `context.query(...)`. No third-party
   dependency.
+- **`query_kit_hooks`** — an optional add-on for apps written with
+  `flutter_hooks`: `useQuery`, `useMutation` and the rest of React Query's
+  hooks, over the binding. An app without `flutter_hooks` does not need it;
+  see [hooks](guides/hooks.md).
 
 :::danger[Read this first]
 query_kit is an entirely AI-coded project: all code, tests and documentation
