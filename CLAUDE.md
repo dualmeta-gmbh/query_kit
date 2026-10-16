@@ -283,13 +283,15 @@ visible in GitHub's UI through native blocked-by edges. The wayfinding
 operations are in
 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
 
-**Four maps have been charted and all four reached their destination**, so
-**all four are closed** — a map is closed when its last ticket is, the same
-as any other issue, and `gh issue list --state open --label wayfinder:map`
-is therefore the honest answer to "is a map running". Closed does not mean
-spent: **the Notes and Decisions of all four remain in force**, they are
-cited by number throughout this file, and a closed issue reads and links
-exactly like an open one.
+**Six maps have been charted; the five below reached their destination and
+are closed** — a map is closed when its last ticket is, the same as any
+other issue, and `gh issue list --state open --label wayfinder:map` is
+therefore the honest answer to "is a map running". The sixth,
+[#70](https://github.com/dualmeta-gmbh/query_kit/issues/70) (the
+documentation site, its examples and the two E2E holes), is still open.
+Closed does not mean spent: **the Notes and Decisions of every map remain
+in force**, they are cited by number throughout this file, and a closed
+issue reads and links exactly like an open one.
 
 - [#1](https://github.com/dualmeta-gmbh/query_kit/issues/1) — the fresh port.
   Its Notes are the oldest standing rules (AFK, the upstream pin, no
@@ -304,6 +306,9 @@ exactly like an open one.
   findings **C47–C59** that #33 ruled out of its own scope. Nineteen tickets,
   all worked through on 2026-09-12 (`60173bb`, state docs in `15dd9a0`). Its
   *Not yet specified* section holds the seeds for the next map.
+- [#81](https://github.com/dualmeta-gmbh/query_kit/issues/81) — what the
+  first real integration (BR64) asked for beyond upstream, worked off on
+  2026-09-20 as #82–#85.
 - [#92](https://github.com/dualmeta-gmbh/query_kit/issues/92) —
   `query_kit_hooks`, the hooks add-on #21 left open, in thirteen tickets
   AP0–AP12 (2026-10-15 to 2026-10-16), the agent product owner and decider.
