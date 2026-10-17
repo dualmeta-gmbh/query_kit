@@ -195,7 +195,10 @@ test("via cache, onMutate's cancelQueries ends a refetch that is in flight befor
   await viaCache(page)
   const reads = await scenario.count('GET', TODOS)
 
-  // A refetch the backend has not answered: held in the browser.
+  // A refetch the backend has not answered: held in the browser. (Both holds
+  // route `**/api/todos*`; Playwright runs the later-registered route first, so
+  // the POST hold below shadows this one for the GET `onSettled` triggers —
+  // each hold passes through what is not its own method.)
   const holdGet = holdMethod(page, 'GET')
   await page.getByRole('button', { name: 'Refetch', exact: true }).click()
   await expect.poll(() => holdGet.seen).toBe(1)

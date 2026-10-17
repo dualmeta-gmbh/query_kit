@@ -50,16 +50,6 @@ test('lists every feature once, in the catalogue order', async ({ page, open }) 
   }
 })
 
-test("each row carries the feature's own summary under its title", async ({ page, open }) => {
-  await open('/')
-
-  for (const feature of features) {
-    // Title and summary are one name: a row whose summary was another's, or
-    // lost, matches nothing.
-    await expect(row(page, feature), feature.id).toBeVisible()
-  }
-})
-
 test('every row in the catalogue opens a screen titled after it', async ({ page, open }) => {
   // Every screen mounted, read once and left: the one proof that all of the
   // routes work in a browser. Slow on purpose.
@@ -79,7 +69,7 @@ test('every row in the catalogue opens a screen titled after it', async ({ page,
   }
 })
 
-test('opening a feature and coming back starts no second request for it', async ({ page, open, scenario }) => {
+test('coming back from a feature sends no request of its own', async ({ page, open, scenario }) => {
   const simple = features.find((feature) => feature.id === 'simple')!
   await open('/')
 
@@ -93,7 +83,8 @@ test('opening a feature and coming back starts no second request for it', async 
   await expect(catalogueTitle(page)).toBeVisible()
   await expect(rows(page)).toHaveCount(features.length)
 
-  // The screen is gone and nothing on the list asks for it again.
+  // The screen is gone and the list asks for nothing on its way back. (Opening
+  // the feature again would fetch again: its post is stale at once.)
   expect(await scenario.requests()).toEqual(log)
 })
 

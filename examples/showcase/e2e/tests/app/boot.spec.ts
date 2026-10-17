@@ -1,19 +1,22 @@
 // How the app starts when nobody has told it a scenario: what a human in a
 // browser gets, and what a typed or stale URL does.
 //
-// **Read-only against the `default` world, and serial.** These tests carry no
+// **Read-only against the `default` world.** These tests carry no
 // `?scenario=`, so they live in the backend's one shared `default` world. They
 // never reset or configure it — a `reset` or a `config` there reaches outside
 // the test, and with a reused server (`reuseExistingServer`) it would stomp a
 // developer's own session — and they count requests in the browser
 // (`page.on('request')`) rather than in the scenario's log, which `default`
-// shares with whoever else is using it. Serial, because what they have in
-// common is that world. Green twice in a row is what shows one left it as it
-// found it.
+// shares with whoever else is using it. They need no ordering: nothing one
+// does is visible to another, so they run like every other spec. Green twice
+// in a row is what shows one left the world as it found it.
+//
+// **They assume an untouched `default`.** The exact request list and the seed's
+// first post ("Local development: setup guide") are asserted, so with a
+// reused server on which somebody set latency, an error rate or `failNext` on
+// `default`, they go red.
 import type { Page } from '@playwright/test'
 import { expect, fact, test } from '../fixtures'
-
-test.describe.configure({ mode: 'serial' })
 
 const catalogueTitle = (page: Page) => page.getByRole('heading', { name: 'query_kit showcase', exact: true })
 const heading = (page: Page, title: string) => page.getByRole('heading', { name: title, exact: true })
