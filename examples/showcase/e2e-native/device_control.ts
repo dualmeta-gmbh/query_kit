@@ -74,8 +74,90 @@ const deviceOnly = (what: string) => {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const adb = (...args: string[]) => run('adb', ['-s', device!, ...args])
 const simctl = (...args: string[]) => run('xcrun', ['simctl', ...args])
-// Launch Services, not AppleScript: `open` needs no automation permission.
+// Launch Services first: `open` needs no automation permission.
 const launch = (...args: string[]) => run('open', args)
+
+// --- macOS: which window is in front ------------------------------------------
+//
+// A desktop app only goes `inactive` when it had the focus to lose, and
+// flutter_tools' own attempt to bring a freshly built app forward fails on
+// the runner ("Failed to foreground app; open returned 1", #109): the window
+// stays behind, Finder coming forward changes nothing, and the trip away
+// tests nothing. So the app is made frontmost, and proven so, before it
+// leaves; every step and its exit status goes to this process's log.
+
+const lsregister =
+  '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+
+// One command, its outcome logged. `true` when it exited 0.
+async function attempt(label: string, command: string, args: string[]) {
+  try {
+    const { stdout } = await run(command, args)
+    console.log(`device_control: ${label}: ok ${stdout.trim()}`)
+    return true
+  } catch (error) {
+    const { code, stderr } = error as { code?: unknown; stderr?: string }
+    console.log(`device_control: ${label}: exit ${String(code)} ${(stderr ?? '').trim()}`)
+    return false
+  }
+}
+
+// The bundle id of the window in front, as Launch Services has it.
+async function frontmost() {
+  const { stdout: front } = await run('lsappinfo', ['front'])
+  const { stdout } = await run('lsappinfo', ['info', '-only', 'bundleid', front.trim()])
+  return /"([^"]*)"\s*$/.exec(stdout.trim())?.[1] ?? stdout.trim()
+}
+
+// Polls for `bundleId` to be in front, for up to `ms`.
+async function waitFront(bundleId: string, ms: number) {
+  for (let waited = 0; waited <= ms; waited += 250) {
+    try {
+      if ((await frontmost()) === bundleId) return true
+    } catch (error) {
+      console.log(`device_control: lsappinfo: ${String(error)}`)
+    }
+    await sleep(250)
+  }
+  return false
+}
+
+// Puts the app under test in front, trying the next way when one fails to:
+// by id, by the path of the running bundle (registered with Launch Services
+// first, which a bundle just built under `build/` may not be), and last by
+// AppleScript, which may ask for an automation permission. Throws when none
+// of them got it there, with what each said.
+async function bringToFront() {
+  if (await waitFront(appId, 0)) return
+  const steps: [string, () => Promise<boolean>][] = [
+    ['open -b', () => attempt('open -b', 'open', ['-b', appId])],
+    [
+      'open <bundle>',
+      async () => {
+        const found = await run('lsappinfo', ['find', `bundleid=${appId}`]).catch(() => null)
+        const asn = found?.stdout.trim()
+        const info = asn ? await run('lsappinfo', ['info', '-only', 'bundlepath', asn]).catch(() => null) : null
+        const path = /"([^"]+\.app)"/.exec(info?.stdout ?? '')?.[1]
+        console.log(`device_control: bundle of ${appId}: ${path ?? 'not found'} (asn ${asn ?? 'none'})`)
+        if (!path) return false
+        await attempt('lsregister -f', lsregister, ['-f', path])
+        return attempt('open <bundle>', 'open', [path])
+      },
+    ],
+    [
+      'osascript activate',
+      () => attempt('osascript activate', 'osascript', ['-e', `tell application id "${appId}" to activate`]),
+    ],
+  ]
+  for (const [label, step] of steps) {
+    await step()
+    if (await waitFront(appId, 4000)) {
+      console.log(`device_control: ${appId} in front after ${label}`)
+      return
+    }
+  }
+  throw new Error(`could not bring ${appId} to the front; ${(await frontmost().catch(() => '?'))} is there`)
+}
 
 // --- the app's lifecycle ----------------------------------------------------
 
@@ -94,12 +176,16 @@ async function background(ms: number) {
     await simctl('launch', device!, appId)
   } else if (platform === 'macos') {
     // Another app to the front: the window loses focus, which on a desktop
-    // is what `inactive` means. `open -b` on a running app activates it.
+    // is what `inactive` means — if it had the focus. So the app is first
+    // put in front, and proven to be (#109).
+    await bringToFront()
     await launch('-a', 'Finder')
     left = new Date().toISOString()
     await sleep(ms)
     back = new Date().toISOString()
-    await launch('-b', appId)
+    // `open -b` on a running app activates it; `bringToFront` falls back
+    // when it does not, and proves the window is there.
+    await bringToFront()
   } else {
     await adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     left = new Date().toISOString()
