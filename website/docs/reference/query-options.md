@@ -102,6 +102,7 @@ which every reader of the key shares.
 | [`initialDataUpdatedAtCompute`](https://pub.dev/documentation/query_kit/latest/query_kit/QueryOptions/initialDataUpdatedAtCompute.html) | `DateTime? Function()?` | none | The same, computed only when data is actually seeded; `null` from it means now. Setting both forms throws `ArgumentError` when the options are resolved. TanStack: `initialDataUpdatedAt` as a function. |
 | [`structuralSharing`](https://pub.dev/documentation/query_kit/latest/query_kit/QueryOptions/structuralSharing.html) | `StructuralSharing<TQueryData>?` — `TQueryData Function(TQueryData? previous, TQueryData next)` | `replaceEqualDeep` | How new data is reconciled with what is cached. `noStructuralSharing()` turns it off. See [structural sharing](../guides/structural-sharing.md). TanStack spells the opt-out `structuralSharing: false`. |
 | [`meta`](https://pub.dev/documentation/query_kit/latest/query_kit/QueryOptions/meta.html) | `Object?` | none | Free-form data, handed to the query function as `context.meta` and readable off the query. |
+| [`behavior`](https://pub.dev/documentation/query_kit/latest/query_kit/QueryOptions/behavior.html) | `FetchBehavior<TQueryData>?` | none; every infinite query carries its own | Rewrites how one fetch runs. Marked `@internal`: an application never sets it, and the analyzer warns if it does. See [fetch behavior](#fetch-behavior). TanStack: `behavior`, typed `QueryBehavior`. |
 
 The query function receives a [`QueryFunctionContext`](https://pub.dev/documentation/query_kit/latest/query_kit/QueryFunctionContext-class.html):
 `client`, `queryKey`, `meta` and `signal`, a `QueryCancelToken`. Reading
@@ -152,6 +153,41 @@ the held pages again, first to last, each with the param computed from the
 page before it, and stops early if `getNextPageParam` returns `null`. `hasNextPage`, `fetchNextPage` and their backward twins live
 on the infinite observer and controller, not on the result; see
 [results](results.md).
+
+### Fetch behavior
+
+An infinite query is an ordinary query whose fetch is a loop over pages. The
+loop is installed through the `behavior` field of the cache fields above, and
+this section names the two types behind it. You read them when you look at
+`InfiniteQueryOptions.behavior` or at the source; an app has no reason to
+write one, and the field is `@internal`.
+
+[`FetchBehavior<TQueryData>`](https://pub.dev/documentation/query_kit/latest/query_kit/FetchBehavior-class.html)
+is an interface with one method, `onFetch(FetchContext context, Query query)`.
+`Query.fetch` calls it once per fetch, after the options are resolved and
+before the retry loop is built. It may replace `context.fetchFn`, the function
+that does the work, and the fetch then runs that instead of the `queryFn`.
+Infinite queries are the only user: theirs reads the pages already held,
+takes the direction from `fetchOptions.meta`, and replaces `fetchFn` with a
+function that requests the pages one after another. A query with no `queryFn`
+and a behavior that replaces `fetchFn` does not fail with
+`MissingQueryFunctionError`. TanStack: `QueryBehavior`, which it applies to
+infinite queries the same way.
+
+[`FetchContext<TQueryData>`](https://pub.dev/documentation/query_kit/latest/query_kit/FetchContext-class.html)
+is the description of one fetch that `onFetch` receives. `Query.fetch` builds
+it; its constructor is `@internal`, so a behavior reads one and never makes
+one. Only `fetchFn` is writable.
+
+| Field | Type | What it holds |
+|---|---|---|
+| `client` | `QueryClient` | The client the query belongs to, for reaching its caches. |
+| `queryKey` | `QueryKey` | The key being fetched. |
+| `options` | `DefaultedQueryOptions<TQueryData>` | The fully resolved options this fetch runs with. |
+| `state` | `QueryState<TQueryData>` | The query's state as the fetch begins; where an infinite query reads its held pages. |
+| `fetchOptions` | `FetchOptions?` | The per-call overrides given to `Query.fetch`; an infinite query's page direction is in its `meta`. See [`FetchOptions`](caches-and-observers.md#fetchoptions). |
+| `fetchFn` | `Future<TQueryData> Function()` | What the fetch runs. Starts as the `queryFn` call; a behavior may replace it. |
+| `signal` | `QueryCancelToken` | The cancellation token for this fetch. Reading it marks the signal as used, as `QueryFunctionContext.signal` does, so cancelling the query stops the request and not only the retry loop. |
 
 ## Mutation fields
 
