@@ -128,7 +128,7 @@ Name the type when the write *creates* the entry, as when seeding a key before
 its query exists: `setQueryData<List<Device>>(key, const [])`. A bare
 `setQueryData(key, null)` writes nothing.
 
-The showcase's *diagnostics* screen holds an `int` under one key. Press *Read
+The showcase's [*diagnostics* screen](examples/diagnostics.mdx) holds an `int` under one key. Press *Read
 as String* and the facts read `read=QueryDataTypeError`, `expected=String`,
 `actual=int`; *Read as int* succeeds, and *Write a String* is refused the same
 way. The second card shows a mutation with no function failing with

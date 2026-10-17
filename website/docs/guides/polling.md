@@ -40,7 +40,7 @@ poll is an ordinary refetch: the data stays on screen, `isRefetching` is
 true while it runs, and [structural sharing](structural-sharing.md) keeps the
 rows that did not change.
 
-Try it: in the screen below, pick `500 ms` and watch the strip's `fetches=`
+Try it: in the screen below (the [auto refetching example](../examples/auto-refetching.mdx) shows its source), pick `500 ms` and watch the strip's `fetches=`
 grow; *Add tick* shows up by the next poll at the latest. Pick `dynamic` and
 the poll stops by itself once the list has three ticks — *Clear ticks* starts
 it again.
@@ -204,3 +204,8 @@ lifecycle standing in for the browser tab's visibility.
 `consecutiveErrorCount` has no counterpart in TanStack Query. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Poll until a device confirms](../cookbook/poll-until-confirmed.md) starts and stops a poll by itself, and [realtime updates over a WebSocket](../cookbook/realtime-websockets.md) replaces polling with server events.
+- Examples: the [Task manager](../examples/task-manager.mdx) polls a reminder until the server confirms it.

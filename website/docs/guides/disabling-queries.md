@@ -107,7 +107,7 @@ waiting to be enabled.
 
 A lazy query and a [dependent query](dependent-queries.md) are the same
 mechanism: `enabled` computed from something the query needs. The showcase's
-*dependent queries* screen has both: its comments wait for a post, and the
+[*dependent queries* screen](../examples/dependent-queries.mdx) has both: its comments wait for a post, and the
 *Pause comments* box disables them outright. Choose a post with the box
 ticked and the *Comments* card says *Paused: no request until the box is
 unticked.*; untick it and the request goes out:
@@ -148,3 +148,8 @@ query that fetched before is refetched by `refetchQueries` and
 skip it. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Search as you type](../cookbook/search-as-you-type.md) starts nothing until there is something to search for.
+- Guides: [Dependent queries](dependent-queries.md) for the waiting case, and [query keys](query-keys.md) for what the disabled query is keyed by.

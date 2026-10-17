@@ -24,7 +24,7 @@ a client with no connectivity source believes it is online forever, and a
 failed request is simply a failure. Giving it a source is the
 [connectivity](connectivity.md) guide.
 
-Try it: in the screen below, turn *Online* off, press *Refetch* and then
+Try it: in the screen below (the [offline example](../examples/offline.mdx) shows its source), turn *Online* off, press *Refetch* and then
 *Add todo*. Under `online` neither sends anything: the query shows
 `fetchStatus=paused`, the mutation `isPaused=true`. Turn *Online* back on and
 both go out by themselves. Switch *Network mode* to `always` and repeat — the
@@ -156,3 +156,7 @@ here each paused mutation is decided by its own network mode, so an `always`
 mutation is resumed offline. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Lifecycle and connectivity wiring](../cookbook/lifecycle-and-connectivity-wiring.md), [offline first, and surviving a restart](../cookbook/offline-first-and-persistence.md) and [disconnecting a device](../cookbook/device-and-iot-disconnect.md).

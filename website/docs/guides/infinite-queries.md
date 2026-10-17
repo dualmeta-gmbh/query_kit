@@ -255,14 +255,14 @@ with one page instead, reset the query:
 drops the pages it held and fetches the first one again. `maxPages` bounds
 the same cost ahead of time.
 
-Try it: scroll to the bottom of the list below, or press *Load more*, and
+Try it: scroll to the bottom of the list below (the [load more example](../examples/load-more.mdx) shows its source), or press *Load more*, and
 `pages=` grows by one each time until *Nothing more to load* shows. Press
 *Go to about* and then *Back to list*: the rows are back at once, from the
 cache.
 
 <LiveDemo feature="load-more" />
 
-And with `maxPages: 3`, starting in the middle of the data: press *Load
+And with `maxPages: 3` (the [max pages example](../examples/max-pages.mdx)), starting in the middle of the data: press *Load
 next* twice and `pageParams=` reads `30,40,50`; a third time slides the
 window to `40,50,60` — still three pages, the first one dropped. *Load
 previous* slides it back, fetching `30` again, and *Refetch* requests exactly
@@ -276,6 +276,7 @@ the three pages held.
   it was.
 - [Paginated queries](paginated-queries.md) — the page-numbered shape, one
   page at a time.
+- [An infinite list view](../cookbook/infinite-list-view.md) — the endless feed as a recipe: the next page near the end, once per page.
 
 :::note[In React Query]
 `useInfiniteQuery` returns `fetchNextPage`, `hasNextPage` and the

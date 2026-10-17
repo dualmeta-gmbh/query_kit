@@ -247,7 +247,7 @@ a confirmation, so a second tap cannot race the first.
 
 ## See it run
 
-The task manager app uses this pattern for a task's reminder. Open a task and
+The [task manager app](../examples/task-manager.mdx) uses this pattern for a task's reminder. Open a task and
 flip *Reminder*: the switch moves at once and is marked `confirming`. The
 demo's scheduler confirms after about three seconds, and the poll, every
 half second, picks that up and stops.
@@ -261,3 +261,7 @@ stop. Here it returns a `Duration?`, with `null` meaning stop, and
 See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Polling](../guides/polling.md) for `RefetchInterval` in general, and [mutations](../guides/mutations.md) for the write that comes first.

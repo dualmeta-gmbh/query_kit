@@ -183,7 +183,7 @@ re-runs the combiner when it differs.
 
 ## See it running
 
-The showcase's *combine* screen joins a post, its comments and a counter.
+The showcase's [*combine* screen](../examples/combine.mdx) joins a post, its comments and a counter.
 Set *The post read* to `is refused` and press *Refetch all*: the post's
 refetch fails, yet `state=data` holds, with `refetchError=` saying why. Press
 *Reset* instead and the post has nothing to show: `state=error`, and a
@@ -213,3 +213,8 @@ source still loading, and `CombineMemo` plays the part of TanStack's
 memoised `combine`. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Parallel queries](parallel-queries.md) for independent reads, and the [query collections example](../examples/query-collections.mdx) for a list of ids turned into a list of reads.
+- Reference: [`CombinedResult`](../reference/results.md).

@@ -165,7 +165,7 @@ merge in the order they were registered, the later one winning field by
 field. Registering the same key again replaces its defaults.
 `setMutationDefaults` is the matching call for mutations.
 
-The `default-query-function` screen registers such a function for its
+The [`default-query-function` screen](../examples/default-query-function.mdx) registers such a function for its
 `['api', …]` keys and has no `queryFn` anywhere. Its queries each cost one
 request; press *Fetch a missing post* and the key's path answers with the
 backend's 404, shown as the query's error; *Create a todo* runs a mutation
@@ -179,3 +179,8 @@ same works here, and `setQueryDefaults` narrows it to a key prefix. The type
 check has no counterpart there: a TypeScript default function's answer is
 trusted as whatever the query declared.
 :::
+
+## See also
+
+- Cookbook: [Wiring dio or package:http](../cookbook/wiring-dio-and-http.md) builds the one API client such a function calls, and [auth and token refresh](../cookbook/auth-and-token-refresh.md) sits in front of it.
+- Reference: [`QueryClient`](../reference/query-client.md) for `setQueryDefaults` and the other default setters.

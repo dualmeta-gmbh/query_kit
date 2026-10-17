@@ -215,7 +215,7 @@ has to check for "nothing changed" itself.
 
 ## See it run
 
-In the select and structural sharing demo, five readers show one cache
+In the [select and structural sharing example](../examples/select-and-sharing.mdx), five readers show one cache
 entry, and each counts its *data builds*: the builds where its value was not
 `==` to the one before. Press *Refetch*. Equal data comes back, and no count
 moves. Press *Rename todo 2*, and only the reader that holds the list of texts
@@ -235,3 +235,8 @@ is rare in JavaScript is common here, and `StructurallyShareable` is how a
 class takes part. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Structural sharing](../guides/structural-sharing.md) and [what rebuilds, and when](../guides/render-optimizations.md), the two guides behind the equality this recipe sets up.
+- Cookbook: [Wiring dio or package:http](wiring-dio-and-http.md), where the JSON arrives before it becomes these models.

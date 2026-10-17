@@ -149,7 +149,7 @@ behind whatever comes next. After a mutation the choice decides how long the
 mutation stays `pending`; see [invalidations from
 mutations](invalidations-from-mutations.md).
 
-The `invalidation-and-filters` screen runs every one of these calls against a
+The [`invalidation-and-filters` screen](../examples/invalidation-and-filters.mdx) runs every one of these calls against a
 small cache: the posts list, two observed posts, one post nobody reads, and
 the todos. Press *Invalidate posts prefix* and watch the three observed posts
 entries refetch while post 3 is only marked stale; *Invalidate posts exactly*
@@ -173,3 +173,8 @@ The same `queryClient.invalidateQueries`, with the same prefix matching,
 named `filters:` argument here rather than the first argument, and
 `StaleTime.static` is TanStack Query's `staleTime: 'static'`.
 :::
+
+## See also
+
+- Examples: the [cache inspector](../examples/cache-inspector.mdx) lists every entry with buttons for refetch, invalidate and remove.
+- Cookbook: [Realtime updates over a WebSocket](../cookbook/realtime-websockets.md) invalidates on a server event, and [sign out and multiple accounts](../cookbook/sign-out-and-multi-account.md) clears the cache on a change of user.

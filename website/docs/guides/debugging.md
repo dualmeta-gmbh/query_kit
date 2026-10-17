@@ -151,7 +151,7 @@ class _CacheInspectorState extends State<CacheInspector> {
 It reads the cache directly and holds no observer, so it never keeps an entry
 alive or triggers a fetch — what it shows is what the cache holds.
 
-The *Cache inspector* example is a fuller version: a table of every entry
+The [*Cache inspector* example](../examples/cache-inspector.mdx) is a fuller version: a table of every entry
 with *Refetch*, *Invalidate* and *Remove* buttons, the mutations, and the
 event log. Press *Load posts*, then *Invalidate* on its row and watch the
 log; switch on *Keep readers* and see `observers` go to one, then off again
@@ -173,7 +173,7 @@ Some mistakes fail loudly rather than showing up as wrong data:
 - **Assertions in debug builds** — for example, `context.query` read through
   a `ListView.builder`'s item context. Each message says what to do instead.
 
-In the *Diagnostics* example, press *Read as String* and *Write a String*
+In the [*Diagnostics* example](../examples/diagnostics.mdx), press *Read as String* and *Write a String*
 against an `int` entry, then *Mutate without a function*, and *Register a
 default mutationFn* to see the same mutation succeed.
 
@@ -194,3 +194,8 @@ here. The events they are built on are the same: `queryCache.subscribe` and
 that refetches on every build, a list that never releases, a
 `QueryDataTypeError` for a type that looks right — each with its cause and
 fix.
+
+## See also
+
+- Cookbook: [A global error snackbar](../cookbook/global-error-snackbar.md), one place where failed fetches and saves become something the user sees.
+- Guides: [Testing](testing.md), for asserting on what you saw here.

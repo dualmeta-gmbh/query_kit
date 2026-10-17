@@ -172,7 +172,7 @@ It is the right call for a background task or a service that needs *some*
 answer now and wants the cache to catch up — it fails only when nothing is
 cached and the fetch fails.
 
-The `prefetching` screen prefetches from a button on each row rather than
+The [`prefetching` screen](../examples/prefetching.mdx) prefetches from a button on each row rather than
 on hover, so it works the same with a mouse and a finger. Press a row's
 prefetch button (tooltip *Prefetch post N*): the row gets a *prefetched*
 pill; open it, and the title is there without a request. The last card
@@ -208,3 +208,8 @@ method. `prefetchQuery` is `client.query(options).ignore()`,
 true` for its `revalidateIfStale` option), and `prefetchInfiniteQuery` is
 `client.infiniteQuery(options).ignore()`.
 :::
+
+## See also
+
+- Cookbook: [Routing with go_router](../cookbook/routing-go-router.md) prefetches on a tap, and [list to detail, seeded](../cookbook/list-detail-seeding.md) avoids the second request altogether.
+- Examples: the [pagination example](../examples/pagination.mdx) prefetches the next page as one lands.

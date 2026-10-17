@@ -139,7 +139,7 @@ running one would be the same cache entry, and a user who switches homes
 would see the first home's devices under the second's name until the refetch
 lands.
 
-The showcase's *dependent queries* screen loads a post's comments only once
+The showcase's [*dependent queries* screen](../examples/dependent-queries.mdx) loads a post's comments only once
 the post is there. Press *Choose post 1*: until the post lands, the
 *Comments* card shows *waiting for the post* and `comments enabled=false`,
 then it fetches. Tick *Pause comments* and choose another post: the card
@@ -194,3 +194,8 @@ The same pattern as `enabled: !!userId` in TanStack Query. `enabled` takes
 function, and there is no `skipToken` — `Enabled.no` covers it. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Search as you type](../cookbook/search-as-you-type.md), a query that waits for the text it needs and keeps the last results meanwhile.
+- Guides: [Parallel queries](parallel-queries.md), for reads that do not wait for each other.

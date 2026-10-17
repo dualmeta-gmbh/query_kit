@@ -153,7 +153,7 @@ callback only runs after both exist.
 
 ## Seeing it
 
-The `global-callbacks` screen runs on a client of its own whose caches log
+The [`global-callbacks` screen](../examples/global-callbacks.mdx) runs on a client of its own whose caches log
 every callback as one line. Press *Fetch a missing post*: the query fails,
 the log shows `query error post-999 (meta: toast)`, and a SnackBar says *Post
 not found* — the meta decided it. *Create todo* logs `mutation mutate`,
@@ -170,3 +170,8 @@ as well here. TanStack Query v5 removed `onSuccess` and `onError` from
 `useQuery`; this library never had them on a query, for the same reason: they
 ran once per reader.
 :::
+
+## See also
+
+- Cookbook: [A global error snackbar](../cookbook/global-error-snackbar.md) turns these callbacks into one toast with a per-query way out.
+- Guides: [Side effects](side-effects.md) for the per-widget alternatives, and [debugging](debugging.md) for logging every cache event.

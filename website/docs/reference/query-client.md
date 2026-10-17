@@ -160,3 +160,8 @@ have `mergedWith(other)`, which lays `other`'s set fields over these. See
 `fetchQuery`, `prefetchQuery` and `ensureQueryData` family is covered by
 `query`. Persistence (`hydrate`, `dehydrate`), `isRestoring` and
 `queryKeyHashFn` are not in 1.0; see the [feature matrix](feature-matrix.md).
+
+## See also
+
+- Cookbook: [Where the client lives](../cookbook/dependency-injection.md) and [sign out and multiple accounts](../cookbook/sign-out-and-multi-account.md), the two recipes that create and clear clients.
+- Examples: the [cache inspector](../examples/cache-inspector.mdx) shows what these calls do to the cache.

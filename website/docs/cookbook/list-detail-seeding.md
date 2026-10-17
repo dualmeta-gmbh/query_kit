@@ -165,7 +165,7 @@ class ProductDetailScreen extends StatelessWidget {
    product it already had; `product.isFetching` puts a thin progress bar over
    a background refetch.
 
-Try it in the demo's card A: open a post — it appears at once, seeded from the
+Try it in the demo's card A (the [initial and placeholder example](../examples/initial-and-placeholder.mdx)): open a post — it appears at once, seeded from the
 cached list, and the debug strip under it shows no fetch. Switch on "Treat
 initial data as old" and open another: the seed still shows at once, and a
 background fetch follows, because the seed is dated as old as its list.

@@ -123,3 +123,8 @@ it:
 - **`integration_test`** on a device — an iOS simulator, an Android
   emulator, macOS, Linux or Chrome — with real frames and a real trip to the
   background and back.
+
+## See also
+
+- [Credits, and what this is not](credits.md), including how the code, tests and examples were written.
+- Guides: [Testing](../guides/testing.md) for the widget-test shape these suites share, and the cookbook's [testing a screen](../cookbook/testing-a-screen.md) for it applied to one screen.

@@ -63,7 +63,7 @@ A mutation does not retry unless you ask: its `retry` defaults to
 `RetryPolicy.never`, because repeating a write is rarely safe. Pass a policy
 when the endpoint is idempotent.
 
-The showcase's `mutations` screen walks through all of this on one counter.
+The showcase's [`mutations` screen](../examples/mutations.mdx) walks through all of this on one counter.
 Press *Increment (mutate)* and *Increment (mutateAsync)* and watch the status
 go `pending`, then `success`; tick *Fail next* for an error after exactly one
 request; *Run with callbacks* logs the callbacks in the order they run.
@@ -291,3 +291,5 @@ Query](../reference/differences-from-tanstack.md).
   mutations](cancelling-mutations.md) and [mutation state](mutation-state.md).
 - Offline, a mutation is paused rather than failed; see [network
   mode](network-mode.md).
+- [Forms and server validation](../cookbook/forms-and-server-validation.md) — a mutation-driven form with the server's field errors next to the fields.
+- The [Task manager example](../examples/task-manager.mdx) uses mutations for optimistic edits and a reminder that is confirmed later.

@@ -95,3 +95,7 @@ Either app also runs with no server, as the live demos do:
 
 How all of them are tested, from widget tests to a browser suite against the
 real backend, is on [how the examples are built](../project/examples.md).
+
+Starting from a task rather than a feature? The [cookbook](../cookbook/index.md) has
+recipes such as a token refresh, a search box and an offline-first app, each
+built from the pieces shown here.

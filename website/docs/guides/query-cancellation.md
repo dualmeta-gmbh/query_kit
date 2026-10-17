@@ -159,7 +159,7 @@ loading its first data joins the running fetch instead.
 key: a new term is a new query, the old one loses its last reader, and a
 function that read the signal is cancelled.
 
-Try it: the screen below starts its slow fetch as it opens, so wait the
+Try it: the screen below (the [cancellation example](../examples/cancellation.mdx) shows its source) starts its slow fetch as it opens, so wait the
 three seconds until *Start slow fetch* is enabled, then press it and *Cancel*
 within three seconds. `cancels=` goes up — the token reached the HTTP
 client — and `fetchStatus=` is back to `idle`. Turn on *Ignore the signal*
@@ -214,3 +214,7 @@ cancellable in both. A silent cancel with no successor stays `fetching`
 there and goes back to `idle` here. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Search as you type](../cookbook/search-as-you-type.md) cancels the search it supersedes, and [wiring dio or package:http](../cookbook/wiring-dio-and-http.md) hands the token to the transport.

@@ -232,7 +232,7 @@ the empty entry is garbage collected `gcTime` after its last reader leaves.
 
 ## See it run
 
-The invalidation and filters demo shows the mechanism this recipe works
+The [invalidation and filters example](../examples/invalidation-and-filters.mdx) shows the mechanism this recipe works
 around. Press *Remove post 2*: the entry disappears from the cache
 (`status=absent`) but its reader keeps its last result. *Re-attach post 2*
 resolves the key again, and the entry comes back with a fetch.
@@ -246,3 +246,8 @@ is mounted creates the entry again. The Flutter-specific part is waiting for
 happened. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Query cancellation](../guides/query-cancellation.md) and [cancelling mutations](../guides/cancelling-mutations.md), the two halves of stopping work, and [network mode](../guides/network-mode.md) for requests that wait.
+- Examples: the [mutation cancel example](../examples/mutation-cancel.mdx) cancels a slow write.

@@ -214,7 +214,7 @@ order list's instance when the order did not change.
 
 ## See it run
 
-The basic demo is the per-entity shape: a list of posts, and one key per post
+The [basic example](../examples/basic.mdx) is the per-entity shape: a list of posts, and one key per post
 for the detail. Open a post and go back. Its row is marked `cached` because
 its own key now has an entry. Leave it alone for ten seconds and the mark
 goes, because that one entry was garbage collected while the list's entry
@@ -230,3 +230,8 @@ that maps and classes are not walked member by member, so a map by id or a
 wrapper class needs the hook or `StructurallyShareable`. See [differences
 from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Query keys](../guides/query-keys.md), [structural sharing](../guides/structural-sharing.md) and [parallel queries](../guides/parallel-queries.md) for a list of reads.
+- Examples: the [query collections example](../examples/query-collections.mdx) and the [select and structural sharing example](../examples/select-and-sharing.mdx).

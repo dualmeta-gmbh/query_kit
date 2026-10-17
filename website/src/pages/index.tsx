@@ -567,6 +567,9 @@ export default function Home(): ReactNode {
               <Link className={styles.textAction} to="/docs/examples">
                 Examples <Arrow />
               </Link>
+              <Link className={styles.textAction} to="/docs/cookbook">
+                Cookbook <Arrow />
+              </Link>
               <Link className={styles.textAction} to="/docs/overview">
                 Overview <Arrow />
               </Link>
