@@ -8,6 +8,9 @@ description: Symptom first — what you see, why it happens, and what to do inst
 Symptom first. Most of these are TanStack Query behaviour that query_kit keeps
 on purpose, so the mechanism is worth knowing even once the fix is in.
 
+The last three entries are about testing an app's screens, in widget tests and
+in browser-driven tests.
+
 ## My polling never resumes after I paused it in a callback
 
 **Symptom.** A `RefetchInterval.dynamic` (or an `Enabled.when`) reads state
@@ -366,12 +369,13 @@ by itself.
 **Mechanism.** Every build of a reader hands its observer its options again.
 An inline `queryFn` closure is never equal to the last one, so each build
 emits `QueryObserverOptionsUpdated`, and a widget that rebuilds on that event
-has caused the next one. `QueryObserverResultsUpdated` is a second event about
-readers rather than about the cache. The mutation cache does the same with
-`MutationObserverOptionsUpdated`.
+has caused the next one. `QueryObserverResultsUpdated` is also about readers:
+it is emitted once for every result an observer delivers, and rebuilding on
+it follows the reader rather than the cache. The mutation cache does the
+same with `MutationObserverOptionsUpdated`.
 
 **Fix.** Rebuild only on events that say the cache changed, and leave the two
-reader events out:
+reader events out of a cache-wide view:
 
 ```dart snippet="reference/troubleshooting.md#feeds-itself"
 void Function() rebuildOnCacheChanges(
@@ -379,8 +383,9 @@ void Function() rebuildOnCacheChanges(
   void Function() rebuild,
 ) =>
     client.queryCache.subscribe((event) {
-      // Both fire on every reader's build, so rebuilding on them
-      // makes the screen feed itself.
+      // These are about readers: the first fires when a build hands a
+      // reader changed options, the second for every result it delivers.
+      // Rebuilding on them makes the screen feed itself.
       if (event is QueryObserverOptionsUpdated ||
           event is QueryObserverResultsUpdated) {
         return;

@@ -26,17 +26,17 @@ Facts only, from pub.dev (its API and package pages) and each package's
 `pubspec.yaml`. "Dependencies" lists what the pubspec names besides the Dart
 and Flutter SDKs.
 
-| Package | Release read | First published | Publisher on pub.dev | Licence | Dependencies |
-|---|---|---|---|---|---|
-| [`query_kit`](https://pub.dev/packages/query_kit) | 1.0.3, 16 Oct 2026 | 23 Sep 2026 | dualmeta.io | MIT | `clock`, `meta` |
-| [`query_kit_flutter`](https://pub.dev/packages/query_kit_flutter) | 1.1.0, 16 Oct 2026 | 23 Sep 2026 | dualmeta.io | MIT | `query_kit`, `meta`, `clock` |
-| [`query_kit_hooks`](https://pub.dev/packages/query_kit_hooks) | 0.1.0, 16 Oct 2026 | 16 Oct 2026 | dualmeta.io | MIT | `query_kit_flutter`, `flutter_hooks` |
-| [`fquery`](https://pub.dev/packages/fquery) | 3.1.0, 25 Jun 2026 | 2 Jul 2022 | none shown | MIT | `fquery_core`, `flutter_hooks`, `freezed`, `freezed_annotation`, `collection` |
-| [`cached_query`](https://pub.dev/packages/cached_query) | 3.7.0, 17 May 2026 | 26 Jun 2022 | cachedquery.dev | MIT | `rxdart`, `meta` |
-| [`cached_query_flutter`](https://pub.dev/packages/cached_query_flutter) | 3.4.0, 17 May 2026 | 26 Jun 2022 | cachedquery.dev | MIT | `cached_query`, `connectivity_plus` |
-| [`cached_storage`](https://pub.dev/packages/cached_storage) | 3.3.0, 17 May 2026 | 26 Jun 2022 | cachedquery.dev | MIT | `cached_query`, `sqflite`, `path` |
-| [`flutter_query`](https://pub.dev/packages/flutter_query) | 0.11.1, 14 Jul 2026 | name on pub.dev since 30 Sep 2020; the current changelog starts at 0.4.0, 8 Jan 2026 | flutterquery.com | MIT | `flutter_hooks`, `clock`, `collection`, `meta` |
-| [`query_stack`](https://pub.dev/packages/query_stack) | 1.0.5, 30 May 2023 | 31 Mar 2023 | jc.kodel.com.br | BSD-3-Clause | `rxdart`, `collection` |
+| Package | Release read | First published | Licence | Dependencies |
+|---|---|---|---|---|
+| [`query_kit`](https://pub.dev/packages/query_kit) | 1.0.3, 16 Oct 2026 | 23 Sep 2026 | MIT | `clock`, `meta` |
+| [`query_kit_flutter`](https://pub.dev/packages/query_kit_flutter) | 1.1.0, 16 Oct 2026 | 23 Sep 2026 | MIT | `query_kit`, `meta` |
+| [`query_kit_hooks`](https://pub.dev/packages/query_kit_hooks) | 0.1.0, 16 Oct 2026 | 16 Oct 2026 | MIT | `query_kit_flutter`, `flutter_hooks` |
+| [`fquery`](https://pub.dev/packages/fquery) | 3.1.0, 25 Jun 2026 | 2 Jul 2022 | MIT | `fquery_core`, `flutter_hooks`, `freezed`, `freezed_annotation`, `collection` |
+| [`cached_query`](https://pub.dev/packages/cached_query) | 3.7.0, 17 May 2026 | 26 Jun 2022 | MIT | `rxdart`, `meta` |
+| [`cached_query_flutter`](https://pub.dev/packages/cached_query_flutter) | 3.4.0, 17 May 2026 | 26 Jun 2022 | MIT | `cached_query`, `connectivity_plus` |
+| [`cached_storage`](https://pub.dev/packages/cached_storage) | 3.3.0, 17 May 2026 | 26 Jun 2022 | MIT | `cached_query`, `sqflite`, `path` |
+| [`flutter_query`](https://pub.dev/packages/flutter_query) | 0.11.1, 14 Jul 2026 | name on pub.dev since 30 Sep 2020; the current changelog starts at 0.4.0, 8 Jan 2026 | MIT | `flutter_hooks`, `clock`, `collection`, `meta` |
+| [`query_stack`](https://pub.dev/packages/query_stack) | 1.0.5, 30 May 2023 | 31 Mar 2023 | BSD-3-Clause | `rxdart`, `collection` |
 
 ## query_kit
 
@@ -125,9 +125,10 @@ is a library in the same family and not a port. It is split in three:
   refetching when the connection returns (through `connectivity_plus`) and
   when the app resumes. Its README has a section on using it with
   `flutter_bloc`.
-- **`cached_storage`** is a storage add-on built on `sqflite`. The README
-  describes the persistent cache as "flutter ios/android only", or you
-  implement your own `StorageInterface`.
+- **`cached_storage`** is a storage add-on built on `sqflite`. The
+  `cached_query` README lists the persistent cache as "flutter ios/android
+  only, or easily create your own", through a `StorageInterface` you can
+  implement.
 
 Where it may fit better: you need a persisted cache or the devtools
 extension today, your app is organised around streams or `flutter_bloc`, or
@@ -155,7 +156,8 @@ How it is shaped, from the README and changelog:
   Its README lists no builder widgets.
 - A `QueryClient` and a `QueryClientProvider`. Its changelog describes sealed
   snapshot results, graduated from an experimental library in 0.11.0, and
-  `seed` and `placeholder` options that take sealed values.
+  `seed` and `placeholder` options that take sealed values, with a lazy
+  callback form of each.
 - Names that differ from TanStack Query on purpose, which its comparison
   page explains: `Duration`-based `staleDuration` and `gcDuration`, `seed`
   for `initialData`, `placeholder` for `placeholderData`, and a single
@@ -167,8 +169,8 @@ How it is shaped, from the README and changelog:
   for Flutter 3.32 or later.
 
 Where it may fit better: you write your screens with hooks and want a
-package built around that from the start, with a documented list of where it
-leaves TanStack Query behind. `query_kit_hooks` also offers hooks, with
+package built around that from the start, with a page listing where its
+names and options differ from TanStack Query. `query_kit_hooks` also offers hooks, with
 React Query's own names and option types and with React Query's hook tests
 ported; the two are alternatives, not companions.
 
@@ -200,8 +202,8 @@ listings. Both are young: their first versions are from 2026.
 None of this is a verdict. Questions that separate these packages in
 practice, each answered by the packages' own documentation:
 
-- **Do you need a persisted cache or devtools now?** `cached_query` documents
-  both.
+- **Do you need a persisted cache or devtools now?** Of the packages examined here,
+  `cached_query` documents both.
 - **Do you write with `flutter_hooks`?** `fquery`, `flutter_query` and
   `query_kit_hooks` all have hooks; they differ in names, in option types and
   in what they depend on.

@@ -59,11 +59,9 @@ holds the findings the decisions rest on. Each says what was read and when.
 
 **About other packages and naming**
 
-- [Survey of Dart and Flutter query libraries](https://github.com/dualmeta-gmbh/query_kit/blob/main/docs/research/dart-query-libraries-survey.md)
-  and [a deeper comparison](https://github.com/dualmeta-gmbh/query_kit/blob/main/docs/research/competitor-deep-dive.md),
-  both from September 2026. They are planning papers for the project itself,
-  and they name defects found by reading other packages' code. The sourced
-  public version is [other Dart libraries](../reference/other-dart-libraries.md).
+- [Other Dart libraries](../reference/other-dart-libraries.md) is the
+  sourced comparison with the neighbouring packages; its rules are in the
+  last decision record above.
 - [Package names and affiliation](https://github.com/dualmeta-gmbh/query_kit/blob/main/docs/research/package-naming-and-affiliation.md):
   which names were free on pub.dev, and what TanStack has said about
   community ports. See [credits](credits.md).

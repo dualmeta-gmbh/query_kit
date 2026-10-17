@@ -474,8 +474,9 @@ void Function() rebuildOnCacheChanges(
   void Function() rebuild,
 ) =>
     client.queryCache.subscribe((event) {
-      // Both fire on every reader's build, so rebuilding on them
-      // makes the screen feed itself.
+      // These are about readers: the first fires when a build hands a
+      // reader changed options, the second for every result it delivers.
+      // Rebuilding on them makes the screen feed itself.
       if (event is QueryObserverOptionsUpdated ||
           event is QueryObserverResultsUpdated) {
         return;
