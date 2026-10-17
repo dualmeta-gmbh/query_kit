@@ -81,6 +81,8 @@ jobs:
         if: failure()
         with:
           name: native-e2e-android-logs
+          # The logs sit in a dot directory, which the action skips by default.
+          include-hidden-files: true
           path: |
             examples/showcase/e2e-native/.logs
             packages/query_kit_hooks/example/e2e-native/.logs
@@ -121,6 +123,8 @@ jobs:
         if: failure()
         with:
           name: native-e2e-ios-logs
+          # The logs sit in a dot directory, which the action skips by default.
+          include-hidden-files: true
           path: |
             examples/showcase/e2e-native/.logs
             packages/query_kit_hooks/example/e2e-native/.logs
@@ -158,6 +162,8 @@ jobs:
         if: failure()
         with:
           name: native-e2e-macos-logs
+          # The logs sit in a dot directory, which the action skips by default.
+          include-hidden-files: true
           path: |
             examples/showcase/e2e-native/.logs
             packages/query_kit_hooks/example/e2e-native/.logs
@@ -196,6 +202,8 @@ jobs:
         if: failure()
         with:
           name: native-e2e-linux-logs
+          # The logs sit in a dot directory, which the action skips by default.
+          include-hidden-files: true
           path: |
             examples/showcase/e2e-native/.logs
             packages/query_kit_hooks/example/e2e-native/.logs
@@ -240,6 +248,8 @@ jobs:
         if: failure()
         with:
           name: native-e2e-web-logs
+          # The logs sit in a dot directory, which the action skips by default.
+          include-hidden-files: true
           path: |
             examples/showcase/e2e-native/.logs
             packages/query_kit_hooks/example/e2e-native/.logs
