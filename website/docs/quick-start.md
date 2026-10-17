@@ -1,6 +1,7 @@
 ---
-title: Quick start
-description: A provider at the root, an options function, a widget that reads it — and the mutation that invalidates it.
+title: "Quick start: TanStack Query in a Flutter app"
+sidebar_label: Quick start
+description: TanStack Query in a Flutter app in four steps — a provider at the root, an options function, a widget that reads it, and the mutation that invalidates it.
 ---
 
 # Quick start

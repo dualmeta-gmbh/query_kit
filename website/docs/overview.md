@@ -1,6 +1,7 @@
 ---
-title: Overview
-description: What query_kit is, the server-state problem it solves, what reading a query looks like in Flutter, and who it is for.
+title: "Overview: TanStack Query for Flutter"
+sidebar_label: Overview
+description: query_kit is TanStack Query for Flutter and Dart — what it is, the server-state problem it solves, what reading a query looks like in a widget, and who it is for.
 ---
 
 # Overview

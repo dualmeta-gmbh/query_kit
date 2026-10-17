@@ -18,6 +18,13 @@ const siteUrl = 'https://query-kit.dualmeta.io'
 
 // The project's AI disclosure, in the one wording used everywhere a reader
 // can land first.
+//
+// Where it is raw HTML (the announcement bar, the footer) it sits in a
+// `data-nosnippet` span: a reader sees it on every page, but a search engine
+// does not quote it as the page's summary. Being the first text of every
+// page's body, it was the snippet Google showed for every result instead of
+// the page's own description.
+const nosnippet = (html: string) => `<span data-nosnippet>${html}</span>`
 const aiNotice =
   "query_kit is an entirely AI-coded project: all code, tests and documentation were written by AI coding agents (Anthropic's Claude). A human maintainer set the goals and reviews releases, but did not write the code."
 
@@ -70,6 +77,20 @@ const config: Config = {
         href: 'https://fonts.gstatic.com',
         crossorigin: 'anonymous',
       },
+    },
+    // The favicon as PNG and as an Apple touch icon, beside the SVG that
+    // `favicon` names: Google's results show a site's icon only from a size
+    // that is a multiple of 48px, and Safari's home-screen icon takes no SVG.
+    // `static/favicon.ico` answers the crawlers that ask for that path alone.
+    // All three are rendered from `static/img/favicon.svg` by
+    // `scripts/render-favicons.mjs`.
+    {
+      tagName: 'link',
+      attributes: { rel: 'icon', type: 'image/png', sizes: '96x96', href: `${baseUrl}img/favicon-96x96.png` },
+    },
+    {
+      tagName: 'link',
+      attributes: { rel: 'apple-touch-icon', sizes: '180x180', href: `${baseUrl}img/apple-touch-icon.png` },
     },
     // The site's index for AI agents (`plugins/llms-txt.ts`). It lives under
     // the base path, not at the host's root, so a page says where it is.
@@ -175,7 +196,9 @@ Install with \`flutter pub add query_kit_flutter\` in a Flutter app, or \`dart p
     // and so no dark-mode rule — can override.
     announcementBar: {
       id: 'unaffiliated-and-ai-coded',
-      content: `${aiNotice} It is a community port of TanStack Query, <b>not affiliated with or endorsed by TanStack</b>. <a href="${baseUrl}docs/project/credits">What that means</a>.`,
+      content: nosnippet(
+        `${aiNotice} It is a community port of TanStack Query, <b>not affiliated with or endorsed by TanStack</b>. <a href="${baseUrl}docs/project/credits">What that means</a>.`,
+      ),
       isCloseable: true,
     },
     navbar: {
@@ -234,7 +257,9 @@ Install with \`flutter pub add query_kit_flutter\` in a Flutter app, or \`dart p
           ],
         },
       ],
-      copyright: `${aiNotice} A port of TanStack Query, published with thanks under its MIT licence. Not affiliated with, endorsed by, or connected to Tanner Linsley, the TanStack team or the TanStack organisation.`,
+      copyright: nosnippet(
+        `${aiNotice} A port of TanStack Query, published with thanks under its MIT licence. Not affiliated with, endorsed by, or connected to Tanner Linsley, the TanStack team or the TanStack organisation.`,
+      ),
     },
     prism: {
       // Geist-style colours (`src/prismThemes.ts`). One theme for both
