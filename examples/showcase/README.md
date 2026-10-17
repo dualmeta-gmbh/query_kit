@@ -78,6 +78,19 @@ row of the table below — and `test/catalogue_test.dart` compares the five,
 plus which screen each route actually reaches. Adding a feature means adding
 it everywhere; the test says where you stopped.
 
+**What is about the app and not about one feature** has no row in that
+comparison, and two homes. The catalogue screen's widget test is
+`test/home_screen_test.dart`, outside `test/features/`; its browser specs are
+`e2e/tests/app/catalogue.spec.ts` (the list, every row opening its screen,
+scroll position, keyboard) and `boot.spec.ts` (the app opened with no
+`?scenario=`, an unknown route, a deep link, a reload). `catalogue_test.dart`
+lists `e2e/tests` without descending, Playwright's `testDir` does, so
+`e2e/tests/app/` is seen by one and not the other — on purpose, and a case in
+`catalogue_test.dart` says so. `boot.spec.ts` lives in the backend's shared
+`default` world, so it is serial and read-only there: it never resets or
+configures it and counts requests in the browser rather than in the scenario
+log.
+
 **`lib/shared/` is the deliberate exception to "self-contained".** Self-
 contained means a feature never reaches into another feature's directory, not
 that it re-types the app's own furniture. Each file there is one subject, and
