@@ -1,6 +1,7 @@
 ---
-title: Coming from React Query
-description: Every JavaScript name mapped to its Dart counterpart — reading a query, the client, options, infinite queries, mutations.
+title: "React Query in Flutter: coming from TanStack Query"
+sidebar_label: Coming from React Query
+description: React Query and TanStack Query in Flutter — every JavaScript name mapped to its Dart counterpart, from useQuery and the client to options, infinite queries and mutations.
 ---
 
 # Coming from TanStack Query (JS)

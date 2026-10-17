@@ -46,27 +46,53 @@ const aiNotice =
 
 const install = "flutter pub add query_kit_flutter";
 
-// What a search engine may read as the page's subject: the source code of a
-// Dart library, its repository and its licence (schema.org).
+// What a search engine may read about the site and its subject (schema.org):
+// the site itself, so a result is labelled with the project's name rather than
+// one guessed from the domain's owner, and the source code of a Dart library,
+// its repository, its packages and its licence. Google reads the `WebSite` node only on the
+// home page, which is why it lives here.
 function structuredData(url: string): string {
   return JSON.stringify({
     "@context": "https://schema.org",
-    "@type": "SoftwareSourceCode",
-    name: "query_kit",
-    description:
-      "TanStack Query for Dart and Flutter: a port of TanStack Query's query-core with a Flutter binding. An AI-coded community port, not affiliated with TanStack.",
-    url,
-    codeRepository: "https://github.com/dualmeta-gmbh/query_kit",
-    programmingLanguage: "Dart",
-    runtimePlatform: "Flutter",
-    license: "https://opensource.org/licenses/MIT",
-    keywords: [
-      "TanStack Query",
-      "React Query",
-      "Flutter",
-      "Dart",
-      "cache",
-      "data fetching",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${url}#website`,
+        name: "query_kit",
+        alternateName: ["query_kit for Flutter", "query-kit"],
+        url,
+        inLanguage: "en",
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        name: "query_kit",
+        description:
+          "TanStack Query for Dart and Flutter: a port of TanStack Query's query-core with a Flutter binding. An AI-coded community port, not affiliated with TanStack.",
+        url,
+        codeRepository: "https://github.com/dualmeta-gmbh/query_kit",
+        // The same project elsewhere, so a search engine takes the packages,
+        // the repository and this site for one thing.
+        sameAs: [
+          "https://github.com/dualmeta-gmbh/query_kit",
+          "https://pub.dev/packages/query_kit_flutter",
+          "https://pub.dev/packages/query_kit",
+          "https://pub.dev/packages/query_kit_hooks",
+        ],
+        isPartOf: { "@id": `${url}#website` },
+        programmingLanguage: "Dart",
+        runtimePlatform: "Flutter",
+        license: "https://opensource.org/licenses/MIT",
+        keywords: [
+          "TanStack Query",
+          "TanStack Query for Flutter",
+          "React Query",
+          "React Query for Flutter",
+          "Flutter",
+          "Dart",
+          "cache",
+          "data fetching",
+        ],
+      },
     ],
   });
 }
@@ -273,7 +299,7 @@ export default function Home(): ReactNode {
 
   return (
     <Layout
-      title="TanStack Query for Dart and Flutter"
+      title="TanStack Query for Flutter and Dart"
       description="TanStack Query for Flutter and Dart: cached server data, background refetching, retries, mutations and infinite queries, ported test for test."
     >
       {/* Its own share image, from plugins/og-images.ts. */}
@@ -287,12 +313,15 @@ export default function Home(): ReactNode {
         <div className={styles.heroBackdrop} aria-hidden="true" />
         <div className={styles.heroInner}>
           <div className={styles.heroText}>
-            <h1 className={styles.title}>
+            {/* The heading names what a reader searches for; the large line
+                below it says what that buys them. */}
+            <h1 className={styles.kicker}>TanStack Query for Flutter and Dart</h1>
+            <p className={styles.title}>
               Server data in Flutter,{" "}
               <span className={styles.titleAccent}>
                 cached and kept&nbsp;fresh
               </span>
-            </h1>
+            </p>
             <p className={styles.subtitle}>
               A port of TanStack Query to Dart and Flutter. You describe where
               the data comes from; the cache decides when to fetch, share,
@@ -324,7 +353,13 @@ export default function Home(): ReactNode {
           </div>
         </div>
 
-        <aside className={styles.disclosure} aria-label="About this project">
+        {/* Shown to every reader, not quoted as the page's search snippet;
+            the AI notice in docusaurus.config.ts says why. */}
+        <aside
+          className={styles.disclosure}
+          aria-label="About this project"
+          data-nosnippet=""
+        >
           <p className={styles.disclosureLabel}>Before you start</p>
           <p className={styles.disclosureText}>{aiNotice}</p>
           <p className={styles.disclosureText}>

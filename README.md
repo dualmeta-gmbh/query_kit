@@ -5,6 +5,10 @@ refetching, retries, cancellation, mutations and infinite queries — a port of
 TanStack Query's `query-core`, checked against upstream's own test suite,
 ported case by case.
 
+**Documentation: [TanStack Query for Flutter at query-kit.dualmeta.io](https://query-kit.dualmeta.io/)**
+· [Quick start](https://query-kit.dualmeta.io/docs/quick-start)
+· [Coming from React Query](https://query-kit.dualmeta.io/docs/coming-from-react-query)
+
 > **query_kit is an entirely AI-coded project: all code, tests and
 > documentation were written by AI coding agents (Anthropic's Claude). A human
 > maintainer set the goals and reviews releases, but did not write the

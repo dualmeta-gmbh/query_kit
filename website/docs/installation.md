@@ -1,5 +1,6 @@
 ---
-title: Installation
+title: "Installation: TanStack Query for Flutter"
+sidebar_label: Installation
 description: Which package to add, what it depends on, the Dart and Flutter floors, and the analyzer settings that make the types work for you.
 ---
 

@@ -44,6 +44,15 @@
   align-items: center;
 }
 
+.kicker {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  font-weight: 650;
+  letter-spacing: 0;
+  color: var(--qk-accent);
+  margin: 0 0 0.85rem;
+}
+
 .title {
   font-size: clamp(2.3rem, 3.9vw, 3rem);
   line-height: 1.08;
