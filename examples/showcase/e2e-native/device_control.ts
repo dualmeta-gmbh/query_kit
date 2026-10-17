@@ -74,8 +74,6 @@ const deviceOnly = (what: string) => {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const adb = (...args: string[]) => run('adb', ['-s', device!, ...args])
 const simctl = (...args: string[]) => run('xcrun', ['simctl', ...args])
-// Launch Services first: `open` needs no automation permission.
-const launch = (...args: string[]) => run('open', args)
 
 // --- macOS: which window is in front ------------------------------------------
 //
@@ -169,6 +167,49 @@ async function who() {
   await attempt('app is', 'sh', ['-c', `lsappinfo info -all "$(lsappinfo find bundleid=${appId})" | head -40`])
   await attempt('console', 'stat', ['-f', '%Su', '/dev/console'])
   await attempt('processes', 'sh', ['-c', 'lsappinfo list | grep -E "^ *[0-9]+\\) " | head -20'])
+}
+
+// --- the app's lifecycle ----------------------------------------------------
+
+async function background(ms: number) {
+  // Taken before the return is asked for: the command that brings the app
+  // back returns only once it is in front, and by then it may have fetched.
+  let left: string
+  let back: string
+  if (platform === 'ios') {
+    // Opening another app is the one way simctl has to move ours off screen;
+    // launching ours again brings the running process back, not a new one.
+    await simctl('launch', device!, 'com.apple.Preferences')
+    left = new Date().toISOString()
+    await sleep(ms)
+    back = new Date().toISOString()
+    await simctl('launch', device!, appId)
+  } else if (platform === 'macos') {
+    // Another app to the front: the window loses focus, which on a desktop
+    // is what `inactive` means — if it had the focus. So the app is first
+    // put in front, and proven to be (#109).
+    await bringToFront()
+    // Finder is in front once it is asked for, if it can be.
+    if (!(await attempt('open -a Finder', 'open', ['-a', 'Finder']))) {
+      await attempt('Finder activate', 'osascript', ['-e', 'tell application "Finder" to activate'])
+    }
+    left = new Date().toISOString()
+    console.log(`device_control: away; in front: ${await frontmost().catch(() => '?')}`)
+    await sleep(ms)
+    back = new Date().toISOString()
+    // `open -b` on a running app activates it; `bringToFront` falls back
+    // when it does not, and proves the window is there.
+    await bringToFront()
+  } else {
+    await adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+    left = new Date().toISOString()
+    await sleep(ms)
+    back = new Date().toISOString()
+    // The launcher intent, as a tap on the icon sends it: with the activity's
+    // `singleTop` launch mode it resumes the running task.
+    await adb('shell', 'monkey', '-p', appId, '-c', 'android.intent.category.LAUNCHER', '1')
+  }
+  return { left, back }
 }
 
 // --- Android-only device state ----------------------------------------------
@@ -308,6 +349,7 @@ createHttpServer(async (request, response) => {
   try {
     response.end(JSON.stringify(await handler(url, parts)))
   } catch (error) {
+    console.log(`device_control: ${request.method} ${url.pathname} failed: ${String(error)}`)
     response.statusCode = 500
     response.end(JSON.stringify({ message: String(error) }))
   }

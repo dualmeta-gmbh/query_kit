@@ -310,8 +310,9 @@ desktop app is never `paused`: with another app in front it is `inactive`,
 which a desktop counts as unfocused, so the lifecycle cases wait for that
 there (`isDesktop`), and a case that leaves the app skips only where nothing
 can send it away (`canLeave`: the web, and Linux, whose virtual display has
-no window manager). On macOS `background` brings Finder to the front and the
-app back with `open -b`; keep the window uncovered while it runs, since a
+no window manager). On macOS `background` first puts the app in front (`open -b`,
+then its bundle, then AppleScript, each logged to the device control's log), brings Finder to the front and the
+app back the same way (#109: whether that now works on the runner is open); keep the window uncovered while it runs, since a
 covered one is given frames slowly. A desktop app is started once per
 `flutter test`, so `run.sh` runs each file on its own there. Text
 goes in through `typeInto`, not `tester.enterText`, which does nothing in a
