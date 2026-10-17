@@ -158,8 +158,7 @@ on the infinite observer and controller, not on the result; see
 
 An infinite query is an ordinary query whose fetch is a loop over pages. The
 loop is installed through the `behavior` field of the cache fields above, and
-this section names the two types behind it. You read them when you look at
-`InfiniteQueryOptions.behavior` or at the source; an app has no reason to
+this section names the two types behind it. You read them when you read the source; an app has no reason to
 write one, and the field is `@internal`.
 
 [`FetchBehavior<TQueryData>`](https://pub.dev/documentation/query_kit/latest/query_kit/FetchBehavior-class.html)
@@ -171,8 +170,9 @@ Infinite queries are the only user: theirs reads the pages already held,
 takes the direction from `fetchOptions.meta`, and replaces `fetchFn` with a
 function that requests the pages one after another. A query with no `queryFn`
 and a behavior that replaces `fetchFn` does not fail with
-`MissingQueryFunctionError`. TanStack: `QueryBehavior`, which it applies to
-infinite queries the same way.
+`MissingQueryFunctionError`. TanStack: `QueryBehavior`; it picks its infinite
+query behavior when the query is an infinite one and otherwise uses
+`options.behavior`.
 
 [`FetchContext<TQueryData>`](https://pub.dev/documentation/query_kit/latest/query_kit/FetchContext-class.html)
 is the description of one fetch that `onFetch` receives. `Query.fetch` builds
@@ -187,7 +187,7 @@ one. Only `fetchFn` is writable.
 | `state` | `QueryState<TQueryData>` | The query's state as the fetch begins; where an infinite query reads its held pages. |
 | `fetchOptions` | `FetchOptions?` | The per-call overrides given to `Query.fetch`; an infinite query's page direction is in its `meta`. See [`FetchOptions`](caches-and-observers.md#fetchoptions). |
 | `fetchFn` | `Future<TQueryData> Function()` | What the fetch runs. Starts as the `queryFn` call; a behavior may replace it. |
-| `signal` | `QueryCancelToken` | The cancellation token for this fetch. Reading it marks the signal as used, as `QueryFunctionContext.signal` does, so cancelling the query stops the request and not only the retry loop. |
+| `signal` | `QueryCancelToken` | The cancellation token for this fetch. Reading it marks the signal as used, as `QueryFunctionContext.signal` does, so that when the last observer leaves, the request is cancelled and not only the retry loop. |
 
 ## Mutation fields
 
