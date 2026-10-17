@@ -8,8 +8,13 @@
   what the nested part had just read, and the outer widget kept showing the
   old value with no error. A read outside the reader's own build is now
   recorded beside the own build's, not over it, in `context.query`,
-  `context.infiniteQuery`, `context.mutation` and `QueryMixin`. A reader's
-  own reads and the call styles' behaviour are otherwise unchanged.
+  `context.infiniteQuery`, `context.mutation` and `QueryMixin`. The own
+  build's baseline is retired when a later build of the reader no longer
+  reads the key, so a `buildWhen` is never handed a value no screen shows and
+  an infinite query's paging flags do not bypass it; and a second direct read
+  in one build (a `LayoutBuilder` callback, or a widget its parent handed a
+  new widget) counts as the reader's own like the first. A reader's own reads
+  and the call styles' behaviour are otherwise unchanged.
 
 ## 1.1.0
 

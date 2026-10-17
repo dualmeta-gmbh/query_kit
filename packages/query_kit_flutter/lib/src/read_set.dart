@@ -117,6 +117,16 @@ typedef _MutationShape = (
 /// it has read since. A key that depends on something the builder reads
 /// belongs in a widget below it, whose own build is always provable.
 ///
+/// Own and additive reads also differ in what an entry records ([ReadEntry]):
+/// the own build's read is the reader's baseline, an additive read is kept
+/// beside it (#108). The own baseline is live only while the reader's own
+/// builds keep reading the key. A build that stops reading it (or reads
+/// nothing) is seen by what the element holds as children: an additive read
+/// that finds them changed since the last period ended retires every own
+/// baseline stamped in an earlier period. The same children tell a second
+/// direct read in one build — the element has not been handed the build's
+/// result yet — from a descendant's.
+///
 /// Reading through a lazily built list's own item-builder context stays a
 /// debug-mode error that names the fix, a widget per row
 /// ([debugCheckReader]): the list element is one reader for every
@@ -172,6 +182,39 @@ class ReadSet {
   /// [ReadEntry.read].
   bool _additive = false;
 
+  /// Whether the additive read in progress found the reader rebuilt since its
+  /// last frame came to rest ([_restChildren]) — a rebuild whose own reads, if
+  /// any, were already recorded in this [_period]. An entry whose own baseline
+  /// dates from an earlier period then belongs to a build that did not read
+  /// it again.
+  bool _ownerRebuilt = false;
+
+  /// Counts the frames the reader read in, ended by [sweep]. An own read is
+  /// stamped with it, so "the reader's own build read this key in the frame
+  /// that is running" can be told from "read it once, some frames ago".
+  int _period = 0;
+
+  /// Whether the reader read in the period that is running.
+  bool _touched = false;
+
+  /// What the reader's element held as children when its last period ended —
+  /// the widgets its last build returned. A reader has built again since, and
+  /// without reading, when they have changed and an additive read finds the
+  /// own build that did it nowhere in the record. `null` before the first
+  /// period ends and for readers that are neither a `ComponentElement` nor a
+  /// layout builder (a list's sliver builds piecemeal; its children change
+  /// with every scroll and say nothing about its own build).
+  List<Widget>? _restChildren;
+
+  /// The period and the children the reader's element held when an own-build
+  /// proof last fired. Every read until the element has been given its
+  /// build's children — a second direct read in the same `build` or builder
+  /// callback, which no proof is left to vouch for — is the same build's own
+  /// read; the first read of a descendant is not, because by then the
+  /// element's children have changed.
+  int _runPeriod = -1;
+  List<Widget>? _runChildren;
+
   /// The widget the reader's element had at its last own build. A parent
   /// handing it a new one rebuilds it with `Element.dirty` false.
   Widget? _builtFor;
@@ -223,13 +266,32 @@ class ReadSet {
     _reader = reader;
     final widget = reader.widget;
     final constraints = _layoutConstraints(reader);
-    final ownBuild = !identical(widget, _builtFor) ||
+    final children = _childrenOf(reader, constraints);
+    final proof = !identical(widget, _builtFor) ||
         (reader is ComponentElement
             ? reader.dirty
             : _marked || (constraints != null && constraints != _builtWith));
+    // A proof is consumed by the read that finds it, so a second direct read
+    // in the same build or builder callback is told apart by the one thing a
+    // descendant's read cannot share: the element has not been handed this
+    // build's result yet, and still holds the children of the build before.
+    final sameRun = !proof &&
+        children != null &&
+        _runPeriod == _period &&
+        _sameWidgets(_runChildren, children);
+    final ownBuild = proof || sameRun;
     _additive = !ownBuild;
+    _touched = true;
+    _ownerRebuilt = _additive &&
+        children != null &&
+        _restChildren != null &&
+        !_sameWidgets(_restChildren, children);
     if (!ownBuild) {
       return;
+    }
+    if (proof) {
+      _runPeriod = _period;
+      _runChildren = children;
     }
     // Recorded for every own build, also one in a generation already open:
     // otherwise a widget handed over in that epoch still looks new at the
@@ -270,6 +332,30 @@ class ReadSet {
       // Not laid out yet: no builder has run with any constraints.
       return null;
     }
+  }
+
+  /// The widgets [reader]'s element holds as children, when it is a reader
+  /// whose own build hands them over after the build's reads — a
+  /// `ComponentElement` or a layout builder — and null otherwise.
+  static List<Widget>? _childrenOf(Element reader, Constraints? constraints) {
+    if (reader is! ComponentElement && constraints == null) {
+      return null;
+    }
+    final children = <Widget>[];
+    reader.visitChildren((child) => children.add(child.widget));
+    return children;
+  }
+
+  static bool _sameWidgets(List<Widget>? a, List<Widget>? b) {
+    if (a == null || b == null || a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Throws, in debug builds, when [reader] builds its children piecemeal —
@@ -334,8 +420,11 @@ class ReadSet {
     // built inline carry a fresh closure every build anyway.
     controller.setOptions(options);
     final result = entry.read(
-        buildWhen: _erased(buildWhen),
-        additive: _additive) as QueryResult<TData>;
+      buildWhen: _erased(buildWhen),
+      additive: _additive,
+      period: _period,
+      ownerRebuilt: _ownerRebuilt,
+    ) as QueryResult<TData>;
     debugCheckRepeatRead(repeat, before, result, identity, who);
     return result;
   }
@@ -367,8 +456,12 @@ class ReadSet {
     debugCheckRepeatRead(
       repeat,
       before,
-      entry.read(buildWhen: _erased(buildWhen), additive: _additive)
-          as QueryResult<TData>,
+      entry.read(
+        buildWhen: _erased(buildWhen),
+        additive: _additive,
+        period: _period,
+        ownerRebuilt: _ownerRebuilt,
+      ) as QueryResult<TData>,
       identity,
       who,
     );
@@ -503,7 +596,12 @@ class ReadSet {
     // has no `observedState` beside its value, so [ReadEntry]'s equality
     // gate is the same comparison `MutationObserver` already made before it
     // notified at all.
-    entry.read(buildWhen: _erased(buildWhen), additive: _additive);
+    entry.read(
+      buildWhen: _erased(buildWhen),
+      additive: _additive,
+      period: _period,
+      ownerRebuilt: _ownerRebuilt,
+    );
     return controller;
   }
 
@@ -543,6 +641,16 @@ class ReadSet {
       _entries.remove(identity)?.dispose();
     }
     _pending = <Object>{};
+    if (_touched) {
+      // The frame the reader read in is over: what it holds now is what its
+      // last build returned, and the next period starts from it.
+      _touched = false;
+      final reader = _reader;
+      _restChildren = reader != null && reader.mounted
+          ? _childrenOf(reader, _layoutConstraints(reader))
+          : null;
+      _period++;
+    }
   }
 
   /// Releases everything and forgets every read. The set is empty afterwards
@@ -556,5 +664,7 @@ class ReadSet {
     _current = <Object>{};
     _pending = <Object>{};
     _seen = <Object>{};
+    _restChildren = null;
+    _runChildren = null;
   }
 }

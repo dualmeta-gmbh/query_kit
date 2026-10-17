@@ -7124,15 +7124,21 @@ build.
   the second only. A notification is worth a frame when it moves what *either*
   shows. That is option 1's guarantee (the owner's baseline survives a nested
   reread) without its hole: an additive-only key behaves as before, and a key
-  the owner stopped reading is followed by the nested part's baseline, at the
-  cost of one excess owner rebuild per real state change for as long as the
-  stale owner baseline differs, which is not a loop. `ReadSet` only passes
+  the owner stopped reading is followed by the nested part's baseline. (The
+  first version of this entry called the leftover owner baseline "one excess
+  owner rebuild per real state change, not a loop". That understated it: the
+  stale baseline was also asked, so a `buildWhen` got a `previous` no screen
+  showed and an infinite query's paging flags took the unconditional
+  `beside` path, and a rebuild the predicate would have declined showed
+  rejected data. Review round 1, below, retires it.) `ReadSet` only passes
   whether `beginBuild` found the read to be the reader's own. `RebuildRule`,
   the public adapter surface, is untouched, and the hooks (no shared-context
   reads) are not affected.
 - One consequence, deliberate: while a nested part has re-read a value the
   owner has not shown, a `buildWhen` is asked against both baselines, and
-  either may rebuild. Before, only the nested part's mattered.
+  either may rebuild. Before, only the nested part's mattered. That holds
+  only while the owner baseline is live, that is, while the owner's own
+  build still reads the key (review round 1).
 
 **Tests.** `review_regressions_test.dart`, group "#108 an additive reread
 does not move the owner baseline": the issue's case for `context.query` and
@@ -7144,3 +7150,65 @@ a→b→a→b. The three shared-context cases and the infinite one were red befo
 the fix. No existing case changed, `reader_shapes_test.dart`'s 80 included.
 
 **Counts after the fix:** binding **377**, hooks **332** unchanged.
+
+#### S-1, review round 1 (GPT-6.1-Sol, xhigh, PR #116 at `a2ccda8`)
+
+Two P1 findings, both reproduced first from the reviewer's probes (4 of 7
+red at `a2ccda8`).
+
+**R1-1 (P1) — a retired owner baseline stayed live and bypassed
+`buildWhen`.** *Root cause:* `ReadEntry._ownRecorded` stayed true after the
+owner's own build stopped reading the key, so every notification kept asking
+a baseline nobody displays. Neither the generation sweep (an own build that
+reads nothing opens no generation) nor `ReadSet` saw that build at all, and
+an element gives no signal that it rebuilt. Shown by `context.query` and
+`watchQuery` (the predicate received the retired `a` while the screen showed
+`b`; owner builds 3→4 with a predicate that declines everything) and by an
+infinite query, whose retired paging flags took the unconditional `beside`
+path with zero predicate calls. All three were green at the PR's parent.
+*Fix:* the owner baseline is stamped with a period (`ReadSet._period`, ended
+by `sweep` for a set that read in it) and `ReadSet` keeps what its element
+held as children when the period ended (`_restChildren`: the widgets its last
+build returned; only a `ComponentElement` or a layout builder has a build
+whose result can be told this way). An additive read that finds the children
+changed knows the reader built again since, and an entry whose own baseline
+dates from an earlier period belongs to a build that did not read it: it is
+retired (`ReadEntry.retireOwner`) before the additive read is recorded. A
+nested part that re-runs alone leaves the children as they were, so a live
+owner baseline survives it, which is #108. Limit: a reader whose rebuild
+returns the *identical* widget instance (a cached child) leaves the children
+unchanged and is not noticed; the baseline then stays as in `a2ccda8`.
+
+**R1-2 (P1) — #108 still unfixed for a second direct read.** *Root cause:*
+the own-build proofs (a new widget, constraints, the set's own notification)
+are consumed by the first read, so the second direct read of one build or
+builder callback found none and was classified additive; a `LayoutBuilder`
+callback reading X and then displaying Y recorded Y as additive and the
+bug returned for Y. The same shape for a `StatelessWidget` or `State` that
+the parent handed a new widget (its element is not dirty, so after the first
+read only the recorded widget is left to go by) is the same defect; a dirty
+`ComponentElement` was never affected (`dirty` holds for the whole build).
+Fails before the PR as well. *Fix:* when a proof fires, `ReadSet` records
+the period and the children the element held at that moment. Until the
+element is handed this build's result, a read in the same period that finds
+those children unchanged is the same build's own read; a descendant's read
+comes after `updateChild`, when the children have changed. Limit: as above,
+a build that returns an identical cached widget shows no change.
+
+**Options not taken.** Retiring on every additive read in a later period
+(simpler) brings #108 back: the nested part re-runs alone in a later frame.
+Overriding `setState` in `QueryMixin` sees one trigger of three and no
+`context.query` reader. Asking an own baseline's key to be re-read by the
+owner (an extra rebuild) was Option 2, rejected above.
+
+**Tests.** `review_regressions_test.dart`, group "#108 review round 1", 13
+cases: the retired baseline for `context.query` and `watchQuery`, with and
+without another key still read (4), the infinite query (1), an own baseline
+recorded in the running frame staying live (1), two direct reads in a
+`LayoutBuilder`, a `State` and a `QueryMixin` State, each with the displayed
+key read first and second (6), and a child the parent handed a new widget
+(1). Red at `a2ccda8`: the first five, the `LayoutBuilder` read-second case
+and the parent-handed case (7); the rest hold the other side. No existing
+case changed, `reader_shapes_test.dart`'s 80 included.
+
+**Counts after the round:** binding **390**, hooks **332** unchanged.

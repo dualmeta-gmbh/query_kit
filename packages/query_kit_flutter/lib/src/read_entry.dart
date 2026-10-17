@@ -64,8 +64,18 @@ class ReadEntry<T> {
 
   /// Whether [_rule] / [_additiveRule] has recorded a read. Neither says so
   /// itself in a form a second rule could be combined with.
+  ///
+  /// [_ownRecorded] is true only while the own baseline is still *live*: the
+  /// reader's own build read this controller and no own build since has
+  /// stopped reading it ([retireOwner]). A baseline nobody displays any more
+  /// must not be asked: its `previous` is a value that is on no screen, and a
+  /// `buildWhen` would be handed it, or a paging flag compared with it.
   bool _ownRecorded = false;
   bool _additiveRecorded = false;
+
+  /// The period of the reader's own read that [_ownRecorded] stands for, in
+  /// the units [ReadSet] counts (`ReadSet._period`).
+  int _ownPeriod = 0;
 
   /// The predicate the last build handed over, asked once the value is known
   /// to have moved.
@@ -81,17 +91,40 @@ class ReadEntry<T> {
   /// builder re-running with the reader's context. It is recorded beside the
   /// own build's read, not over it (see [_additiveRule]); the reader's next
   /// own build reads again and takes over both.
-  T read({BuildWhen<T>? buildWhen, bool additive = false}) {
+  ///
+  /// [period] is the reader's period the read happens in. [ownerRebuilt]
+  /// says an additive read found the reader rebuilt since its last frame
+  /// came to rest: an own baseline recorded in an earlier period is then one
+  /// whose build did not read this controller, and is retired before the
+  /// additive read is recorded (see [retireOwner]).
+  T read({
+    BuildWhen<T>? buildWhen,
+    bool additive = false,
+    int period = 0,
+    bool ownerRebuilt = false,
+  }) {
     _buildWhen = buildWhen;
     if (additive) {
+      if (ownerRebuilt && _ownPeriod < period) {
+        retireOwner();
+      }
       final value = _additiveRule.read();
       _additiveRecorded = true;
       return value;
     }
     final value = _rule.read();
     _ownRecorded = true;
+    _ownPeriod = period;
     _additiveRecorded = false;
     return value;
+  }
+
+  /// Forgets the reader's own baseline: its build no longer reads this
+  /// controller, so nothing the reader shows depends on it. What an additive
+  /// read recorded is what is on screen, and the only thing a notification is
+  /// compared with (#108, review round 1).
+  void retireOwner() {
+    _ownRecorded = false;
   }
 
   void _onChanged() {
