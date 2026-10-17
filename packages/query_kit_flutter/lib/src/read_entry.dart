@@ -47,8 +47,25 @@ class ReadEntry<T> {
   /// result for every controller but an infinite query's, which keeps its
   /// paging flags beside the result — [besideOf] it, so a `buildWhen` that
   /// declines the result cannot hold them back. The rule an adapter gets for
-  /// the same controller.
+  /// the same controller. This one holds what the reader's *own* build read.
   late final RebuildRule<T> _rule = RebuildRule.of(controller);
+
+  /// The same decision over what a read that was not the reader's own build
+  /// saw last: a nested builder re-running with the reader's context.
+  ///
+  /// Kept apart from [_rule] because the two are shown in different places.
+  /// The reader's own build is what the *reader* shows, and an additive read
+  /// must not overwrite it: a cache write during the nested build, read again
+  /// through the outer context, would record the new state as built for an
+  /// element that still shows the old one, and the notification that follows
+  /// would compare equal and be dropped (#108). A notification is worth a
+  /// frame when it moves what *either* shows.
+  late final RebuildRule<T> _additiveRule = RebuildRule.of(controller);
+
+  /// Whether [_rule] / [_additiveRule] has recorded a read. Neither says so
+  /// itself in a form a second rule could be combined with.
+  bool _ownRecorded = false;
+  bool _additiveRecorded = false;
 
   /// The predicate the last build handed over, asked once the value is known
   /// to have moved.
@@ -59,13 +76,29 @@ class ReadEntry<T> {
   ///
   /// A build re-states its predicate because a widget's may change between
   /// builds; a reader with no predicate simply leaves it out.
-  T read({BuildWhen<T>? buildWhen}) {
+  ///
+  /// An [additive] read is one made outside the reader's own build — a nested
+  /// builder re-running with the reader's context. It is recorded beside the
+  /// own build's read, not over it (see [_additiveRule]); the reader's next
+  /// own build reads again and takes over both.
+  T read({BuildWhen<T>? buildWhen, bool additive = false}) {
     _buildWhen = buildWhen;
-    return _rule.read();
+    if (additive) {
+      final value = _additiveRule.read();
+      _additiveRecorded = true;
+      return value;
+    }
+    final value = _rule.read();
+    _ownRecorded = true;
+    _additiveRecorded = false;
+    return value;
   }
 
   void _onChanged() {
-    if (_rule.shouldRebuild(_buildWhen)) {
+    final bool nothingRead = !_ownRecorded && !_additiveRecorded;
+    if (nothingRead ||
+        (_ownRecorded && _rule.shouldRebuild(_buildWhen)) ||
+        (_additiveRecorded && _additiveRule.shouldRebuild(_buildWhen))) {
       rebuild();
     }
   }

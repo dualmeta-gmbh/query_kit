@@ -7006,7 +7006,8 @@ findings, both reproduced:
   own `context` it is green either way. Not fixed here: it is the binding's
   additive-read rule, released in 1.0.x and under parallel change for 1.0.4.
   Filed for the binding as #108 with the reproduction, which is red as well
-  at `669c911`, before `beside`, and on `e2e-coverage` (binding 1.0.4).
+  at `669c911`, before `beside`, and on `e2e-coverage` (binding 1.0.4). Worked
+  below, "S-1 — an additive reread".
 - **S-2 (P3, the orchestrator's notes only): "a flag that moves and moves
   back between two builds does not rebuild" was too strong.** It holds when
   both moves arrive before a delivery. Once the first delivery has
@@ -7083,3 +7084,63 @@ what changed in the binding, each finding reproduced first.
   HB-4.
 
 **Counts after the fixes:** binding **320**.
+
+### S-1 — an additive reread took the owner's baseline (#108)
+
+**What was wrong.** `ReadEntry` kept one baseline per controller, the state
+the last read recorded, and every read moved it — also an additive one, a
+nested builder re-running with the outer reader's `context`. A cache write
+during that nested build is notified later (the notify manager batches), so
+the nested builder's reread recorded the new state as built for the *outer*
+element, which still showed the old one. The notification then compared equal
+and was dropped: `outer:a` on screen, `inner:b`, one outer build. Reproduced
+first as the issue states it (`context.query`, shared context) and in two
+more shapes, all red before the fix: the same through `watchQuery` on a
+`State`, and `context.infiniteQuery` with the paging flags. Through the nested
+builder's own `context` it is green either way, and so is a write outside a
+build.
+
+**Options.**
+- *Option 1 as filed: an additive read leaves the owner's baseline alone.*
+  Simple, but the owner's baseline is only the owner's while its own build
+  still reads the key. Worked out as a flag on the entry cleared when a
+  new generation opens (built once, ran only the #108 cases), it has two
+  holes. An own build that reads nothing opens no
+  generation ("a build that reads nothing releases nothing"), so a key it read
+  once and then stopped reading stays held, stays "owned", and the nested
+  part's rereads never move its baseline: a→b→a flaps and the move back is
+  dropped, the same defect in a rarer shape. And a key read *only* additively
+  must still move on every reread, or it is compared with its first read.
+- *Option 2: an additive read that differs from the baseline schedules the
+  owner's rebuild.* Rejected. The reread runs inside a descendant's build,
+  where Flutter refuses `markNeedsBuild`/`setState` on an ancestor in debug
+  builds, and deferring it costs an extra frame. It would also bypass
+  `buildWhen`.
+- *Option 3: document it.* Rejected as the only answer: the result is a stale
+  widget with no error.
+- **Chosen: two baselines in `ReadEntry`.** `_rule` is what the reader's own
+  build read; `_additiveRule` is what an additive read saw last. A read of the
+  own build records the first and forgets the second; an additive read records
+  the second only. A notification is worth a frame when it moves what *either*
+  shows. That is option 1's guarantee (the owner's baseline survives a nested
+  reread) without its hole: an additive-only key behaves as before, and a key
+  the owner stopped reading is followed by the nested part's baseline, at the
+  cost of one excess owner rebuild per real state change for as long as the
+  stale owner baseline differs, which is not a loop. `ReadSet` only passes
+  whether `beginBuild` found the read to be the reader's own. `RebuildRule`,
+  the public adapter surface, is untouched, and the hooks (no shared-context
+  reads) are not affected.
+- One consequence, deliberate: while a nested part has re-read a value the
+  owner has not shown, a `buildWhen` is asked against both baselines, and
+  either may rebuild. Before, only the nested part's mattered.
+
+**Tests.** `review_regressions_test.dart`, group "#108 an additive reread
+does not move the owner baseline": the issue's case for `context.query` and
+`watchQuery`, both with the shared and the nested builder's own context; the
+infinite query and its flags; an own build that stopped reading the key (the
+hole above, written for the chosen design: it passes, and was not run against
+the rejected variant); and a key read only additively that must follow
+a→b→a→b. The three shared-context cases and the infinite one were red before
+the fix. No existing case changed, `reader_shapes_test.dart`'s 80 included.
+
+**Counts after the fix:** binding **377**, hooks **332** unchanged.

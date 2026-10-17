@@ -4610,6 +4610,229 @@ void _releaseReview20260923() {
       }, createClient: newClient);
     }
   });
+
+  group('#108 an additive reread does not move the owner baseline', () {
+    for (final shared in [false, true]) {
+      for (final style in ['context.query', 'watchQuery']) {
+        queryWidgetTest(
+            'a write in a nested build, read again through the outer '
+            '$style (shared=$shared)', (tester, client) async {
+          final tick = ValueNotifier<int>(0);
+          addTearDown(tick.dispose);
+          final key = QueryKey(<Object?>['108', style, shared]);
+          final options = QueryObserverOptions<String>(
+            queryKey: key,
+            queryFn: (_) async => 'a',
+            initialData: InitialData.value('a'),
+            staleTime: StaleTime.infinite,
+          );
+          var outerBuilds = 0;
+          var wrote = false;
+          // [read] is the outer reader's own read; [reread] is the nested
+          // builder's, through the outer reader (shared) or its own context.
+          Widget nested(
+            QueryResult<String> Function(BuildContext) reread,
+          ) =>
+              ValueListenableBuilder<int>(
+                valueListenable: tick,
+                builder: (innerContext, value, _) {
+                  if (value == 1 && !wrote) {
+                    wrote = true;
+                    client.setQueryData<String>(key, 'b');
+                  }
+                  return Text('inner:${reread(innerContext).dataOrNull}');
+                },
+              );
+          if (style == 'context.query') {
+            await tester.pumpWidget(app(client, Builder(builder: (context) {
+              outerBuilds++;
+              final outer = context.query(options);
+              return Column(children: [
+                Text('outer:${outer.dataOrNull}'),
+                nested((inner) => (shared ? context : inner).query(options)),
+              ]);
+            })));
+          } else {
+            await tester.pumpWidget(app(
+              client,
+              _MixinOuter(
+                onBuild: () => outerBuilds++,
+                builder: (state, outer) => Column(children: [
+                  Text('outer:${outer.dataOrNull}'),
+                  nested((inner) => shared
+                      ? state.watchQuery(options)
+                      : inner.query(options)),
+                ]),
+                options: options,
+              ),
+            ));
+          }
+          expect(find.text('outer:a'), findsOneWidget);
+
+          tick.value = 1;
+          await tester.pump();
+          await tester.pump();
+
+          expect(find.text('inner:b'), findsOneWidget);
+          expect(find.text('outer:b'), findsOneWidget,
+              reason: 'outer builds=$outerBuilds');
+        });
+      }
+    }
+
+    queryWidgetTest('the same for an infinite query and its paging flags',
+        (tester, client) async {
+      final tick = ValueNotifier<int>(0);
+      addTearDown(tick.dispose);
+      final options = InfiniteQuerySelectOptions<_FlagsPage, int, String>(
+        queryKey: QueryKey(<Object?>['108', 'infinite']),
+        pageFn: (_) async => (text: 'same', next: null),
+        initialPageParam: 0,
+        initialData: InitialData.value(InfiniteData(
+          pages: [(text: 'same', next: 1)],
+          pageParams: [0],
+        )),
+        staleTime: StaleTime.infinite,
+        select: (data) => data.pages.first.text,
+        getNextPageParam: (page, _, __, ___) => page.next,
+      );
+      var wrote = false;
+      await tester.pumpWidget(app(client, Builder(builder: (context) {
+        final outer = context.infiniteQuery(options);
+        return Column(children: [
+          Text(outer.hasNextPage ? 'outer:more' : 'outer:end'),
+          ValueListenableBuilder<int>(
+            valueListenable: tick,
+            builder: (_, value, __) {
+              if (value == 1 && !wrote) {
+                wrote = true;
+                client.setQueryData<InfiniteData<_FlagsPage, int>>(
+                  options.queryKey,
+                  InfiniteData(
+                    pages: [(text: 'same', next: null)],
+                    pageParams: [0],
+                  ),
+                );
+              }
+              final inner = context.infiniteQuery(options);
+              return Text(inner.hasNextPage ? 'inner:more' : 'inner:end');
+            },
+          ),
+        ]);
+      })));
+      expect(find.text('outer:more'), findsOneWidget);
+
+      tick.value = 1;
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('inner:end'), findsOneWidget);
+      expect(find.text('outer:end'), findsOneWidget);
+    });
+
+    queryWidgetTest(
+        'an own build that stopped reading the key leaves the nested part '
+        'following it, back to the old value included', (tester, client) async {
+      final show = ValueNotifier<bool>(true);
+      final tick = ValueNotifier<int>(0);
+      addTearDown(show.dispose);
+      addTearDown(tick.dispose);
+      final key = QueryKey(<Object?>['108', 'stopped-reading']);
+      final options = QueryObserverOptions<String>(
+        queryKey: key,
+        queryFn: (_) async => 'a',
+        initialData: InitialData.value('a'),
+        staleTime: StaleTime.infinite,
+      );
+      await tester.pumpWidget(app(
+        client,
+        ListenableBuilder(
+          listenable: show,
+          builder: (context, _) {
+            // The own build reads the key while `show` holds, and nothing
+            // afterwards — a build that reads nothing releases nothing.
+            if (show.value) context.query(options);
+            return ValueListenableBuilder<int>(
+              valueListenable: tick,
+              builder: (_, __, ___) =>
+                  Text('nested:${context.query(options).dataOrNull}'),
+            );
+          },
+        ),
+      ));
+      show.value = false;
+      await tester.pump();
+      tick.value++;
+      await tester.pump();
+      for (final value in ['b', 'a', 'b', 'a']) {
+        client.setQueryData<String>(key, value);
+        await tester.pump();
+        tick.value++;
+        await tester.pump();
+        expect(find.text('nested:$value'), findsOneWidget);
+      }
+    });
+
+    queryWidgetTest(
+        'a key read only additively still follows every change, back included',
+        (tester, client) async {
+      final tick = ValueNotifier<int>(0);
+      addTearDown(tick.dispose);
+      final key = QueryKey(<Object?>['108', 'additive-only']);
+      final options = QueryObserverOptions<String>(
+        queryKey: key,
+        queryFn: (_) async => 'a',
+        initialData: InitialData.value('a'),
+        staleTime: StaleTime.infinite,
+      );
+      var started = false;
+      await tester.pumpWidget(app(client, Builder(builder: (context) {
+        return ValueListenableBuilder<int>(
+          valueListenable: tick,
+          builder: (_, __, ___) {
+            // The outer build reads nothing; only this nested part does.
+            started = true;
+            return Text('nested:${context.query(options).dataOrNull}');
+          },
+        );
+      })));
+      expect(started, isTrue);
+      for (final value in ['b', 'a', 'b']) {
+        client.setQueryData<String>(key, value);
+        await tester.pump();
+        expect(find.text('nested:$value'), findsOneWidget);
+        // The nested part re-runs alone and reads again; the next change
+        // is compared with what it showed, not with the first read.
+        tick.value++;
+        await tester.pump();
+        expect(find.text('nested:$value'), findsOneWidget);
+      }
+    });
+  });
+}
+
+/// A `QueryMixin` reader whose nested part reads through the `State`.
+class _MixinOuter extends StatefulWidget {
+  const _MixinOuter({
+    required this.onBuild,
+    required this.builder,
+    required this.options,
+  });
+
+  final VoidCallback onBuild;
+  final QueryObserverOptions<String> options;
+  final Widget Function(_MixinOuterState, QueryResult<String>) builder;
+
+  @override
+  State<_MixinOuter> createState() => _MixinOuterState();
+}
+
+class _MixinOuterState extends State<_MixinOuter> with QueryMixin {
+  @override
+  Widget build(BuildContext context) {
+    widget.onBuild();
+    return widget.builder(this, watchQuery(widget.options));
+  }
 }
 
 typedef _FlagsPage = ({String text, int? next});

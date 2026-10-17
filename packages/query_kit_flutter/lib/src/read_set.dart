@@ -167,6 +167,11 @@ class ReadSet {
   /// The element the last [beginBuild] was for.
   Element? _reader;
 
+  /// Whether the read in progress is additive: [beginBuild] found it was not
+  /// the reader's own build. What an entry records for such a read is up to
+  /// [ReadEntry.read].
+  bool _additive = false;
+
   /// The widget the reader's element had at its last own build. A parent
   /// handing it a new one rebuilds it with `Element.dirty` false.
   Widget? _builtFor;
@@ -222,6 +227,7 @@ class ReadSet {
         (reader is ComponentElement
             ? reader.dirty
             : _marked || (constraints != null && constraints != _builtWith));
+    _additive = !ownBuild;
     if (!ownBuild) {
       return;
     }
@@ -327,8 +333,9 @@ class ReadSet {
     // observer itself decides whether anything actually changed, and options
     // built inline carry a fresh closure every build anyway.
     controller.setOptions(options);
-    final result =
-        entry.read(buildWhen: _erased(buildWhen)) as QueryResult<TData>;
+    final result = entry.read(
+        buildWhen: _erased(buildWhen),
+        additive: _additive) as QueryResult<TData>;
     debugCheckRepeatRead(repeat, before, result, identity, who);
     return result;
   }
@@ -360,7 +367,8 @@ class ReadSet {
     debugCheckRepeatRead(
       repeat,
       before,
-      entry.read(buildWhen: _erased(buildWhen)) as QueryResult<TData>,
+      entry.read(buildWhen: _erased(buildWhen), additive: _additive)
+          as QueryResult<TData>,
       identity,
       who,
     );
@@ -495,7 +503,7 @@ class ReadSet {
     // has no `observedState` beside its value, so [ReadEntry]'s equality
     // gate is the same comparison `MutationObserver` already made before it
     // notified at all.
-    entry.read(buildWhen: _erased(buildWhen));
+    entry.read(buildWhen: _erased(buildWhen), additive: _additive);
     return controller;
   }
 

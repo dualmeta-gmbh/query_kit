@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: a nested builder that wrote the cache during its build and then
+  read the same key again through an outer `context` (or `watchQuery`) took
+  the outer reader's rebuild: the notification that followed compared equal to
+  what the nested part had just read, and the outer widget kept showing the
+  old value with no error. A read outside the reader's own build is now
+  recorded beside the own build's, not over it, in `context.query`,
+  `context.infiniteQuery`, `context.mutation` and `QueryMixin`. A reader's
+  own reads and the call styles' behaviour are otherwise unchanged.
+
 ## 1.1.0
 
 - A new library, `package:query_kit_flutter/adapter.dart`, exports
