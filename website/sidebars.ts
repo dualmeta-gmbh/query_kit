@@ -19,6 +19,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Guides & concepts',
       collapsed: false,
+      link: { type: 'doc', id: 'guides/index' },
       items: [
         {
           type: 'category',

@@ -256,3 +256,8 @@ rarely calls them. Each case is a public class (`StaleTimeDuration`,
 `.value(null)` is a seed (or placeholder) of `null` for a nullable type; only
 a `.compute` returning `null` means "none". That is the one place where Dart's
 single `null` carries two meanings.
+
+## See also
+
+- Guides: [Describing a query once](../guides/query-options.md) for how these options are put together.
+- Examples: the [playground](../examples/playground.mdx) changes the defaults while the app runs, and the [stale time and garbage collection example](../examples/stale-and-gc.mdx) has a knob for each value.

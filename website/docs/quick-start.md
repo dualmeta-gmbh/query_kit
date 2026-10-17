@@ -200,7 +200,8 @@ a provider, a query read two ways and a mutation that invalidates it, with
 no server. `flutter run` in that directory.
 
 For every feature as its own screen, see [the examples](examples/index.md); for
-whole tasks, the [cookbook](cookbook/index.md).
+whole tasks, the [cookbook](cookbook/index.md); for one concept at a time, the
+[guides](guides/index.md).
 
 ## Next steps
 

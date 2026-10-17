@@ -215,3 +215,8 @@ practice, each answered by the packages' own documentation:
 
 For a name-by-name map from TanStack Query to query_kit, see [coming from
 React Query](../coming-from-react-query.md).
+
+## See also
+
+- [Overview](../overview.md) and the [quick start](../quick-start.md), if you are choosing by trying one.
+- [Does this replace state management?](../guides/does-this-replace-state-management.md) and the [guides index](../guides/index.md).

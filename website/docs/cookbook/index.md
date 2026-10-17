@@ -58,8 +58,9 @@ routing, persistence, realtime data, devices, accounts and models.
 | [Normalised data or one key per entity](normalised-vs-per-entity-keys.md) | A list plus per-item keys, or a map by id, with unchanged items kept |
 | [Models with freezed and JSON](freezed-and-json-models.md) | Value equality, and `StructurallyShareable` for a class that wraps a list |
 
-The [examples](../examples/index.md) show one feature per screen, running in your browser, if
-you would rather start from a feature than from a task.
+The [guides](../guides/index.md) explain one concept at a time, and the
+[examples](../examples/index.md) show one feature per screen, running in your
+browser, if you would rather start from a feature than from a task.
 
 Every sample on this site is compiled and checked against its source, so a
 recipe you copy here compiles against the current release. The few that need

@@ -461,3 +461,8 @@ true`, which keeps its children as nodes of their own and gives a browser test
 a role and a name to find the group by. The showcase keeps that in one widget,
 `SemanticsGroup`, and writes it nowhere else. A card's title must not repeat
 the label of a control inside it either.
+
+## See also
+
+- Guides: [Query keys](../guides/query-keys.md), [polling](../guides/polling.md), [optimistic updates](../guides/optimistic-updates.md), [reading queries in widgets](../guides/reading-queries-in-widgets.md) and [testing](../guides/testing.md), the pages the symptoms above come back to.
+- [Debugging](../guides/debugging.md) for finding which of them you have, and the [guides index](../guides/index.md) for the rest.
