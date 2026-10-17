@@ -8,6 +8,8 @@ description: TanStack Query's suite ported case by case, what porting found, wha
 Several Dart packages cover the *idea* of TanStack Query. The claim here is
 narrower and checkable: **the behaviour is upstream's, and upstream's own tests
 say so.**
+[Other Dart libraries](../reference/other-dart-libraries.md) describes the
+neighbouring packages.
 
 ## The method
 
@@ -155,4 +157,5 @@ Closeness to upstream is a **tiebreaker, not a goal**. Where a Dart or Flutter
 idiom is better, the port diverges and writes down why; the full table is at
 the end of PORTING_NOTES, and [differences from TanStack
 Query](../reference/differences-from-tanstack.md) lists the ones you can
-notice, in user terms.
+notice, in user terms, each with the place it was decided. The [design
+notes](design-notes.md) say where the rest of the reasoning lives.
