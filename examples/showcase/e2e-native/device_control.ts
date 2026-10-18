@@ -5,8 +5,8 @@
 // 10.0.2.2, an iOS simulator shares it).
 //
 //   GET  /platform                       → { platform, device, appId, loginWindow }  `loginWindow`:
-//                                          macOS only, true when the session sat at the login window
-//                                          when this process started, so no app can come to the front
+//                                          macOS only, true when the session is at the login
+//                                          window, so no app can come to the front
 //   POST /background?ms=                 → { left, back }  background the app, wait, bring it
 //                                          back; `left` once it was sent away, `back` as its return
 //                                          was asked for: ISO times, as the backend logs them
@@ -145,11 +145,12 @@ async function who() {
 
 // A macOS session that sits at the login window (a CI runner whose screen is
 // locked, say) has no app in front and lets none come: the cases that leave
-// the app cannot be run there, and the tests skip them. Read once, at start,
-// before the app is up (#109).
-const loginWindow =
-  platform === 'macos' && (await frontmost().catch(() => '')) === 'com.apple.loginwindow'
-if (loginWindow) console.log('device_control: the macOS session is at the login window; no app can come to the front')
+// the app cannot be run there, and the tests skip them. Asked when the suite
+// starts, with the app up: at this process's own start the session may not
+// have settled (#109).
+async function atLoginWindow() {
+  return platform === 'macos' && (await frontmost().catch(() => '')) === 'com.apple.loginwindow'
+}
 
 // --- the app's lifecycle ----------------------------------------------------
 
@@ -267,10 +268,10 @@ createTcpServer((client) => {
 // --- the control endpoint ---------------------------------------------------
 
 const routes: Record<string, (url: URL, parts: string[]) => Promise<unknown>> = {
-  'GET platform': async () => ({ platform, device, appId, loginWindow }),
+  'GET platform': async () => ({ platform, device, appId, loginWindow: await atLoginWindow() }),
   'POST background': async (url) => {
     deviceOnly('background')
-    if (loginWindow) throw new Error('the macOS session is at the login window; no app can come to the front')
+    if (await atLoginWindow()) throw new Error('the macOS session is at the login window; no app can come to the front')
     const ms = Number(url.searchParams.get('ms') ?? 2000)
     const after = url.searchParams.get('after')
     if (after === null) return background(ms)
