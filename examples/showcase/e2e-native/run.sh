@@ -176,8 +176,11 @@ elif [ "$platform" = macos ] || [ "$platform" = linux ]; then
 elif [ "$platform" = ios ]; then
   # One run per file, and a file whose app never came up ("loading … (failed)",
   # "Failed to load": the simulator did not start it, or its Dart Development
-  # Service did not) once more. No case of that file ran, so the second run is
-  # its first; a case that ran and failed is not run again.
+  # Service did not) once more, on a simulator booted afresh: on a hosted
+  # runner the first app after boot twice met "The log reader failed
+  # unexpectedly", and the same simulator failed the same way again. No case
+  # of that file ran, so the second run is its first; a case that ran and
+  # failed is not run again.
   if [ "$#" -eq 0 ]; then set -- integration_test/*_test.dart; fi
   failed=()
   for target in "$@"; do
@@ -188,7 +191,10 @@ elif [ "$platform" = ios ]; then
       continue
     fi
     if grep -qE 'loading .*\(failed\)$|Failed to load "' "$out"; then
-      echo "run.sh: $target: the app did not come up; once more"
+      echo "run.sh: $target: the app did not come up; once more, on a rebooted simulator"
+      xcrun simctl shutdown "$device" 2>/dev/null || true
+      xcrun simctl boot "$device"
+      xcrun simctl bootstatus "$device" -b >/dev/null
       "$flutter" test "$target" -d "$device" || failed+=("$target")
     else
       failed+=("$target")

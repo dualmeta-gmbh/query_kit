@@ -25,35 +25,47 @@ bool shownIn(AppLifecycleState state) =>
     state == AppLifecycleState.resumed ||
     (!isDesktop && state == AppLifecycleState.inactive);
 
-/// A trip away, and how often the app came back from it: each move from not
-/// shown to shown is a focus, and a loaded simulator once showed the app
-/// twice for one trip. Waits for the app's own word that it is shown again,
-/// which a loaded simulator gives after the host is done, and a second more.
-/// The states go to the log of a case that fails.
-Future<int> tripAway(WidgetTester tester) async {
+/// A trip away, recorded: each move from not shown to shown is a focus, and
+/// a loaded simulator once showed the app twice for one trip, a second time
+/// after the first return had settled. The listener therefore stays until
+/// the case ends, and [returns] counts what has arrived when it is read.
+class Trip {
+  Trip._(this._states);
+
+  final List<AppLifecycleState> _states;
+
+  /// How often the app came back so far. The states go to the log of a
+  /// case that fails.
+  int get returns {
+    printOnFailure('lifecycle during the trip: $_states');
+    var shown = true;
+    var returns = 0;
+    for (final state in _states) {
+      if (shownIn(state) && !shown) returns++;
+      shown = shownIn(state);
+    }
+    return returns;
+  }
+}
+
+/// Leaves the app for [away] and waits for its own word that it is shown
+/// again, which a loaded simulator gives after the host is done, then two
+/// seconds more for what a return starts, or a late second return.
+Future<Trip> tripAway(WidgetTester tester) async {
   final states = <AppLifecycleState>[];
   final listener = AppLifecycleListener(onStateChange: states.add);
-  try {
-    await Device.background(away);
-    for (var waited = 0;
-        (states.isEmpty || !shownIn(states.last)) && waited < 10000;
-        waited += 250) {
-      await settleFor(tester, const Duration(milliseconds: 250));
-    }
-    await settleFor(tester, const Duration(seconds: 1));
-  } finally {
-    listener.dispose();
+  addTearDown(listener.dispose);
+  await Device.background(away);
+  for (var waited = 0;
+      (states.isEmpty || !shownIn(states.last)) && waited < 10000;
+      waited += 250) {
+    await settleFor(tester, const Duration(milliseconds: 250));
   }
-  printOnFailure('lifecycle during the trip: $states');
-  var shown = true;
-  var returns = 0;
-  for (final state in states) {
-    if (shownIn(state) && !shown) returns++;
-    shown = shownIn(state);
-  }
-  expect(returns, greaterThanOrEqualTo(1),
+  await settleFor(tester, const Duration(seconds: 2));
+  final trip = Trip._(states);
+  expect(trip.returns, greaterThanOrEqualTo(1),
       reason: 'the app never came back; lifecycle: $states');
-  return returns;
+  return trip;
 }
 
 Future<void> main() async {
@@ -72,14 +84,14 @@ Future<void> main() async {
       await openFresh(tester, h);
       await pick(tester, 'on-focus-a', 'always');
 
-      final returns = await tripAway(tester);
+      final trip = await tripAway(tester);
 
       // `always`: one refetch per return.
-      await waitForFact(tester, 'debug focus-a', 'fetches=${1 + returns}');
+      await waitForFact(tester, 'debug focus-a', 'fetches=${1 + trip.returns}');
       // Entry B kept `ifStale` and its thirty seconds of stale time are not
       // up: the same return left it alone.
       await waitForFact(tester, 'debug focus-b', 'fetches=1');
-      expect(await h.requests('GET', '/api/time'), 2 + returns);
+      expect(await h.requests('GET', '/api/time'), 2 + trip.returns);
     }, skip: leaveSkip);
 
     nativeTest('never: a real return refetches nothing, stale data included',
@@ -117,10 +129,10 @@ Future<void> main() async {
       await h.open(tester, '/focus-refetch');
       await waitForFact(tester, 'reader-c', 'fetches=1');
 
-      final returns = await tripAway(tester);
+      final trip = await tripAway(tester);
 
       await waitForFact(tester, 'reader-c', 'shouldRefetchOnFocus=true');
-      await waitForFact(tester, 'reader-c', 'fetches=${1 + returns}');
+      await waitForFact(tester, 'reader-c', 'fetches=${1 + trip.returns}');
     }, skip: leaveSkip);
   });
 
