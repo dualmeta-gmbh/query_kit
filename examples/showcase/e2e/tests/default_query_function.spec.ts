@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test'
-import { expect, fact, test } from './fixtures'
+import { expect, fact, holdRequest, test } from './fixtures'
 
 // The screen is longer than the browser window, and the scaffold's list
 // builds only what is in view — so a section below the fold is not in the
@@ -80,4 +80,62 @@ test("a key with no post behind it shows the backend's 404", async ({ page, open
   await expect(fact(page, 'post-999', 'status=error')).toBeVisible()
   await expect(fact(page, 'post-999', 'fetchStatus=idle')).toBeVisible()
   expect(await scenario.count('GET', /^\/api\/posts\/999$/)).toBe(1)
+})
+
+test('coming back registers the default again, and the kept entries refetch through it', async ({
+  page,
+  open,
+  scenario,
+}) => {
+  await open('/default-query-function')
+  await expect(fact(page, 'posts', 'fetches=1')).toBeVisible()
+  await expect(text(page, 'posts=30')).toBeVisible()
+  await expect(fact(page, 'posts', 'observers=1')).toBeVisible()
+
+  // Leaving blanks the defaults and lets the reads go; the entries stay.
+  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'query_kit showcase', exact: true })).toBeVisible()
+
+  const hold = holdRequest(page, '**/api/posts')
+  await page
+    .getByRole('button', {
+      name: 'Default query function A query function derived from the key, set once as a default.',
+      exact: true,
+    })
+    .click()
+
+  // The list is on screen from the cache while its refetch is out — and a
+  // refetch needs a function: the one just registered on the way back in.
+  await expect(text(page, 'default queryFn=set')).toBeVisible()
+  await expect(text(page, 'posts=30')).toBeVisible()
+  await expect(fact(page, 'posts', 'fetchStatus=fetching')).toBeVisible()
+  await expect(fact(page, 'posts', 'observers=1')).toBeVisible()
+  await expect.poll(() => hold.seen).toBe(1)
+  await hold.release()
+
+  await expect(fact(page, 'posts', 'fetches=2')).toBeVisible()
+  await expect(fact(page, 'posts', 'fetchStatus=idle')).toBeVisible()
+  await expect(fact(page, 'posts', 'status=success')).toBeVisible()
+  expect(await scenario.count('GET', /^\/api\/posts$/)).toBe(2)
+})
+
+test('the default mutationFn serves every press, not the first one only', async ({ page, open, scenario }) => {
+  await open('/default-query-function')
+  await expect(fact(page, 'posts', 'fetchStatus=idle')).toBeVisible()
+  await reveal(page, text(page, 'Create a todo'))
+  const create = page.getByRole('button', { name: 'Create a todo', exact: true })
+
+  await create.click()
+  await expect(text(page, 'new todo id=4')).toBeVisible()
+  await create.click()
+
+  // A fresh run of the same default: the next id, a second request.
+  await expect(text(page, 'new todo id=5')).toBeVisible()
+  await expect(text(page, 'Written by the default mutationFn')).toBeVisible()
+  expect(await scenario.count('POST', /^\/api\/todos$/)).toBe(2)
+  const todos = (await (await scenario.api('get', '/todos')).json()) as Array<{ id: number; text: string }>
+  expect(todos.slice(-2)).toMatchObject([
+    { id: 4, text: 'Written by the default mutationFn' },
+    { id: 5, text: 'Written by the default mutationFn' },
+  ])
 })

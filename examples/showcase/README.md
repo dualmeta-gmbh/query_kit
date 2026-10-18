@@ -78,6 +78,21 @@ row of the table below — and `test/catalogue_test.dart` compares the five,
 plus which screen each route actually reaches. Adding a feature means adding
 it everywhere; the test says where you stopped.
 
+**What is about the app and not about one feature** has no row in that
+comparison, and two homes. The catalogue screen's widget test is
+`test/home_screen_test.dart`, outside `test/features/`; its browser specs are
+`e2e/tests/app/catalogue.spec.ts` (the list, every row opening its screen,
+scroll position, keyboard) and `boot.spec.ts` (the app opened with no
+`?scenario=`, an unknown route, a deep link, a reload). `catalogue_test.dart`
+lists `e2e/tests` without descending, Playwright's `testDir` does, so
+`e2e/tests/app/` is seen by one and not the other — on purpose, and a case in
+`catalogue_test.dart` says so. `boot.spec.ts` lives in the backend's shared
+`default` world, so it is read-only there: it never resets or configures it
+and counts requests in the browser rather than in the scenario log. It also
+assumes that world is untouched — exact request lists and the seed's first
+post — so with a reused server on which someone has set latency, an error
+rate or `failNext` on `default`, it goes red.
+
 **`lib/shared/` is the deliberate exception to "self-contained".** Self-
 contained means a feature never reaches into another feature's directory, not
 that it re-types the app's own furniture. Each file there is one subject, and
@@ -375,8 +390,11 @@ Rules that cost someone a debugging session, in the order they bite:
   is `getByRole('switch')` and its subtitle is part of its name; Playwright's
   `check()` races Flutter's next-frame semantics update, so click and then
   assert `toBeChecked()`. The AppBar's back button is already named `Back`.
-- **Scrolling in the browser** is `locator.scrollIntoViewIfNeeded()` on a row;
-  `mouse.wheel` does not reach the canvas through the semantics overlay.
+- **Scrolling in the browser** is `locator.scrollIntoViewIfNeeded()` on a row
+  that is already built. A row a lazy list has not built yet is reached with
+  `mouse.wheel`, and the pointer must be over the list first
+  (`mouse.move` onto it, or onto a row of an inner scroller): the wheel goes
+  to what is under the pointer, and a bare `wheel` does nothing.
 - **A `SnackBar` is a live region, and Flutter web announces one twice**: as
   its node in the semantics tree and, for a few hundred milliseconds, as a
   copy in `<flt-announcement-host>` outside it. A bare `getByText` on its text

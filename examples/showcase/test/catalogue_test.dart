@@ -77,6 +77,27 @@ void main() {
     );
   });
 
+  test(
+      'a spec about the app and not about one feature lives in '
+      'e2e/tests/app, where the one-spec-per-entry test cannot see it', () {
+    // The escape hatch, written down: `_files` lists a directory without
+    // descending, Playwright's `testDir` descends. `e2e/tests/app/` therefore
+    // holds what is about the catalogue screen and the boot — not about one
+    // feature — and the test above neither counts it nor can be failed by it
+    // (#79). The price: nothing here compares it to anything, so this is the
+    // one place that says what belongs there.
+    final specs = _files(root, 'e2e/tests/app', '.spec.ts');
+    expect(specs, isNotEmpty, reason: 'e2e/tests/app has no spec');
+
+    final perFeature = _files(root, 'e2e/tests', '.spec.ts');
+    expect(perFeature.toSet().intersection(specs.toSet()), isEmpty,
+        reason: 'a spec of the same name in both places');
+    expect(specs.toSet().intersection(_snakeCase(catalogue).toSet()), isEmpty,
+        reason: 'a spec named for a feature belongs in e2e/tests, where the '
+            'catalogue compares it');
+    expect(specs, containsAll(<String>['catalogue', 'boot']));
+  });
+
   test('one README row per catalogue entry, in the catalogue order', () {
     final rows = RegExp(r'^\| `([a-z0-9-]+)` \|', multiLine: true)
         .allMatches(File('${root.path}/README.md').readAsStringSync())
