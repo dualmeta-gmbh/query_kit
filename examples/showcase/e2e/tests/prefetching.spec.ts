@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, fact, factIn, group, holdRequest, test } from './fixtures'
+import { button, expect, fact, factIn, group, holdRequest, test } from './fixtures'
 
 // The screen is read whole — the list card and both debug strips — and a
 // 720-tall window cuts the second strip off. Only what is on screen is in
@@ -16,7 +16,7 @@ test('a prefetch is one request and marks the row while nobody observes the entr
   await expect(fact(page, 'posts', 'status=success')).toBeVisible()
   await expect(row(page, 2).getByText('prefetched', { exact: true })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Prefetch post 2', exact: true }).click()
+  await button(page, 'Prefetch post 2').click()
 
   await expect(fact(page, 'post-2', 'status=success')).toBeVisible()
   await expect(fact(page, 'post-2', 'observers=0')).toBeVisible()
@@ -29,13 +29,13 @@ test('a prefetch is one request and marks the row while nobody observes the entr
 
 test('opening a prefetched post costs no request and shows the title at once', async ({ page, open, scenario }) => {
   await open('/prefetching')
-  await page.getByRole('button', { name: 'Prefetch post 2', exact: true }).click()
+  await button(page, 'Prefetch post 2').click()
   await expect(fact(page, 'post-2', 'status=success')).toBeVisible()
 
   // Any request the open might make is held in the browser: a title that
   // appears while the hold has caught nothing came from the cache.
   const hold = holdRequest(page, '**/api/posts/2*')
-  await page.getByRole('button', { name: 'Open post 2', exact: true }).click()
+  await button(page, 'Open post 2').click()
 
   await expect(page.getByText('Continuous integration: setup guide')).toBeVisible()
   await expect(fact(page, 'post-2', 'observers=1')).toBeVisible()
@@ -51,7 +51,7 @@ test('opening a post nobody prefetched costs one request', async ({ page, open, 
   await open('/prefetching')
   await expect(fact(page, 'posts', 'status=success')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Open post 3', exact: true }).click()
+  await button(page, 'Open post 3').click()
 
   await expect(page.getByText('Code review: setup guide')).toBeVisible()
   await expect(fact(page, 'post-3', 'status=success')).toBeVisible()
@@ -61,7 +61,7 @@ test('opening a post nobody prefetched costs one request', async ({ page, open, 
 
   // Back on the list the row is marked: the pill reads the cache, and an
   // open leaves the same entry behind as a prefetch would.
-  await page.getByRole('button', { name: 'Back to list', exact: true }).click()
+  await button(page, 'Back to list').click()
   await expect(row(page, 3).getByText('prefetched', { exact: true })).toBeVisible()
   await expect(fact(page, 'post-3', 'observers=0')).toBeVisible()
   expect(await scenario.count('GET', /^\/api\/posts\/3$/)).toBe(1)
@@ -69,10 +69,10 @@ test('opening a post nobody prefetched costs one request', async ({ page, open, 
 
 test('a second prefetch within staleTime is a no-op', async ({ page, open, scenario }) => {
   await open('/prefetching')
-  await page.getByRole('button', { name: 'Prefetch post 2', exact: true }).click()
+  await button(page, 'Prefetch post 2').click()
   await expect(fact(page, 'post-2', 'fetches=1')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Prefetch post 2', exact: true }).click()
+  await button(page, 'Prefetch post 2').click()
 
   // Nothing to wait for on a no-op: sample the count after a pause the
   // fetch would need, and the strip still says one.
@@ -88,7 +88,7 @@ test('a refused prefetch leaves the row unmarked and the post opens normally aft
   await open('/prefetching')
   await expect(fact(page, 'posts', 'status=success')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Prefetch post 4', exact: true }).click()
+  await button(page, 'Prefetch post 4').click()
 
   await expect(fact(page, 'post-4', 'status=error')).toBeVisible()
   await expect(fact(page, 'post-4', 'failures=1')).toBeVisible()
@@ -99,7 +99,7 @@ test('a refused prefetch leaves the row unmarked and the post opens normally aft
 
   // The scripted failure was spent on the prefetch; the open fetches
   // like any first open would.
-  await page.getByRole('button', { name: 'Open post 4', exact: true }).click()
+  await button(page, 'Open post 4').click()
   await expect(page.getByText('Release notes: setup guide')).toBeVisible()
   await expect(fact(page, 'post-4', 'status=success')).toBeVisible()
   await expect(fact(page, 'post-4', 'failures=0')).toBeVisible()
@@ -121,11 +121,11 @@ test.describe('imperative reads', () => {
   /// past it: from here a read's answer says whether it came from the cache
   /// (`0`) or from the backend (`1`).
   async function seedThenMoveTheServer(page: Page) {
-    await page.getByRole('button', { name: 'Read (await)', exact: true }).click()
+    await button(page, 'Read (await)').click()
     await expect(readFact(page, 'returned=0')).toBeVisible()
     await expect(readFact(page, 'cached=0')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Increment on the server', exact: true }).click()
+    await button(page, 'Increment on the server').click()
     await expect(readFact(page, 'increments=1')).toBeVisible()
     // The increment went nowhere near the cache: it still holds the old value.
     await expect(readFact(page, 'cached=0')).toBeVisible()
@@ -140,7 +140,7 @@ test.describe('imperative reads', () => {
     // The refresh is held in the browser: a value that shows while the hold
     // has caught it and not let it go came from the cache.
     const hold = holdRequest(page, '**/api/counter')
-    await page.getByRole('button', { name: 'Read (revalidateIfStale)', exact: true }).click()
+    await button(page, 'Read (revalidateIfStale)').click()
 
     await expect(readFact(page, 'read=revalidate')).toBeVisible()
     await expect(readFact(page, 'returned=0')).toBeVisible()
@@ -163,7 +163,7 @@ test.describe('imperative reads', () => {
     await expect(fact(page, 'posts', 'status=success')).toBeVisible()
     await seedThenMoveTheServer(page)
 
-    await page.getByRole('button', { name: 'Read (await)', exact: true }).click()
+    await button(page, 'Read (await)').click()
 
     await expect(readFact(page, 'returned=1')).toBeVisible()
     await expect(readFact(page, 'cached=1')).toBeVisible()
@@ -177,7 +177,7 @@ test.describe('imperative reads', () => {
     await expect(fact(page, 'posts', 'status=success')).toBeVisible()
     await seedThenMoveTheServer(page)
 
-    await page.getByRole('button', { name: 'Read (static)', exact: true }).click()
+    await button(page, 'Read (static)').click()
 
     await expect(readFact(page, 'read=static')).toBeVisible()
     await expect(readFact(page, 'returned=0')).toBeVisible()
@@ -208,7 +208,7 @@ test.describe('the infinite twin', () => {
     await expect(infinite(page, 'pages=0')).toBeVisible()
     await expect(fact(page, 'projects', 'status=absent')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Prefetch the first page', exact: true }).click()
+    await button(page, 'Prefetch the first page').click()
 
     await expect(infinite(page, 'pages=1')).toBeVisible()
     await expect(infinite(page, 'rows=10')).toBeVisible()
@@ -218,7 +218,7 @@ test.describe('the infinite twin', () => {
     expect(await scenario.count('GET', /^\/api\/projects$/)).toBe(1)
 
     // Fresh for five minutes: the same call hands back the cached page.
-    await page.getByRole('button', { name: 'Prefetch the first page', exact: true }).click()
+    await button(page, 'Prefetch the first page').click()
     await page.waitForTimeout(500)
     await expect(fact(page, 'projects', 'fetches=1')).toBeVisible()
     expect(await scenario.count('GET', /^\/api\/projects$/)).toBe(1)

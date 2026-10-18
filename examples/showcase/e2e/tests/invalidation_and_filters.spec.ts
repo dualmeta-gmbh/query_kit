@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, test } from './fixtures'
+import { button, expect, fact, test } from './fixtures'
 
 // Twelve buttons, four readers and five strips: taller than a default
 // viewport, and a lazily built list only has what is in view.
@@ -7,7 +7,6 @@ test.use({ viewport: { width: 1280, height: 1800 } })
 
 const labels = ['posts', 'post-1', 'post-2', 'post-3', 'todos'] as const
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 // Every entry settled after exactly one fetch.
 async function openSettled(page: Page, open: (route: string) => Promise<void>) {

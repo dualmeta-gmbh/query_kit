@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, factNumber, group, holdRequest, test } from './fixtures'
+import { button, expect, fact, factIn, factNumber, group, holdRequest, test } from './fixtures'
 
 // The five readers of the one entry, by the id of their semantics group.
 const readers = ['context', 'builder', 'mixin', 'controller', 'raw'] as const
@@ -36,7 +36,7 @@ async function loaded(page: Page) {
   }
 }
 
-const refetchButton = (page: Page) => page.getByRole('button', { name: 'Refetch', exact: true })
+const refetchButton = (page: Page) => button(page, 'Refetch')
 
 test('every reader shows its selection after one request', async ({ page, open, scenario }) => {
   await open('/select-and-sharing')
@@ -101,7 +101,7 @@ test('toggling todo 1 moves only the done/open record', async ({ page, open, sce
   await loaded(page)
   const before = await snapshot(page)
 
-  await page.getByRole('button', { name: 'Toggle todo 1', exact: true }).click()
+  await button(page, 'Toggle todo 1').click()
   // The mutation's `onSuccess` invalidated the entry, which refetched it.
   await expect(reader(page, 'mixin').getByText('done=2', { exact: true })).toBeVisible()
   await expect(reader(page, 'mixin').getByText('open=1', { exact: true })).toBeVisible()
@@ -126,7 +126,7 @@ test('renaming todo 2 moves only the list of texts', async ({ page, open, scenar
   await loaded(page)
   const before = await snapshot(page)
 
-  await page.getByRole('button', { name: 'Rename todo 2', exact: true }).click()
+  await button(page, 'Rename todo 2').click()
   await expect(reader(page, 'controller').getByText('Renamed todo 2 x1', { exact: true })).toBeVisible()
   await expect(reader(page, 'controller').getByText('Rename the columns on the board', { exact: true })).toBeHidden()
   await expect(fact(page, 'todos', 'fetchStatus=idle')).toBeVisible()
@@ -140,7 +140,7 @@ test('renaming todo 2 moves only the list of texts', async ({ page, open, scenar
   expect(after.builder.builds).toBe(before.builder.builds)
 
   // Each rename is a new text, so the list of texts moves every time.
-  await page.getByRole('button', { name: 'Rename todo 2', exact: true }).click()
+  await button(page, 'Rename todo 2').click()
   await expect(reader(page, 'controller').getByText('Renamed todo 2 x2', { exact: true })).toBeVisible()
   await expect(reader(page, 'controller').getByText(`data builds=${before.controller.dataBuilds + 2}`, { exact: true })).toBeVisible()
   expect(await scenario.count('PATCH', /^\/api\/todos\/2$/)).toBe(2)
@@ -216,7 +216,7 @@ test.describe('a value class around the list', () => {
     await expect.poll(() => scenario.count('GET', /^\/api\/todos$/)).toBe(3)
 
     // Nothing changed at the backend: equal boards, both kept whole.
-    const refetchBoards = page.getByRole('button', { name: 'Refetch boards', exact: true })
+    const refetchBoards = button(page, 'Refetch boards')
     await refetchBoards.click()
     await expect.poll(() => scenario.count('GET', /^\/api\/todos$/)).toBe(5)
     for (const board of boards) {
@@ -226,7 +226,7 @@ test.describe('a value class around the list', () => {
 
     // One todo renamed: the leaf renews every todo, the shareable board only
     // the renamed one.
-    await page.getByRole('button', { name: 'Rename todo 2', exact: true }).click()
+    await button(page, 'Rename todo 2').click()
     await expect(reader(page, 'controller').getByText('Renamed todo 2 x1', { exact: true })).toBeVisible()
     await refetchBoards.click()
     await expect(factIn(page, 'leaf board', 'kept=0 of 3')).toBeVisible()

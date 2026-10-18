@@ -1,4 +1,4 @@
-import { expect, fact, factIn, factNumber, group, holdRequest, test, type Page } from './fixtures'
+import { button, expect, expectSelected, fact, factIn, factNumber, group, holdRequest, segment, test, type Page } from './fixtures'
 
 // The controls, three strips and the combined card: taller than the default
 // viewport, and the scaffold's list builds only what is in view.
@@ -15,13 +15,12 @@ const combined = (page: Page, text: string) => factIn(page, 'combined', text)
 
 const overview = (page: Page, text: string) => factIn(page, 'overview', text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 /// A click, then the state: Flutter updates its semantics a frame later.
 async function setPostRead(page: Page, label: 'answers' | 'is refused') {
-  const choice = group(page, 'post knob').getByRole('radio', { name: label, exact: true })
+  const choice = segment(group(page, 'post knob'), label)
   await choice.click()
-  await expect(choice).toBeChecked()
+  await expectSelected(choice)
 }
 
 test('pending until every source has data, then the combination', async ({ page, open }) => {
@@ -188,9 +187,9 @@ test.describe('a list, its details and a pinned post', () => {
   const pinned = (page: Page, text: string) => factIn(page, 'pinned', text)
 
   async function choose(page: Page, knob: string, label: string) {
-    const choice = group(page, knob).getByRole('radio', { name: label, exact: true })
+    const choice = segment(group(page, knob), label)
     await choice.click()
-    await expect(choice).toBeChecked()
+    await expectSelected(choice)
   }
 
   test('combineWith: the list and a read per item are one combination', async ({ page, open, scenario }) => {

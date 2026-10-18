@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, group, test, type Scenario } from './fixtures'
+import { button, expect, expectSelected, fact, factIn, group, segment, test, type Scenario } from './fixtures'
 
 // Three entries, two strips and five knobs on one screen; entry C sits at the
 // bottom, and the scaffold's list only builds — and the semantics tree only
@@ -10,16 +10,15 @@ test.use({ viewport: { width: 1280, height: 3000 } })
 // other entry and both strips show an `isStale=` too.
 const reader = (page: Page, group: string, text: string) => factIn(page, group, text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 // A segment of one knob: three of them have a `never`, so the knob's group
 // comes first. Clicked, then asserted selected: the click is a DOM event and
 // Flutter applies it a frame later, and a test that acts on the knob before
 // that frame — a window blur, say — acts on the old setting.
 async function pick(page: Page, knob: string, label: string) {
-  const segment = group(page, knob).getByRole('radio', { name: label, exact: true })
-  await segment.click()
-  await expect(segment).toBeChecked()
+  const choice = segment(group(page, knob), label)
+  await choice.click()
+  await expectSelected(choice)
 }
 
 // The app leaving the foreground and coming back. Headless Chromium raises no

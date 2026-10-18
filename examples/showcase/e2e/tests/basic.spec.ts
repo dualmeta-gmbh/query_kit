@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, fact, group, holdRequest, test } from './fixtures'
+import { button, expect, fact, group, holdRequest, test } from './fixtures'
 
 const post3Title = 'Code review: setup guide'
 
@@ -9,8 +9,8 @@ const post3Title = 'Code review: setup guide'
 // its own next to the button.
 const row = (page: Page, id: number) => group(page, `post ${id}`)
 const cachedMarkOf = (page: Page, id: number) => row(page, id).getByText('cached', { exact: true })
-const openPost = (page: Page, title: string) => page.getByRole('button', { name: title, exact: true }).click()
-const backToList = (page: Page) => page.getByRole('button', { name: 'Back to list', exact: true }).click()
+const openPost = (page: Page, title: string) => button(page, title).click()
+const backToList = (page: Page) => button(page, 'Back to list').click()
 
 test('the list arrives after one request and no row is marked', async ({ page, open, scenario }) => {
   await open('/basic')

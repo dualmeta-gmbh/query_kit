@@ -1,4 +1,4 @@
-import { expect, fact, holdRequest, test } from './fixtures'
+import { button, expect, fact, holdRequest, test } from './fixtures'
 
 const posts = [1, 2, 3]
 
@@ -34,7 +34,7 @@ test('refetch all bumps every entry and the count comes back to 0', async ({ pag
   await open('/parallel-queries')
   await expect(page.getByText('fetching=0', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Refetch all', exact: true }).click()
+  await button(page, 'Refetch all').click()
 
   for (const id of posts) {
     await expect(fact(page, `post-${id}`, 'fetches=2')).toBeVisible()
@@ -51,14 +51,14 @@ test('refetch post 2 bumps only post-2', async ({ page, open, scenario }) => {
   await expect(page.getByText('fetching=0', { exact: true })).toBeVisible()
 
   const hold = holdRequest(page, '**/api/posts/2*')
-  await page.getByRole('button', { name: 'Refetch post 2', exact: true }).click()
+  await button(page, 'Refetch post 2').click()
 
   await expect(page.getByText('fetching=1', { exact: true })).toBeVisible()
   await expect(fact(page, 'post-2', 'fetchStatus=fetching')).toBeVisible()
   await expect(page.getByText('refreshing', { exact: true })).toHaveCount(1)
   await expect(fact(page, 'post-1', 'fetchStatus=idle')).toBeVisible()
   await expect(fact(page, 'post-3', 'fetchStatus=idle')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Refetch all', exact: true })).toHaveAttribute('aria-disabled', 'true')
+  await expect(button(page, 'Refetch all')).toHaveAttribute('aria-disabled', 'true')
   await hold.release()
 
   await expect(fact(page, 'post-2', 'fetches=2')).toBeVisible()
@@ -77,7 +77,7 @@ test('with post 3 held back the other two settle while it still fetches', async 
   // The hold stands in for the "Slow post 3" switch: it makes "later" exact
   // rather than two seconds on a clock.
   const hold = holdRequest(page, '**/api/posts/3*')
-  await page.getByRole('button', { name: 'Refetch all', exact: true }).click()
+  await button(page, 'Refetch all').click()
 
   await expect(fact(page, 'post-1', 'fetches=2')).toBeVisible()
   await expect(fact(page, 'post-2', 'fetches=2')).toBeVisible()
@@ -100,7 +100,7 @@ test('the slow switch asks the backend for a delay on post 3 only', async ({ pag
   await expect(page.getByText('fetching=0', { exact: true })).toBeVisible()
 
   await page.getByLabel('Slow post 3', { exact: true }).or(page.getByText('Slow post 3', { exact: true })).click()
-  await page.getByRole('button', { name: 'Refetch all', exact: true }).click()
+  await button(page, 'Refetch all').click()
 
   for (const id of posts) {
     await expect(fact(page, `post-${id}`, 'fetches=2')).toBeVisible()
@@ -118,7 +118,7 @@ test('leaving the screen releases every observer', async ({ page, open }) => {
     await expect(fact(page, `post-${id}`, 'observers=1')).toBeVisible()
   }
 
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(page.getByText('query_kit showcase')).toBeVisible()
 
   // The entries outlive the screen. Back on it, each is held by the new

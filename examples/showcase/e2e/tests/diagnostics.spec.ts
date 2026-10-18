@@ -1,11 +1,10 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, group, test } from './fixtures'
+import { button, expect, expectSelected, fact, factIn, group, segment, test } from './fixtures'
 
 // One fact of a card, by its group and exact text — `status=error` is said by
 // the mutation's facts and by the strip alike.
 const factOf = (page: Page, label: string, text: string) => factIn(page, `facts ${label}`, text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 const INCREMENT = /^\/api\/counter\/increment$/
 
@@ -143,9 +142,9 @@ test.describe('options that throw in a build', () => {
   const COUNTER = /^\/api\/counter$/
 
   async function read(page: Page, label: 'the counter' | 'the String entry') {
-    const choice = group(page, 'keyed knob').getByRole('radio', { name: label, exact: true })
+    const choice = segment(group(page, 'keyed knob'), label)
     await choice.click()
-    await expect(choice).toBeChecked()
+    await expectSelected(choice)
   }
 
   test('show the app\'s error widget, keep the observer, and recover', async ({ page, open, scenario }) => {

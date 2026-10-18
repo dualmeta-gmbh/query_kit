@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, group, snackBar, test } from './fixtures'
+import { button, expect, fact, group, snackBar, test } from './fixtures'
 
 // Three strips, two cards and a growing log: taller than the default viewport,
 // and a lazily built list only has the rows in view.
@@ -46,7 +46,7 @@ test('the missing post logs an error with its meta and toasts a SnackBar', async
   await open('/global-callbacks')
   await expect(logLine(page, 'query settled posts')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Fetch a missing post', exact: true }).click()
+  await button(page, 'Fetch a missing post').click()
 
   await expectLogOrder(page, [
     'query success posts',
@@ -70,7 +70,7 @@ test('the meta tag reaches the query function', async ({ page, open, scenario })
   await open('/global-callbacks')
   await expect(logLine(page, 'query settled posts')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Fetch with meta tag', exact: true }).click()
+  await button(page, 'Fetch with meta tag').click()
 
   await expect(page.getByText('meta seen=showcase', { exact: true })).toBeVisible()
   await expect(page.getByText('serial=1', { exact: true })).toBeVisible()
@@ -83,10 +83,10 @@ test('a mutation runs the cache callbacks before its own, and logs a refusal', a
   await scenario.config({ latency: 0 })
   await open('/global-callbacks')
   await expect(logLine(page, 'query settled posts')).toBeVisible()
-  await page.getByRole('button', { name: 'Clear log', exact: true }).click()
+  await button(page, 'Clear log').click()
   await expect(page.getByText('log=0', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Create todo', exact: true }).click()
+  await button(page, 'Create todo').click()
 
   // The core's order: the cache's `onSuccess`, then the options', then the
   // cache's `onSettled`, then the options'.
@@ -97,9 +97,9 @@ test('a mutation runs the cache callbacks before its own, and logs a refusal', a
   const todos = (await (await scenario.api('get', '/todos')).json()) as { text: string }[]
   expect(todos.map((todo) => todo.text)).toContain('From the callbacks screen')
 
-  await page.getByRole('button', { name: 'Clear log', exact: true }).click()
+  await button(page, 'Clear log').click()
   await expect(page.getByText('log=0', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Create failing todo', exact: true }).click()
+  await button(page, 'Create failing todo').click()
 
   await expectLogOrder(page, ['mutation mutate', 'mutation error (Requested: 500)', 'option onError', 'mutation settled', 'option onSettled'])
   await expect(page.getByText('todo=error: Requested: 500', { exact: true })).toBeVisible()

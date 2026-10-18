@@ -1,18 +1,29 @@
 // What the specs share: the boot marker, the locators for what a row and a
 // button are called in the semantics tree, and the request holds that stand in
 // for a stopwatch.
-import { expect, type Page } from '@playwright/test'
+import { expect, type Page, type Locator } from '@playwright/test'
+
+/// A button by its label, inside `scope`: the page, or a group.
+///
+/// Flutter 3.47's web engine names a button twice once it has been tapped
+/// ("Refetch Refetch": the label's text node is attached to the button as an
+/// owned child), so that name is accepted too. A button whose label merely
+/// starts with `name` is not: "Refetch all" is not "Refetch".
+export const button = (scope: Page | Locator, name: string) => {
+  const label = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return scope.getByRole('button', { name: new RegExp(`^${label}(?: ${label})?$`) })
+}
 
 export const open = async (page: Page) => {
   await page.goto('/')
   // The toolbar is up as soon as the app has booted; the rows come after the
   // backend's ~900 ms.
-  await expect(page.getByRole('button', { name: 'New task', exact: true })).toBeVisible()
+  await expect(button(page, 'New task')).toBeVisible()
 }
 
 export const row = (page: Page, name: string | RegExp) => page.getByRole('group', { name })
 export const deleteButton = (page: Page, name: string) => page.getByRole('button', { name: `Delete ${name}` })
-export const newTaskButton = (page: Page) => page.getByRole('button', { name: 'New task', exact: true })
+export const newTaskButton = (page: Page) => button(page, 'New task')
 export const searchField = (page: Page) => page.getByRole('textbox', { name: 'Search tasks…' })
 // A control by the name it carries, whatever role Flutter publishes it with.
 // A locked control that contains a spinner (the reload button while fetching,
@@ -105,9 +116,9 @@ export function refuseRequests(page: Page, method: string, glob: string, message
 /// Opens the project dropdown, which is named after the project it shows, and
 /// picks another. The menu is a popup of menu items.
 export async function pickProject(page: Page, from: string, to: string) {
-  await page.getByRole('button', { name: from, exact: true }).click()
+  await button(page, from).click()
   await page.getByRole('menuitem', { name: to, exact: true }).click()
-  await expect(page.getByRole('button', { name: to, exact: true })).toBeVisible()
+  await expect(button(page, to)).toBeVisible()
 }
 
 /// The list is settled: not fetching, which is when the toolbar's reload

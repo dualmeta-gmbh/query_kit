@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, test, typeInto } from './fixtures'
+import { button, expect, fact, segment, test, typeInto } from './fixtures'
 
 // The add card, the strip and a list of four rows are taller than the default
 // viewport, and the scaffold's list builds only what is in view.
@@ -44,7 +44,7 @@ const holdPost = (page: Page) => holdMethod(page, 'POST')
 /// Types `text` into the field and presses `Add`.
 async function add(page: Page, text: string) {
   await typeInto(page, page.getByRole('textbox'), text)
-  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await button(page, 'Add').click()
 }
 
 /// Switches to the cache variant and waits for its mount refetch: the
@@ -52,7 +52,7 @@ async function add(page: Page, text: string) {
 /// is zero, so the switch itself costs a GET, and a hold installed before it
 /// settled would count that too.
 async function viaCache(page: Page) {
-  await page.getByRole('radio', { name: 'Via cache', exact: true }).click()
+  await segment(page, 'Via cache').click()
   await expect(page.getByText('Todos · via cache', { exact: true })).toBeVisible()
   await expect(fact(page, 'todos', 'fetches=2')).toBeVisible()
   await expect(fact(page, 'todos', 'fetchStatus=idle')).toBeVisible()
@@ -81,7 +81,7 @@ test('via variables, a held write is a saving row and not a cache entry', async 
   await expect(page.getByText('saving', { exact: true })).toBeVisible()
   await expect(page.getByText('todos=3', { exact: true })).toBeVisible()
   await expect(page.getByText('pending=true', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Add', exact: true })).toHaveAttribute('aria-disabled', 'true')
+  await expect(button(page, 'Add')).toHaveAttribute('aria-disabled', 'true')
   expect(hold.seen).toBe(1)
   expect(await scenario.count('POST', TODOS)).toBe(0)
   await hold.release()
@@ -105,7 +105,7 @@ test('via variables, a refused write keeps its row as an error with Retry', asyn
   await add(page, 'Order new batteries')
 
   await expect(page.getByText('Not saved: Requested: 500', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+  await expect(button(page, 'Retry')).toBeVisible()
   await expect(page.getByText('Order new batteries', { exact: true })).toBeVisible()
   await expect(page.getByText('saving', { exact: true })).toBeHidden()
   // Three real rows plus the error row: the cache was never written, and
@@ -117,11 +117,11 @@ test('via variables, a refused write keeps its row as an error with Retry', asyn
   // The refusal was consumed by the write that carried it.
   await expect(refuseNext(page)).not.toBeChecked()
 
-  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await button(page, 'Retry').click()
 
   await expect(page.getByText('#4', { exact: true })).toBeVisible()
   await expect(page.getByText('Not saved: Requested: 500', { exact: true })).toBeHidden()
-  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeHidden()
+  await expect(button(page, 'Retry')).toBeHidden()
   await expect(page.getByText('Order new batteries', { exact: true })).toBeVisible()
   await expect(page.getByText('todos=4', { exact: true })).toBeVisible()
   expect(await scenario.count('POST', TODOS)).toBe(2)
@@ -200,7 +200,7 @@ test("via cache, onMutate's cancelQueries ends a refetch that is in flight befor
   // the POST hold below shadows this one for the GET `onSettled` triggers —
   // each hold passes through what is not its own method.)
   const holdGet = holdMethod(page, 'GET')
-  await page.getByRole('button', { name: 'Refetch', exact: true }).click()
+  await button(page, 'Refetch').click()
   await expect.poll(() => holdGet.seen).toBe(1)
   await expect(fact(page, 'todos', 'fetchStatus=fetching')).toBeVisible()
 
@@ -233,16 +233,16 @@ test('a blank entry sends nothing, and an accepted one empties the field', async
   const field = page.getByRole('textbox')
 
   await typeInto(page, field, '   ')
-  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await button(page, 'Add').click()
 
   // Nothing started: no row, no pending write, and the button is still free.
   await expect(page.getByText('saving', { exact: true })).toBeHidden()
   await expect(page.getByText('pending=false', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Add', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
+  await expect(button(page, 'Add')).not.toHaveAttribute('aria-disabled', 'true')
 
   // The same field, now with a text: the first and only write.
   await typeInto(page, field, 'Order new batteries')
-  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await button(page, 'Add').click()
   await expect(page.getByText('#4', { exact: true })).toBeVisible()
   await expect(field).toHaveValue('')
   expect(await scenario.count('POST', TODOS)).toBe(1)

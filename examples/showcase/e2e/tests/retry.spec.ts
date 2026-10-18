@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, group, test } from './fixtures'
+import { button, expect, fact, factIn, group, segment, test } from './fixtures'
 
 // Four cards and a strip: taller than the default window, and a `ListView`
 // only builds what is near the viewport.
@@ -9,12 +9,11 @@ test.use({ viewport: { width: 1280, height: 1800 } })
 // strip carries a `status=` too.
 const reader = (page: Page, text: string) => factIn(page, 'reader', text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 // A segment of one knob: `retry` and `fail-next` both have a `2`, so the
 // knob's group comes first.
 const pick = (page: Page, knob: 'retry' | 'delay' | 'fail-next' | 'status', label: string) =>
-  group(page, knob).getByRole('radio', { name: label, exact: true }).click()
+  segment(group(page, knob), label).click()
 
 // Hands the script to the backend and waits for the screen to say it landed,
 // so nothing races the fetch that is about to spend it.

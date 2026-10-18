@@ -13,6 +13,7 @@
 import { readFileSync } from 'node:fs'
 import type { Page } from '@playwright/test'
 import { expect, test } from '../fixtures'
+import { button } from './../fixtures'
 
 type Feature = { id: string; title: string; summary: string }
 
@@ -22,11 +23,11 @@ const features: Feature[] = JSON.parse(
 
 /// A row is one button, named by its title and its summary.
 const nameOf = (feature: Feature) => `${feature.title} ${feature.summary}`
-const row = (page: Page, feature: Feature) => page.getByRole('button', { name: nameOf(feature), exact: true })
+const row = (page: Page, feature: Feature) => button(page, nameOf(feature))
 const rows = (page: Page) => page.getByRole('button')
 const catalogueTitle = (page: Page) => page.getByRole('heading', { name: 'query_kit showcase', exact: true })
 const heading = (page: Page, title: string) => page.getByRole('heading', { name: title, exact: true })
-const back = (page: Page) => page.getByRole('button', { name: 'Back', exact: true })
+const back = (page: Page) => button(page, 'Back')
 
 /// Every request the page sends to the backend, from now on.
 function backendRequests(page: Page) {

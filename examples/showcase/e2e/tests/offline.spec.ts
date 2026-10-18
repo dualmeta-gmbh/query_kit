@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, group, test, typeInto } from './fixtures'
+import { button, expect, fact, group, segment, test, typeInto } from './fixtures'
 
 // The connection card, the strip, the add card, the list and the three
 // explanations are taller than the default viewport, and the scaffold's list
@@ -14,7 +14,6 @@ const facts = (page: Page) => group(page, 'facts offline')
 
 const say = (page: Page, text: string) => facts(page).getByText(text, { exact: true })
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 /// Flips the one switch the whole screen hangs on. The library installs no
 /// connectivity listener, so this is the only thing that moves the online
@@ -27,7 +26,7 @@ async function setOnline(page: Page, online: boolean) {
 // A segment of one knob: the network mode and the reconnect knob both have
 // an `always`, so the knob's group comes first.
 const pick = (page: Page, knob: 'network-mode' | 'on-reconnect', label: string) =>
-  group(page, knob).getByRole('radio', { name: label, exact: true }).click()
+  segment(group(page, knob), label).click()
 
 const pickMode = (page: Page, mode: string) => pick(page, 'network-mode', mode)
 

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, group, test, typeInto } from './fixtures'
+import { button, expect, fact, factIn, group, segment, test, typeInto } from './fixtures'
 
 // Knobs, the list, an editor and two strips are taller than the default
 // viewport, and the scaffold's list only builds what is in view.
@@ -9,11 +9,10 @@ test.use({ viewport: { width: 1280, height: 1800 } })
 // `editor`, `backend`, `add`), because the strips show an `isStale=` too.
 const reader = (page: Page, group: string, text: string) => factIn(page, group, text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 // A segment of one knob: three knobs have a `0`, so the knob's group first.
 const pick = (page: Page, knob: 'stale-time' | 'gc-time' | 'latency' | 'error-rate', label: string) =>
-  group(page, knob).getByRole('radio', { name: label, exact: true }).click()
+  segment(group(page, knob), label).click()
 
 const todos = /^\/api\/todos$/
 

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, group, holdRequest, test } from './fixtures'
+import { button, expect, fact, factIn, group, holdRequest, segment, test } from './fixtures'
 
 // Four cards and their strips are taller than the default viewport, and the
 // scaffold's list only builds — and the semantics tree only carries — what is
@@ -14,7 +14,7 @@ test('a detail seeded from a fresh list costs no request', async ({ page, open, 
   await open('/initial-and-placeholder')
   await expect(page.getByText('posts=30', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Open post 2', exact: true }).click()
+  await button(page, 'Open post 2').click()
 
   await expect(detail(page, 'A', 'Continuous integration: setup guide')).toBeVisible()
   await expect(detail(page, 'A', 'initialData source=list')).toBeVisible()
@@ -31,7 +31,7 @@ test('a seed dated older than staleTime shows at once and refetches', async ({ p
   await page.getByRole('switch', { name: /Treat initial data as old/ }).click()
 
   const hold = holdRequest(page, '**/api/posts/3*')
-  await page.getByRole('button', { name: 'Open post 3', exact: true }).click()
+  await button(page, 'Open post 3').click()
 
   // The title is there while the request is provably unanswered.
   await expect(detail(page, 'A', 'Code review: setup guide')).toBeVisible()
@@ -73,7 +73,7 @@ test('a refetch keeps the real post, not the placeholder', async ({ page, open, 
   await expect(fact(page, 'post-4', 'fetchStatus=idle')).toBeVisible()
 
   const hold = holdRequest(page, '**/api/posts/4*')
-  await page.getByRole('button', { name: 'Refetch', exact: true }).click()
+  await button(page, 'Refetch').click()
 
   // Placeholder data only stands in for *no* data; a refetch has data.
   await expect(fact(page, 'post-4', 'fetchStatus=fetching')).toBeVisible()
@@ -96,7 +96,7 @@ test('switching the key keeps the previous post as a placeholder', async ({ page
   await expect(detail(page, 'C', 'isPlaceholderData=false')).toBeVisible()
 
   const hold = holdRequest(page, '**/api/posts/6*')
-  await page.getByRole('radio', { name: 'Post 6', exact: true }).click()
+  await segment(page, 'Post 6').click()
 
   await expect(detail(page, 'C', 'Staging environment: setup guide')).toBeVisible()
   await expect(detail(page, 'C', 'isPlaceholderData=true')).toBeVisible()
@@ -112,7 +112,7 @@ test('a switched key fetches the new post and settles on it', async ({ page, ope
   await open('/initial-and-placeholder')
   await expect(detail(page, 'C', 'Staging environment: setup guide')).toBeVisible()
 
-  await page.getByRole('radio', { name: 'Post 6', exact: true }).click()
+  await segment(page, 'Post 6').click()
 
   await expect(detail(page, 'C', 'Feature flags: setup guide')).toBeVisible()
   await expect(detail(page, 'C', 'isPlaceholderData=false')).toBeVisible()
@@ -124,8 +124,7 @@ test('a switched key fetches the new post and settles on it', async ({ page, ope
 
 // Card D's mode button: `off` until a test picks one, so nothing on this
 // screen seeds post 8 or post 9 by itself.
-const pickMode = (page: Page, label: string) => group(page, 'lazy-seed mode')
-    .getByRole('radio', { name: label, exact: true })
+const pickMode = (page: Page, label: string) => segment(group(page, 'lazy-seed mode'), label)
     .click()
 
 test('a lazily computed timestamp of null dates the seed now, and nothing fetches', async ({
@@ -150,8 +149,8 @@ test('a lazily computed timestamp of null dates the seed now, and nothing fetche
 
   // Every rebuild re-applies the options, and the entry holds data: the
   // callback is never consulted a second time.
-  await page.getByRole('button', { name: 'Rebuild card D', exact: true }).click()
-  await page.getByRole('button', { name: 'Rebuild card D', exact: true }).click()
+  await button(page, 'Rebuild card D').click()
+  await button(page, 'Rebuild card D').click()
   await expect(detail(page, 'D', 'computeCalls=1')).toBeVisible()
   expect(await scenario.count('GET', /^\/api\/posts\/8$/)).toBe(0)
 })

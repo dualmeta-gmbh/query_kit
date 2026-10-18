@@ -7,7 +7,7 @@
 // holds the app's polls instead of racing the clock.
 import { expect, test } from '@playwright/test'
 import { confirmReminder, createTask, getTask, sweepTestTasks, uniqueName } from './backend'
-import { holdRequests, open, refuseRequests, reminderControl, row, waitingForScheduler } from './helpers'
+import { button, holdRequests, open, refuseRequests, reminderControl, row, waitingForScheduler } from './helpers'
 
 test.beforeAll(async ({ request }) => sweepTestTasks(request))
 test.afterAll(async ({ request }) => sweepTestTasks(request))
@@ -41,7 +41,7 @@ test('turning a reminder off again waits for the scheduler and settles off', asy
   expect(settled?.reminderPending).toBe(false)
 
   // The row has lost its pill, from the same cache entry.
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(row(page, task.name)).not.toHaveAttribute('aria-label', /(reminder|confirming)$/)
 })
 
@@ -69,7 +69,7 @@ test('a refused reminder write rolls the switch back', async ({ page, request })
   expect(held?.reminderPending).toBe(false)
   expect(held?.reminderTarget).toBeNull()
 
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(row(page, task.name)).not.toHaveAttribute('aria-label', /(reminder|confirming)$/)
 })
 
@@ -89,7 +89,7 @@ test('the row shows "confirming" while the scheduler has not taken the value', a
   await expect(waitingForScheduler(page)).not.toHaveAttribute('flt-tappable')
   await expect(page.getByText(/confirming$/)).toBeVisible()
 
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(row(page, task.name)).toHaveAttribute('aria-label', /confirming$/)
 
   // Let the polls through: the scheduler confirms and the pill turns into the
