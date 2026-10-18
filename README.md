@@ -1,3 +1,5 @@
+<img src="website/static/img/logo.svg" alt="query_kit logo" width="72" height="72">
+
 # query_kit
 
 TanStack Query for Dart and Flutter: cached server state with background
