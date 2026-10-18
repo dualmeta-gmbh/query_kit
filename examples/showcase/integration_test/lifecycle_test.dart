@@ -43,7 +43,7 @@ Future<void> main() async {
       await settleFor(tester, const Duration(seconds: 1));
       await waitForFact(tester, 'debug focus-b', 'fetches=1');
       expect(await h.requests('GET', '/api/time'), 3);
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
 
     nativeTest('never: a real return refetches nothing, stale data included',
         (tester, h) async {
@@ -59,7 +59,7 @@ Future<void> main() async {
       await waitForFact(tester, 'debug focus-a', 'fetches=1');
       await waitForFact(tester, 'debug focus-b', 'fetches=1');
       expect(await h.requests('GET', '/api/time'), 2);
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
 
     nativeTest(
         'entry C, threshold long: a real absence under the hour refetches '
@@ -73,7 +73,7 @@ Future<void> main() async {
       await waitForFact(tester, 'reader-c', 'shouldRefetchOnFocus=false');
       await settleFor(tester, const Duration(seconds: 1));
       await waitForFact(tester, 'reader-c', 'fetches=1');
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
 
     nativeTest('entry C, threshold none: the same absence does refetch',
         (tester, h) async {
@@ -84,7 +84,7 @@ Future<void> main() async {
 
       await waitForFact(tester, 'reader-c', 'shouldRefetchOnFocus=true');
       await waitForFact(tester, 'reader-c', 'fetches=2');
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
   });
 
   group('auto-refetching', () {
@@ -161,7 +161,7 @@ Future<void> main() async {
       expect(await h.requests('GET', ticks, after: absence.back),
           greaterThanOrEqualTo(2));
       expect(polls.where((at) => at.isAfter(returned)), isNotEmpty);
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
 
     nativeTest('refetchIntervalInBackground: what the platform allows',
         (tester, h) async {
@@ -183,6 +183,6 @@ Future<void> main() async {
       // before it suspends it, and a desktop app behind another window is
       // not suspended at all.
       expect(during, greaterThanOrEqualTo(2));
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
   });
 }

@@ -4,9 +4,10 @@
 // plain HTTP on loopback (an Android emulator reaches the host's loopback as
 // 10.0.2.2, an iOS simulator shares it).
 //
-//   GET  /platform                       → { platform, device, appId, loginWindow }  `loginWindow`:
+//   GET  /platform                       → { platform, device, appId, loginWindow, ci }  `loginWindow`:
 //                                          macOS only, true when the session is at the login
-//                                          window, so no app can come to the front
+//                                          window (seen on every look for 5 s), so no app can come to the front; `ci`:
+//                                          running under GitHub Actions
 //   POST /background?ms=                 → { left, back }  background the app, wait, bring it
 //                                          back; `left` once it was sent away, `back` as its return
 //                                          was asked for: ISO times, as the backend logs them
@@ -108,15 +109,15 @@ async function frontmost() {
 
 // Polls for `bundleId` to be in front, for up to `ms`.
 async function waitFront(bundleId: string, ms: number) {
-  for (let waited = 0; waited <= ms; waited += 250) {
+  for (let waited = 0; ; waited += 250) {
     try {
       if ((await frontmost()) === bundleId) return true
     } catch (error) {
       console.log(`device_control: lsappinfo: ${String(error)}`)
     }
+    if (waited >= ms) return false
     await sleep(250)
   }
-  return false
 }
 
 // Puts the app under test in front: by id, then by AppleScript, which may ask
@@ -145,11 +146,23 @@ async function who() {
 
 // A macOS session that sits at the login window (a CI runner whose screen is
 // locked, say) has no app in front and lets none come: the cases that leave
-// the app cannot be run there, and the tests skip them. Asked when the suite
-// starts, with the app up: at this process's own start the session may not
-// have settled (#109).
-async function atLoginWindow() {
-  return platform === 'macos' && (await frontmost().catch(() => '')) === 'com.apple.loginwindow'
+// the app cannot be run there, and the tests skip them. The front app changes
+// in the first minute of a session, so one look is not enough: it is the
+// login window only if every look, 500 ms apart for up to 5 s, says so (any
+// other app in front ends it at once). Asked when the suite starts, with the
+// app up, and settled for the run (#109).
+let loginWindowAnswer: Promise<boolean> | undefined
+function atLoginWindow() {
+  if (platform !== 'macos') return Promise.resolve(false)
+  loginWindowAnswer ??= (async () => {
+    for (let looked = 0; looked <= 5000; looked += 500) {
+      if ((await frontmost().catch(() => '')) !== 'com.apple.loginwindow') return false
+      if (looked < 5000) await sleep(500)
+    }
+    console.log('device_control: the macOS session is at the login window; no app can come to the front')
+    return true
+  })()
+  return loginWindowAnswer
 }
 
 // --- the app's lifecycle ----------------------------------------------------
@@ -267,11 +280,20 @@ createTcpServer((client) => {
 
 // --- the control endpoint ---------------------------------------------------
 
+// A refusal the caller can tell from a failure: 409 with this body.
+class Conflict extends Error {
+  body: object
+  constructor(body: object) {
+    super(JSON.stringify(body))
+    this.body = body
+  }
+}
+
 const routes: Record<string, (url: URL, parts: string[]) => Promise<unknown>> = {
-  'GET platform': async () => ({ platform, device, appId, loginWindow: await atLoginWindow() }),
+  'GET platform': async () => ({ platform, device, appId, loginWindow: await atLoginWindow(), ci: process.env.GITHUB_ACTIONS === 'true' }),
   'POST background': async (url) => {
     deviceOnly('background')
-    if (await atLoginWindow()) throw new Error('the macOS session is at the login window; no app can come to the front')
+    if (await atLoginWindow()) throw new Conflict({ loginWindow: true, message: 'the macOS session is at the login window; no app can come to the front' })
     const ms = Number(url.searchParams.get('ms') ?? 2000)
     const after = url.searchParams.get('after')
     if (after === null) return background(ms)
@@ -334,8 +356,8 @@ createHttpServer(async (request, response) => {
     response.end(JSON.stringify(await handler(url, parts)))
   } catch (error) {
     console.log(`device_control: ${request.method} ${url.pathname} failed: ${String(error)}`)
-    response.statusCode = 500
-    response.end(JSON.stringify({ message: String(error) }))
+    response.statusCode = error instanceof Conflict ? 409 : 500
+    response.end(JSON.stringify(error instanceof Conflict ? error.body : { message: String(error) }))
   }
 }).listen(controlPort, '127.0.0.1', () => {
   console.log(`device_control: ${platform} ${device}, control :${controlPort}, proxy :${proxyPort} → :${backendPort}`)

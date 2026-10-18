@@ -72,6 +72,9 @@ Future<void> main() async {
     // No connectivity source: the binding requires none, so nothing tells
     // the client the network is back. The user returning to the app does:
     // an errored entry is stale, and `refetchOnWindowFocus` refetches it.
+    // Where nothing can be sent away (a browser, Linux, a Mac at the login
+    // window) the return is the focus manager's `setFocused`, not a real
+    // platform trip: the retry rule is still proven, the lifecycle is not.
     if (!canLeave) {
       h.client.focusManager.setFocused(false);
       h.client.focusManager.setFocused(true);

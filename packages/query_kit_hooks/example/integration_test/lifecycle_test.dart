@@ -31,7 +31,7 @@ Future<void> main() async {
       await settleFor(tester, const Duration(milliseconds: 200));
     }
     await waitForFact(tester, 'open todos', '2 open');
-  }, skip: !canLeave);
+  }, skip: leaveSkip);
 
   nativeTest('a real return within the minute leaves the posts alone',
       (tester, h) async {
@@ -43,5 +43,5 @@ Future<void> main() async {
 
     await settleFor(tester, const Duration(seconds: 2));
     expect(await h.requests('GET', '/api/posts'), 1);
-  }, skip: !canLeave);
+  }, skip: leaveSkip);
 }

@@ -888,7 +888,7 @@ CI on the first push ran the native suites on every platform:
   (`open -b`, the bundle's path, AppleScript all exit 0), so no app can
   come to the front, and a trip away changes no focus. The trip-away cases
   now skip with a printed reason when the device control saw that when asked
-  (`probeDevice`, `canLeave`); everywhere else a failure to come to the
+  (`probeDevice`, `canLeave`, a warning annotation and a summary line on CI; the showcase's network case degrades to `setFocused`); everywhere else a failure to come to the
   front fails the case. The by-hand run on an unlocked Mac covers them.
 
 ### Third pass (verification of the second review's fixes)

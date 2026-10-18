@@ -138,6 +138,10 @@ From 1.0.1 on, nothing is done in a browser:
    runs on a schedule otherwise
    — iOS and macOS only monthly, because a macOS minute costs twenty Linux
    ones — so a release is the one time it is asked for.
+   On a Mac, a `SKIPPED:` line in the log (and a note in the run's summary)
+   means the session was at the login window and the trip-away cases did not
+   run: that run does not count for them, and they need a run by hand on an
+   unlocked Mac (#109).
 3. Push `query_kit-v<version>`. `publish.yml` publishes the core, and
    `pages.yml` redeploys the site.
 4. Once `https://pub.dev/api/packages/query_kit` lists the new version, push

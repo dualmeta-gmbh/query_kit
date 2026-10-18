@@ -151,13 +151,31 @@ jobs:
       - name: CocoaPods
         run: pod --version || sudo gem install cocoapods
       - run: flutter pub get
+      # The output is kept, for the step after: a Mac at the login window skips
+      # its trip-away cases (#109), and a skip must not pass unseen.
       - name: end-to-end tests
         working-directory: examples/showcase
-        run: e2e-native/run.sh macos
+        run: |
+          set -o pipefail
+          e2e-native/run.sh macos 2>&1 | tee "$RUNNER_TEMP/showcase-macos.log"
       - name: hooks example end-to-end tests
         if: success() || failure()
         working-directory: packages/query_kit_hooks/example
-        run: e2e-native/run.sh macos
+        run: |
+          set -o pipefail
+          e2e-native/run.sh macos 2>&1 | tee "$RUNNER_TEMP/hooks-macos.log"
+      - name: skipped cases in the summary
+        if: always()
+        run: |
+          if grep -qh '^SKIPPED:' "$RUNNER_TEMP"/*-macos.log 2>/dev/null; then
+            {
+              echo '### macOS trip-away cases skipped'
+              echo
+              echo 'The runner session is at the login window, so no app can come to the front and the'
+              echo 'cases that send the app away did not run. This run does not count for them.'
+              echo 'Only the by-hand run on an unlocked Mac does (docs/releasing.md).'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:

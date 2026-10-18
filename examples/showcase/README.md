@@ -319,7 +319,9 @@ uncovered while it runs, since a
 covered one is given frames slowly. Blacksmith's macOS runner is at the login
 window (#109: `loginwindow` is in front, every activation exits 0 and none
 takes), so there the trip-away cases skip, with a printed reason, and the rest
-of the suite runs. The by-hand run before a release, on an unlocked Mac, is
+of the suite runs; `network`'s case that returns to the app degrades to
+`focusManager.setFocused`, as on the web and Linux, instead of a real platform
+trip. The run's summary says so, and the run does not count for them. The by-hand run before a release, on an unlocked Mac, is
 what covers them. A desktop app is started once per
 `flutter test`, so `run.sh` runs each file on its own there. Text
 goes in through `typeInto`, not `tester.enterText`, which does nothing in a
