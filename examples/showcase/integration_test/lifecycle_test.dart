@@ -250,8 +250,10 @@ Future<void> main() async {
       // An app the system has not suspended yet keeps its timers: Android
       // keeps a backgrounded process running, iOS gives it a few seconds
       // before it suspends it, and a desktop app behind another window is
-      // not suspended at all.
-      expect(during, greaterThanOrEqualTo(2));
+      // not suspended at all. One poll is the proof: the case above, with
+      // the flag off, allows none in the same window, and a simulator on
+      // three cores fits one 500 ms poll into its last two seconds.
+      expect(during, greaterThanOrEqualTo(1));
     }, skip: leaveSkip);
   });
 }
