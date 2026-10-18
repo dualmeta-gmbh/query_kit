@@ -7,7 +7,7 @@
 // holds the app's polls instead of racing the clock.
 import { expect, test } from '@playwright/test'
 import { confirmReminder, createTask, getTask, sweepTestTasks, uniqueName } from './backend'
-import { holdRequests, open, refuseRequests, row, waitingForScheduler } from './helpers'
+import { holdRequests, open, refuseRequests, reminderControl, row, waitingForScheduler } from './helpers'
 
 test.beforeAll(async ({ request }) => sweepTestTasks(request))
 test.afterAll(async ({ request }) => sweepTestTasks(request))
@@ -22,6 +22,9 @@ test('turning a reminder off again waits for the scheduler and settles off', asy
 
   const reminder = page.getByRole('switch')
   await expect(reminder).toHaveAttribute('aria-checked', 'true')
+  // `flt-tappable` is what a pressable control has, and a locked one has not
+  // (see `control`): present now, gone while the scheduler waits, back after.
+  await expect(reminderControl(page)).toHaveAttribute('flt-tappable')
   const write = holdRequests(page, 'PUT', '**/api/tasks/*/reminder')
   await reminder.click()
   // Optimistic: the requested value shows before the write is accepted.
@@ -29,9 +32,10 @@ test('turning a reminder off again waits for the scheduler and settles off', asy
   await write.release()
 
   await expect(waitingForScheduler(page)).toBeVisible()
+  await expect(waitingForScheduler(page)).not.toHaveAttribute('flt-tappable')
   await expect(page.getByRole('switch', { name: /Confirmed by the scheduler/ })).toBeVisible({ timeout: 10_000 })
   await expect(reminder).toHaveAttribute('aria-checked', 'false')
-  await expect(reminder).not.toHaveAttribute('aria-disabled', 'true')
+  await expect(reminderControl(page)).toHaveAttribute('flt-tappable')
   const settled = await getTask(request, task.id)
   expect(settled?.reminder).toBe(false)
   expect(settled?.reminderPending).toBe(false)
@@ -58,7 +62,7 @@ test('a refused reminder write rolls the switch back', async ({ page, request })
   // Back off, and unlocked: nothing is outstanding. (The screen has no notice
   // for a refused reminder, unlike the rename's.)
   await expect(reminder).toHaveAttribute('aria-checked', 'false')
-  await expect(reminder).not.toHaveAttribute('aria-disabled', 'true')
+  await expect(reminderControl(page)).toHaveAttribute('flt-tappable')
   await expect(page.getByRole('switch', { name: /Confirmed by the scheduler/ })).toBeVisible()
   const held = await getTask(request, task.id)
   expect(held?.reminder).toBe(false)
@@ -79,8 +83,10 @@ test('the row shows "confirming" while the scheduler has not taken the value', a
   // "confirmed" for as long as the test stands in it.
   const polls = holdRequests(page, 'GET', '**/api/tasks/*')
   const reminder = page.getByRole('switch')
+  await expect(reminderControl(page)).toHaveAttribute('flt-tappable')
   await reminder.click()
   await expect(waitingForScheduler(page)).toBeVisible()
+  await expect(waitingForScheduler(page)).not.toHaveAttribute('flt-tappable')
   await expect(page.getByText(/confirming$/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Back', exact: true }).click()

@@ -136,7 +136,7 @@ real express backend.
 flutter test
 ```
 
-Eighteen widget tests — one per row of the MVP feature checklist, plus two
+Nineteen widget tests — one per row of the MVP feature checklist, plus the
 regressions found by review and the two states of the detail screen no
 navigation reaches (its skeleton and its error panel: the demo has no
 per-task URL, so a browser never opens a detail before the list has seeded

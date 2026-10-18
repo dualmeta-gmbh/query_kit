@@ -6,7 +6,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { NEW_TASK_NAME, listTasks, requestCounter, sweepTestTasks, uniqueName } from './backend'
 import { trackInputListeners, typeInto } from './flutter_input'
-import { holdRequests, listSettled, newTaskButton, open, row, searchField } from './helpers'
+import { control, holdRequests, listSettled, newTaskButton, open, row, searchField } from './helpers'
 
 test.beforeEach(async ({ page, request }) => {
   await trackInputListeners(page)
@@ -25,6 +25,8 @@ test('the New task button creates a task and the row appears on screen', async (
   await expect(row(page, 'Write the release notes')).toBeVisible()
   await listSettled(page)
   const requests = requestCounter(page)
+  const header = page.getByText(/\d+ of \d+ synced/)
+  const [synced, total] = ((await header.textContent()) ?? '').match(/\d+/g)!.map(Number)
 
   await newTaskButton(page).click()
 
@@ -35,8 +37,9 @@ test('the New task button creates a task and the row appears on screen', async (
   expect(requests.creates()).toBe(1)
   expect(requests.lists()).toBe(1)
   expect(await createdOnBackend(request)).toHaveLength(1)
-  // The header counts it too: it selects from the same list entry.
-  await expect(page.getByText(/\d+ of \d+ synced/)).toBeVisible()
+  // The header counts it too (it is synced): it selects from the same list
+  // entry.
+  await expect(header).toHaveText(`${synced + 1} of ${total + 1} synced`)
 })
 
 test('the create button is locked while the write is in flight', async ({ page, request }) => {
@@ -46,23 +49,25 @@ test('the create button is locked while the write is in flight', async ({ page, 
   const requests = requestCounter(page)
 
   // Held at the network layer, so the lock is asserted while the backend
-  // provably has not answered.
-  const write = holdRequests(page, 'POST', '**/api/tasks')
+  // provably has not answered. The lock is `flt-tappable` going away from the
+  // node (see `control`), with the attribute on the same node before the
+  // press and after the write as the control that the absence means something.
+  const create = control(page, 'New task')
+  await expect(create).toHaveAttribute('flt-tappable')
   const box = (await newTaskButton(page).boundingBox())!
-  await newTaskButton(page).click()
-  // A disabled button is not a button in the semantics tree: it drops out
-  // of it, with the spinner that takes its icon.
-  await expect(newTaskButton(page)).toHaveCount(0)
-  // A second press, at the place the button was, does nothing.
+  const write = holdRequests(page, 'POST', '**/api/tasks')
+  await create.click()
+  await expect(create).not.toHaveAttribute('flt-tappable')
+  // A second press, at the place the button is, does nothing.
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-  expect(requests.creates()).toBe(1)
   expect(await createdOnBackend(request)).toHaveLength(0)
 
   await write.release()
   await expect(created(page)).toHaveCount(1)
-  await expect(newTaskButton(page)).toBeVisible()
-  expect(requests.creates()).toBe(1)
+  await expect(create).toHaveAttribute('flt-tappable')
+  // Exactly one task, and one write: the second press made no second task.
   expect(await createdOnBackend(request)).toHaveLength(1)
+  expect(requests.creates()).toBe(1)
 })
 
 test('a created task survives a reload, because the backend has it', async ({ page }) => {

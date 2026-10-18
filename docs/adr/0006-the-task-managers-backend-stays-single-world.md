@@ -48,25 +48,58 @@ checkouts can serve their own web build side by side.
    backend that answers a list in 900 ms take a few minutes, and the `e2e` job
    already runs the two apps in parallel.
 
+## An alternative weighed: a reset endpoint
+
+The cheaper cousin of scenarios is a server-side reset: one process, one
+world, but a `POST /api/__reset` (or a reset header) that puts the seed and the
+delete counter back before each test, so the suite needs neither unique names
+nor a sweep nor a tall viewport. The demo app would not change, since the
+endpoint is the server's and no screen calls it. It was not chosen, for three
+reasons, none of them decisive alone:
+
+- It does not make the suite parallel, which was the showcase's gain from
+  scenarios; a reset between tests only makes the serial order irrelevant.
+- It makes the server a fixture. The server README tells a reader it is the
+  backend the app talks to, and an unauthenticated route that rewrites its
+  data is what the loopback-only default (SEC-2) exists to keep off a network.
+  The showcase accepts that for a test server; this one is also what a reader
+  runs by hand.
+- Resetting the counter makes "whatever the count stands at" untestable: the
+  existing delete test's point is that it holds from any parity, and a reset
+  would hide a spec that only works from zero.
+
+It is the first thing to build if the suite's discipline below starts to cost
+more than it saves: a spec that cannot be written without it, or a leftover
+that keeps breaking another.
+
 ## What keeps the shared world honest
 
-- A test creates the tasks it acts on, under a `uniqueName`, and never reads
-  a name it did not make. The two exceptions are named where they happen: the
-  seed's one unsynced task (`synced` is the backend's own field, so no write
-  can produce one) and a seeded task whose progress and estimate differ from a
-  new task's, whose expectation is read from the backend rather than typed in.
+- A test creates the tasks it acts on, under a `uniqueName`, and does not read
+  one it did not make. The exceptions are not few, and they rely on the seed
+  in `server/db.ts`: the unsynced "Archive last quarter" (`synced` is the
+  backend's own field, so no write can produce one); "Write the release notes"
+  as a task whose progress and estimate are not a new task's, with the
+  expectation read from the backend; the same task as the row that must
+  disappear once a search has narrowed the list; and every project in the
+  dropdown (Admin, Website, Errands) having a task, which is also why an empty
+  project cannot be had without faking the answer. Changing the seed means
+  reading these specs.
 - The sweep that clears a spec's leftovers recognises its own by a name
   suffix of ten or more base-36 characters, and the "New task" button's tasks
   by their fixed name. The first version took seven characters and would have
   removed the seed's "Archive last quarter".
-- Every delete-touching test uses the "delete until gone" idiom, so the parity
-  counter is reasoned about rather than assumed; the sweep moves it too.
+- The delete counter is reasoned about, not assumed: the one test that
+  exercises the scripted failure uses the "delete until gone" idiom, and the
+  sweep (which deletes through the API, twice per task) tolerates any parity.
+  No other spec deletes through the app.
 - A test that needs a state the backend cannot be put in without damaging every
-  later test fakes the backend's answer in the browser (`route.fulfill`) and
-  says so in a comment: a project with nothing in it, a refused reminder write.
+  later test fakes the backend's answer in the browser (`route.fulfill`,
+  `route.abort`) and says so in a comment: a project with nothing in it, a
+  refused reminder write.
 - No test asserts on a clock. A request is held and released, and "no request"
   is asserted from a settled state the screen itself proves (the reload button
-  is a button again), never after a sleep.
+  is pressable again), never after a sleep. (Three older specs in
+  `tasks.spec.ts` still wait a fixed time before counting; none is new.)
 
 ## Consequences
 
@@ -78,6 +111,9 @@ checkouts can serve their own web build side by side.
   build has baked in (`--dart-define=BACKEND=…` would move it, and the specs'
   `BACKEND` constant with it). That was left alone until a second concurrent
   run is a real need.
+- What a locked control looks like in the semantics tree differs between
+  Flutter versions, so the specs read locks through `flt-tappable` and always
+  beside its presence on the unlocked node (see PORTING_NOTES, Phase 9).
 - If the demo ever does grow scenarios — because a feature needs a failure the
   global counter cannot script — this record is the cost list: the three
   existing tests, the contract test's second dimension, and a `?scenario=`

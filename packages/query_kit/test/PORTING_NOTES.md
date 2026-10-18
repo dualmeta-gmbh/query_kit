@@ -4573,9 +4573,9 @@ API-side setup helper alone. Also unreached: the project filter, the empty
 state, the list skeleton, the `not synced` and `confirming` pills, turning a
 reminder off, a refused reminder write, an empty rename, the facts card.
 
-Measured on 2026-10-18, Flutter 3.41.4, Chromium: task manager Playwright
+Measured on 2026-10-18, Chromium, on Flutter 3.38.8 (CI's) and 3.41.4: task manager Playwright
 **10 → 26** (`tasks.spec.ts` 13, `creating.spec.ts` 5, `filtering.spec.ts` 4,
-`reminder.spec.ts` 4), widget tests **16 → 18**, contract unchanged at 15 (+14
+`reminder.spec.ts` 4), widget tests **17 → 19** (the README and this file said 16 before: stale), contract unchanged at 15 (+14
 server-leg cases, all green against the running server). No `lib/` change.
 
 - **Backend stays single-world** — [ADR-0006](../../../docs/adr/0006-the-task-managers-backend-stays-single-world.md)
@@ -4602,18 +4602,31 @@ server-leg cases, all green against the running server). No `lib/` change.
     backend.
   - *List skeleton*: the skeleton has no semantics, so the spec holds the list
     GET and asserts the screen with every alternative absent (no rows, no
-    header count, no empty state, no error panel, the reload button out of the
-    tree because it is fetching).
-  - *Create button locked*: a disabled `IconButton` drops out of the
-    semantics tree rather than gaining `aria-disabled`, so the spec asserts the
-    button is gone and presses the pixel where it was.
-- **A pre-existing local failure, fixed.** On Flutter 3.41.4 a locked `Switch`
-  is published as a bare labelled node, not `role=switch`, so `tasks.spec.ts`'s
-  reminder test (`getByRole('switch', { name: /Waiting for the scheduler/ })`)
-  failed before this ticket. It, and the new specs, locate that window by the
-  node's label (`waitingForScheduler`) and say "locked" by the absence of
-  `flt-tappable`, which holds on both versions. Not run on 3.38.8 (CI's), where
-  the old locator passed.
+    header count, no empty state, no error panel, the reload button locked
+    because it is fetching).
+  - *Create button locked*: what a locked control looks like in the
+    semantics tree depends on the Flutter version — on 3.38.8 a `button` with
+    `aria-disabled`, on 3.41.4 a node of another role (a merged node holding a
+    `CircularProgressIndicator` becomes a loading spinner and loses the button
+    role). The first version asserted the 3.41 shape (`toHaveCount(0)`) and
+    was red on CI's 3.38.8. The one thing both agree on is `flt-tappable`, set
+    exactly while a press does something, so a lock is asserted as its absence
+    (`control` in `helpers.ts`), beside a positive control — the attribute on
+    the same node before the press and after the write — since an absence
+    alone is vacuous on a node that never had it. The spec also presses the
+    pixel where the button was.
+- **A version-dependent locator in the existing reminder test, fixed.** On
+  Flutter 3.41.4 a locked `Switch` is a bare labelled node, not `role=switch`,
+  so `getByRole('switch', { name: /Waiting for the scheduler/ })` failed there.
+  It and the new specs find that window by the node's label
+  (`waitingForScheduler`, `reminderControl`) and read "locked" as in the
+  previous point. Verified on 3.38.8 and 3.41.4.
+- **The empty-rename test asserts the wire.** It flaked on a loaded machine
+  (the press read the old name: an idempotent rename, but not the case). A
+  frame-wait would only have made that rarer, so the test now routes the
+  write: one that does not carry `""` is aborted in the browser (the backend is
+  never asked) and the typing and press are repeated under `toPass`; the one
+  that does is let through and its status (400) is asserted.
 - **Widget tests** `a detail opened before any list response shows its
   skeleton` and `a detail whose only fetch failed shows the error panel with
   the backend's message` mount `TaskDetail` directly. Two things they taught: a

@@ -95,6 +95,7 @@ test('a project with nothing in it shows the empty state', async ({ page }) => {
   // emptying one would take the seed away from every later test. So the
   // backend's answer for one project is an empty list, said in the browser.
   await page.route('**/api/tasks?*', (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
     if (new URL(route.request().url()).searchParams.get('project') !== 'Errands') return route.fallback()
     return route.fulfill({
       headers: { 'access-control-allow-origin': '*' },

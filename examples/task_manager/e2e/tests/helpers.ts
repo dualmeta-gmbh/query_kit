@@ -14,11 +14,20 @@ export const row = (page: Page, name: string | RegExp) => page.getByRole('group'
 export const deleteButton = (page: Page, name: string) => page.getByRole('button', { name: `Delete ${name}` })
 export const newTaskButton = (page: Page) => page.getByRole('button', { name: 'New task', exact: true })
 export const searchField = (page: Page) => page.getByRole('textbox', { name: 'Search tasks…' })
-// The reminder card while the scheduler has not confirmed. What Flutter
-// publishes for the switch then — locked — depends on its version: a switch
-// with a role on 3.38, a bare labelled node on 3.41. The label is the same,
-// and an enabled node carries `flt-tappable` while a locked one does not.
-export const waitingForScheduler = (page: Page) => page.locator('flt-semantics[aria-label*="Waiting for the scheduler"]')
+// A control by the name it carries, whatever role Flutter publishes it with.
+// A locked control that contains a spinner (the reload button while fetching,
+// "New task" while creating, the reminder switch while it waits) is a
+// `button` or `switch` with `aria-disabled` on Flutter 3.38 and a node of
+// another role on 3.41, so a role locator finds it in one version only. The
+// name is the text or the label in both. What both versions agree on is
+// `flt-tappable`, which a node has exactly while a press on it does something:
+// assert a lock as its absence, and always beside the attribute's presence on
+// the same node when it is unlocked, or the absence proves nothing.
+export const control = (page: Page, name: string) =>
+  page.locator(`flt-semantics:text-is("${name}"), flt-semantics[aria-label="${name}"]`)
+export const reminderControl = (page: Page) => page.locator('flt-semantics[aria-label^="Reminder"]')
+export const waitingForScheduler = (page: Page) =>
+  page.locator('flt-semantics[aria-label^="Reminder"][aria-label*="Waiting for the scheduler"]')
 export const heroTitle = (page: Page) => page.getByText(/Normal · Inbox/)
 
 // Holds every rename write in the browser until `release()`, so an assertion
@@ -102,10 +111,8 @@ export async function pickProject(page: Page, from: string, to: string) {
 }
 
 /// The list is settled: not fetching, which is when the toolbar's reload
-/// button is a button again. A test that says "no request" asserts it after
-/// this, so a fetch the last change started would have disabled the button.
+/// button can be pressed again. A test that says "no request" asserts it after
+/// this, so a fetch the last change started would have locked the button.
 export async function listSettled(page: Page) {
-  const reload = page.getByRole('button', { name: 'Reload', exact: true })
-  await expect(reload).toBeVisible()
-  await expect(reload).not.toHaveAttribute('aria-disabled', 'true', { timeout: 10_000 })
+  await expect(control(page, 'Reload')).toHaveAttribute('flt-tappable', { timeout: 10_000 })
 }
