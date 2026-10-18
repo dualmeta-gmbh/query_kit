@@ -19,6 +19,43 @@ const Duration away = Duration(seconds: 3);
 Future<void> pick(WidgetTester tester, String knob, String label) =>
     tapOn(tester, factIn(knob, label));
 
+/// Whether the binding reads [state] as the app being shown: `resumed`, and
+/// on a phone `inactive` too (an interruption, not an absence).
+bool shownIn(AppLifecycleState state) =>
+    state == AppLifecycleState.resumed ||
+    (!isDesktop && state == AppLifecycleState.inactive);
+
+/// A trip away, and how often the app came back from it: each move from not
+/// shown to shown is a focus, and a loaded simulator once showed the app
+/// twice for one trip. Waits for the app's own word that it is shown again,
+/// which a loaded simulator gives after the host is done, and a second more.
+/// The states go to the log of a case that fails.
+Future<int> tripAway(WidgetTester tester) async {
+  final states = <AppLifecycleState>[];
+  final listener = AppLifecycleListener(onStateChange: states.add);
+  try {
+    await Device.background(away);
+    for (var waited = 0;
+        (states.isEmpty || !shownIn(states.last)) && waited < 10000;
+        waited += 250) {
+      await settleFor(tester, const Duration(milliseconds: 250));
+    }
+    await settleFor(tester, const Duration(seconds: 1));
+  } finally {
+    listener.dispose();
+  }
+  printOnFailure('lifecycle during the trip: $states');
+  var shown = true;
+  var returns = 0;
+  for (final state in states) {
+    if (shownIn(state) && !shown) returns++;
+    shown = shownIn(state);
+  }
+  expect(returns, greaterThanOrEqualTo(1),
+      reason: 'the app never came back; lifecycle: $states');
+  return returns;
+}
+
 Future<void> main() async {
   initNativeBinding();
   await probeDevice();
@@ -35,14 +72,14 @@ Future<void> main() async {
       await openFresh(tester, h);
       await pick(tester, 'on-focus-a', 'always');
 
-      await Device.background(away);
+      final returns = await tripAway(tester);
 
-      await waitForFact(tester, 'debug focus-a', 'fetches=2');
+      // `always`: one refetch per return.
+      await waitForFact(tester, 'debug focus-a', 'fetches=${1 + returns}');
       // Entry B kept `ifStale` and its thirty seconds of stale time are not
       // up: the same return left it alone.
-      await settleFor(tester, const Duration(seconds: 1));
       await waitForFact(tester, 'debug focus-b', 'fetches=1');
-      expect(await h.requests('GET', '/api/time'), 3);
+      expect(await h.requests('GET', '/api/time'), 2 + returns);
     }, skip: leaveSkip);
 
     nativeTest('never: a real return refetches nothing, stale data included',
@@ -80,10 +117,10 @@ Future<void> main() async {
       await h.open(tester, '/focus-refetch');
       await waitForFact(tester, 'reader-c', 'fetches=1');
 
-      await Device.background(away);
+      final returns = await tripAway(tester);
 
       await waitForFact(tester, 'reader-c', 'shouldRefetchOnFocus=true');
-      await waitForFact(tester, 'reader-c', 'fetches=2');
+      await waitForFact(tester, 'reader-c', 'fetches=${1 + returns}');
     }, skip: leaveSkip);
   });
 
