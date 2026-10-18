@@ -32,11 +32,13 @@ equal Flutter call styles and the optional hooks package. It uses the existing
 cache, observers and lifecycle. No mandatory generator, state-management
 integration or new runtime dependency is required.
 
-The current task delivers this plan only. Implementation, issue creation,
-publishing, deployment and a generator are outside this task. Before feature
-implementation, record the API decision in the wayfinder described by
-[CONTRIBUTING](../../CONTRIBUTING.md#where-the-plan-lives); no new issue or
-accepted ADR is implied by this local plan.
+This document is the plan. The implementation is tracked by wayfinder map
+[#129](https://github.com/dualmeta-gmbh/query_kit/issues/129), one ticket per
+phase (TQ0 to TQ6, #131 to #137), as
+[CONTRIBUTING](../../CONTRIBUTING.md#where-the-plan-lives) asks for a change
+to the API's shape. It waits for Christian's go: TQ-GO
+([#130](https://github.com/dualmeta-gmbh/query_kit/issues/130), `hitl`)
+blocks TQ0 (decided 2026-10-18). A generator stays outside this plan.
 
 ## Current behaviour and the gap
 
