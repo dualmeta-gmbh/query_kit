@@ -136,8 +136,9 @@ From 1.0.1 on, nothing is done in a browser:
    an Android emulator, an iOS simulator, as a macOS and a Linux desktop app
    and in Chrome, and the three Playwright suites in all three browsers. It
    runs on a schedule otherwise
-   — iOS and macOS only monthly, because a macOS minute costs twenty Linux
-   ones — so a release is the one time it is asked for.
+   — iOS and macOS only monthly — so a release is the one time it is asked
+   for. It runs on GitHub's standard hosted runners, free for a public
+   repository; a larger runner is not, so keep to the standard labels.
    On a Mac, a `SKIPPED:` line in the log (and a note in the run's summary)
    means the session was at the login window and the trip-away cases did not
    run: that run does not count for them, and they need a run by hand on an

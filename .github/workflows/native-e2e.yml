@@ -5,9 +5,10 @@
 # ports of its own), plus the three Playwright suites in Firefox and WebKit,
 # which the `ci` workflow's `e2e` job leaves to Chromium.
 #
-# Rarely, by design: a macOS minute costs twenty Linux ones. Android, Linux
-# and the web run every Monday and on a pull request labelled `native-e2e`;
-# iOS and macOS once a month and on demand. Before a release, run it by hand (Actions → native-e2e
+# On GitHub's standard hosted runners, which cost nothing for a public
+# repository (a larger runner would; so would Blacksmith, where this ran
+# before). Android, Linux and the web run every Monday and on a pull request
+# labelled `native-e2e`; iOS and macOS once a month and on demand. Before a release, run it by hand (Actions → native-e2e
 # → Run workflow, "all"); docs/releasing.md says so.
 name: native-e2e
 
@@ -38,9 +39,9 @@ jobs:
       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","android"]'), inputs.platforms)) ||
       github.event_name == 'schedule' ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native-e2e'))
-    # x64 for KVM: the emulator needs nested virtualisation, which Blacksmith
-    # offers on x64 Linux only.
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # x64 for KVM: the emulator needs hardware acceleration, which GitHub's
+    # Linux runners give once the step below opens /dev/kvm.
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,8 +93,9 @@ jobs:
     if: >-
       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","ios"]'), inputs.platforms)) ||
       (github.event_name == 'schedule' && github.event.schedule == '0 4 1 * *')
-    runs-on: blacksmith-6vcpu-macos-latest
-    timeout-minutes: 60
+    # Three M1 cores, half of what the suite was timed on: hence the margin.
+    runs-on: macos-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -136,8 +138,9 @@ jobs:
     if: >-
       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","macos"]'), inputs.platforms)) ||
       (github.event_name == 'schedule' && github.event.schedule == '0 4 1 * *')
-    runs-on: blacksmith-6vcpu-macos-latest
-    timeout-minutes: 60
+    # Three M1 cores, half of what the suite was timed on: hence the margin.
+    runs-on: macos-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -194,7 +197,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","linux"]'), inputs.platforms)) ||
       github.event_name == 'schedule' ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native-e2e'))
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -232,7 +235,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","web"]'), inputs.platforms)) ||
       github.event_name == 'schedule' ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native-e2e'))
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -281,7 +284,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","web"]'), inputs.platforms)) ||
       github.event_name == 'schedule' ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native-e2e'))
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false

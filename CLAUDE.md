@@ -134,7 +134,7 @@ keeps its subscription. PORTING_NOTES' "Independent reviews 2026-10-15" has a
 row each, with the second and third passes. The same round added a **native
 end-to-end suite** to the showcase (`integration_test/`, `e2e-native/run.sh`
 for an iOS simulator, an Android emulator and Chrome, later macOS and Linux; the showcase README's
-"Native end-to-end tests"), run by `native-e2e.yml` on Blacksmith rarely —
+"Native end-to-end tests"), run by `native-e2e.yml` rarely, on GitHub's hosted runners (free for a public repository; Blacksmith until 2026-10-18) —
 Android and web weekly or on the `native-e2e` PR label, iOS monthly, all of
 it by hand before a release — and `latest-stable.yml`, the suites on
 whatever Flutter stable is, weekly. Core **1161 VM / 1157 browser**, binding

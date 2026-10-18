@@ -335,10 +335,10 @@ a session that has gone to the login window since the probe refuses the
 trip with a 409 instead, and the files after it skip),
 brings Finder to the front and the app back the same way; keep the window
 uncovered while it runs, since a
-covered one is given frames slowly. Blacksmith's macOS runner is at the login
-window (#109: `loginwindow` is in front, every activation exits 0 and none
-takes), so there the trip-away cases skip, with a printed reason, and the rest
-of the suite runs; `network`'s case that returns to the app degrades to
+covered one is given frames slowly. Blacksmith's macOS runner, where this
+ran until 2026-10-18, was at the login window (#109: `loginwindow` is in
+front, every activation exits 0 and none takes). On a runner like that the
+trip-away cases skip, with a printed reason, and the rest of the suite runs; `network`'s case that returns to the app degrades to
 `focusManager.setFocused`, as on the web and Linux, instead of a real platform
 trip. The run's summary says so, and the run does not count for them. The by-hand run before a release, on an unlocked Mac, is
 what covers them. A desktop app is started once per
@@ -347,8 +347,8 @@ goes in through `typeInto`, not `tester.enterText`, which does nothing in a
 profile or release build.
 
 `MODE=profile` runs it compiled ahead of time on Android, `MODE=release` in
-Chrome. In CI it is `.github/workflows/native-e2e.yml`, on Blacksmith runners
-and rarely: Android, Linux and the web weekly and on a pull request labelled
+Chrome. In CI it is `.github/workflows/native-e2e.yml`, on GitHub's standard
+hosted runners (free for a public repository) and rarely: Android, Linux and the web weekly and on a pull request labelled
 `native-e2e`, iOS and macOS monthly, and all of it by hand before a
 release.
 
