@@ -342,7 +342,10 @@ trip-away cases skip, with a printed reason, and the rest of the suite runs; `ne
 `focusManager.setFocused`, as on the web and Linux, instead of a real platform
 trip. The run's summary says so, and the run does not count for them. The by-hand run before a release, on an unlocked Mac, is
 what covers them. A desktop app is started once per
-`flutter test`, so `run.sh` runs each file on its own there. Text
+`flutter test`, so `run.sh` runs each file on its own there. It does on iOS
+too, and runs a file once more when its app never came up (`loading …
+(failed)`, `Failed to load`: the simulator did not start it). No case of
+that file had run; a case that ran and failed is not repeated. Text
 goes in through `typeInto`, not `tester.enterText`, which does nothing in a
 profile or release build.
 

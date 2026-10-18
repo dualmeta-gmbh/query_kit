@@ -177,6 +177,32 @@ elif [ "$platform" = macos ] || [ "$platform" = linux ]; then
     echo "run.sh: failed ($platform): ${failed[*]}" >&2
     exit 1
   fi
+elif [ "$platform" = ios ]; then
+  # One run per file, and a file whose app never came up ("loading … (failed)",
+  # "Failed to load": the simulator did not start it, or its Dart Development
+  # Service did not) once more. No case of that file ran, so the second run is
+  # its first; a case that ran and failed is not run again.
+  if [ "$#" -eq 0 ]; then set -- integration_test/*_test.dart; fi
+  failed=()
+  for target in "$@"; do
+    echo "run.sh: $target"
+    out="$(mktemp)"
+    if "$flutter" test "$target" -d "$device" 2>&1 | tee "$out"; then
+      rm -f "$out"
+      continue
+    fi
+    if grep -qE 'loading .*\(failed\)$|Failed to load "' "$out"; then
+      echo "run.sh: $target: the app did not come up; once more"
+      "$flutter" test "$target" -d "$device" || failed+=("$target")
+    else
+      failed+=("$target")
+    fi
+    rm -f "$out"
+  done
+  if [ "${#failed[@]}" -gt 0 ]; then
+    echo "run.sh: failed ($platform): ${failed[*]}" >&2
+    exit 1
+  fi
 else
   if [ "$#" -eq 0 ]; then set -- integration_test; fi
   "$flutter" test "$@" -d "$device"

@@ -184,6 +184,20 @@ class Device {
   static Future<List<String>> aborts() async =>
       ((await _call('GET', _uri('/aborts'))) as List<Object?>).cast<String>();
 
+  /// [aborts], once there is one: the proxy learns of a hang-up when the
+  /// socket closes, which on a loaded host comes a moment after the app is
+  /// done with the request. Answers what it has after [timeout].
+  static Future<List<String>> awaitAborts({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      final seen = await aborts();
+      if (seen.isNotEmpty || !DateTime.now().isBefore(deadline)) return seen;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
   static Future<void> clearAborts() => _call('DELETE', _uri('/aborts'));
 
   /// Android only: the emulator's airplane mode, on from a moment after this

@@ -26,7 +26,7 @@ Future<void> main() async {
     await waitForFact(tester, 'slow facts', 'fetchStatus=idle');
     // The signal reached the socket: the app closed the connection while
     // the backend was still sleeping out its three seconds…
-    expect(await Device.aborts(), <String>['GET /api/posts']);
+    expect(await Device.awaitAborts(), <String>['GET /api/posts']);
     // …and the backend, once awake, had no one left to answer.
     await settleFor(tester, const Duration(seconds: 4));
     expect(await h.requests('GET', '/api/posts'), 0);
@@ -53,7 +53,7 @@ Future<void> main() async {
     await waitForFact(tester, 'rename facts', 'text=$before');
     await waitForFact(tester, 'rename facts', 'settles=1');
     await waitForFact(tester, 'debug todos', 'fetches=2');
-    expect(await Device.aborts(), <String>['PATCH /api/todos/1']);
+    expect(await Device.awaitAborts(), <String>['PATCH /api/todos/1']);
   });
 
   nativeTest(
