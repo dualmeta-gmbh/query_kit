@@ -121,14 +121,15 @@ typedef _MutationShape = (
 /// belongs in a widget below it, whose own build is always provable.
 ///
 /// Notification baselines do not classify every read. [ReadEntry] remembers
-/// a flag for displaced, unfiltered reads until notification arrives (#108).
+/// a flag for displaced, unfiltered reads until notification arrives.
 /// A read carrying a generation-opening proof acknowledges that change
 /// without another rebuild; a read without one preserves the flag, whether
 /// it was a later direct read or a descendant read. With `buildWhen`,
 /// only the latest read is compared: a zero-read rebuild is unobservable, so
 /// an older baseline could be retired and must not reach the predicate or
-/// bypass it through infinite paging flags. Filtered shared-context rereads
-/// during a cache write remain the documented #108 boundary; give the nested
+/// bypass it through infinite paging flags. A shared-context reread with
+/// `buildWhen`, after a cache write during a nested build, remains a
+/// documented boundary whatever the owner's own predicate; give the nested
 /// part its own context. No child/widget graph snapshots are taken.
 ///
 /// Reading through a lazily built list's own item-builder context stays a

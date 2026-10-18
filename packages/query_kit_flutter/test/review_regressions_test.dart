@@ -113,6 +113,7 @@ void main() {
   group('#108 review round 1 original probes', _review108Round1Probes);
   group('#108 review round 2', _review108Round2Probes);
   group('#108 notification baseline contract', _review108NotificationContract);
+  group('#108 round 3 review', _review108Round3Probes);
   // ---- fifth and sixth reviews (2026-09-10) --------------------------------
 
   group('R01 an overridden queryClient that changes with the widget', () {
@@ -6116,4 +6117,552 @@ void _review108NotificationContract() {
       });
     }
   }
+}
+
+// Round 3 (a Claude review of 8353d53): the boundary measured as a matrix,
+// the cost of the fix in real flows, and the shapes that must keep working.
+
+typedef _R3Result = QueryResult<String>;
+typedef _R3Pred = bool Function(_R3Result, _R3Result)?;
+
+bool _r3AlwaysTrue(_R3Result a, _R3Result b) => true;
+bool _r3Selective(_R3Result a, _R3Result b) => a.dataOrNull != b.dataOrNull;
+
+enum _R3Owner { builder, mixin, layout, parentForced }
+
+enum _R3Nested { valueListenable, stateful, layout }
+
+QueryObserverOptions<String> _r3Options(String name) => QueryObserverOptions(
+      queryKey: QueryKey(<Object?>['pr116r3', name]),
+      queryFn: (_) async => 'a',
+      initialData: InitialData.value('a'),
+      staleTime: StaleTime.infinite,
+    );
+
+class _R3Stateless extends StatelessWidget {
+  const _R3Stateless(this.body);
+  final Widget Function(BuildContext) body;
+
+  @override
+  Widget build(BuildContext context) => body(context);
+}
+
+class _R3MixinOwner extends StatefulWidget {
+  const _R3MixinOwner({
+    required this.options,
+    required this.buildWhen,
+    required this.onBuild,
+    required this.body,
+  });
+  final QueryObserverOptions<String> options;
+  final _R3Pred buildWhen;
+  final VoidCallback onBuild;
+  final Widget Function(_R3MixinOwnerState, _R3Result) body;
+
+  @override
+  State<_R3MixinOwner> createState() => _R3MixinOwnerState();
+}
+
+class _R3MixinOwnerState extends State<_R3MixinOwner> with QueryMixin {
+  @override
+  Widget build(BuildContext context) {
+    widget.onBuild();
+    return widget.body(
+      this,
+      watchQuery(widget.options, buildWhen: widget.buildWhen),
+    );
+  }
+}
+
+/// An owner of kind [owner] reads `options` in its build and hands a nested
+/// part of kind [nested] a reread through the owner's own context (or
+/// mixin). In the first frame after the tick the nested part writes `b` to
+/// the cache and rereads; returns what the owner and the nested part show.
+Future<(String, String)> _r3Shape(
+  WidgetTester tester,
+  QueryClient client, {
+  required _R3Owner owner,
+  required _R3Nested nested,
+  required _R3Pred ownerWhen,
+  required _R3Pred nestedWhen,
+  required String name,
+}) async {
+  final tick = ValueNotifier<int>(0);
+  final width = ValueNotifier<double>(300);
+  final parentTick = ValueNotifier<int>(0);
+  addTearDown(tick.dispose);
+  addTearDown(width.dispose);
+  addTearDown(parentTick.dispose);
+  final options = _r3Options(name);
+  var wrote = false;
+  void write(int v) {
+    if (v >= 1 && !wrote) {
+      wrote = true;
+      client.setQueryData<String>(options.queryKey, 'b');
+    }
+  }
+
+  StateSetter? setNested;
+  Widget nestedPart(_R3Result Function() reread) => switch (nested) {
+        _R3Nested.valueListenable => ValueListenableBuilder<int>(
+            valueListenable: tick,
+            builder: (_, v, __) {
+              write(v);
+              return Text('inner:${reread().dataOrNull}');
+            },
+          ),
+        _R3Nested.stateful => StatefulBuilder(builder: (_, set) {
+            setNested = set;
+            write(tick.value);
+            return Text('inner:${reread().dataOrNull}');
+          }),
+        _R3Nested.layout => ValueListenableBuilder<double>(
+            valueListenable: width,
+            builder: (_, w, __) => SizedBox(
+              width: w,
+              child: LayoutBuilder(builder: (_, __) {
+                write(tick.value);
+                return Text('inner:${reread().dataOrNull}');
+              }),
+            ),
+          ),
+      };
+
+  Widget ownerBody(BuildContext context) {
+    final out = context.query(options, buildWhen: ownerWhen);
+    return Column(children: [
+      Text('outer:${out.dataOrNull}'),
+      nestedPart(() => context.query(options, buildWhen: nestedWhen)),
+    ]);
+  }
+
+  final Widget root = switch (owner) {
+    _R3Owner.builder => Builder(builder: ownerBody),
+    _R3Owner.layout => LayoutBuilder(builder: (c, _) => ownerBody(c)),
+    _R3Owner.parentForced => ValueListenableBuilder<int>(
+        valueListenable: parentTick,
+        // A new widget on every parent build: a forced, not a dirty, build.
+        builder: (_, __, ___) => _R3Stateless(ownerBody),
+      ),
+    _R3Owner.mixin => _R3MixinOwner(
+        options: options,
+        buildWhen: ownerWhen,
+        onBuild: () {},
+        body: (state, out) => Column(children: [
+          Text('outer:${out.dataOrNull}'),
+          nestedPart(() => state.watchQuery(options, buildWhen: nestedWhen)),
+        ]),
+      ),
+  };
+
+  await tester.pumpWidget(app(client, root));
+  expect(find.text('outer:a'), findsOneWidget);
+  tick.value = 1;
+  setNested?.call(() {});
+  if (nested == _R3Nested.layout) width.value = 250;
+  await tester.pump();
+  await tester.pump();
+  String shown(String prefix) => find
+      .byType(Text)
+      .evaluate()
+      .map((e) => (e.widget as Text).data!)
+      .firstWhere((t) => t.startsWith(prefix));
+  return (shown('outer:'), shown('inner:'));
+}
+
+void _review108Round3Probes() {
+  final predicates = <String, _R3Pred>{
+    'none': null,
+    'always true': _r3AlwaysTrue,
+    'selective': _r3Selective,
+  };
+
+  // The boundary, measured: 4 owners x 3 nested kinds x 3 owner predicates
+  // x 3 nested predicates. The owner follows exactly when the nested part's
+  // reread through the shared context has no `buildWhen`; the owner's own
+  // predicate is irrelevant. With any nested `buildWhen` — even one that
+  // always returns true — the owner stays on `a` (the documented boundary);
+  // reading through the nested builder's own context is the remedy.
+  for (final owner in _R3Owner.values) {
+    for (final nested in _R3Nested.values) {
+      for (final ownerWhen in predicates.entries) {
+        for (final nestedWhen in predicates.entries) {
+          final follows = nestedWhen.value == null;
+          queryWidgetTest(
+              'matrix: ${owner.name} owner (predicate ${ownerWhen.key}), '
+              '${nested.name} nested (predicate ${nestedWhen.key}): '
+              '${follows ? 'the owner follows' : 'the known boundary'}',
+              (tester, client) async {
+            final (outer, inner) = await _r3Shape(
+              tester,
+              client,
+              owner: owner,
+              nested: nested,
+              ownerWhen: ownerWhen.value,
+              nestedWhen: nestedWhen.value,
+              name: '${owner.name}-${nested.name}-'
+                  '${ownerWhen.key}-${nestedWhen.key}',
+            );
+            expect(inner, 'inner:b');
+            expect(outer, follows ? 'outer:b' : 'outer:a',
+                reason: follows
+                    ? 'an unfiltered reread must not consume the owner\'s '
+                        'notification'
+                    : 'known #108 boundary: a shared-context reread with '
+                        'buildWhen replaces the owner\'s baseline');
+          });
+        }
+      }
+    }
+  }
+
+  // The cost of the fix in a real flow: the same builds, at every step, as
+  // before it (the counts were taken at a5afe7d, which had no fix).
+  for (final style in ['context', 'mixin']) {
+    queryWidgetTest('build counts in a real flow are unchanged ($style)',
+        (tester, client) async {
+      var fetches = 0;
+      final tick = ValueNotifier<int>(0);
+      addTearDown(tick.dispose);
+      final options = QueryObserverOptions<String>(
+        queryKey: QueryKey(<Object?>['pr116r3flow', style]),
+        queryFn: (_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          return 'v${++fetches}';
+        },
+      );
+      var builds = 0;
+      var innerBuilds = 0;
+      Widget nested(_R3Result Function() read) => ValueListenableBuilder<int>(
+            valueListenable: tick,
+            builder: (_, __, ___) {
+              innerBuilds++;
+              return Text('inner:${read().dataOrNull}');
+            },
+          );
+      if (style == 'context') {
+        await tester.pumpWidget(app(client, Builder(builder: (context) {
+          builds++;
+          final out = context.query(options);
+          return Column(children: [
+            Text('outer:${out.dataOrNull}'),
+            nested(() => context.query(options)),
+          ]);
+        })));
+      } else {
+        await tester.pumpWidget(app(
+            client,
+            _R3MixinOwner(
+              options: options,
+              buildWhen: null,
+              onBuild: () => builds++,
+              body: (state, out) => Column(children: [
+                Text('outer:${out.dataOrNull}'),
+                nested(() => state.watchQuery(options)),
+              ]),
+            )));
+      }
+      final log = <String>[];
+      Future<void> step(String name, Future<void> Function() body) async {
+        await body();
+        log.add('$name:$builds,$innerBuilds');
+      }
+
+      Future<void> bump() async {
+        tick.value++;
+        await tester.pump();
+      }
+
+      await step('mount', () => tester.pump());
+      await step('fetch', () => tester.pump(const Duration(milliseconds: 20)));
+      await step('tick', bump);
+      await step('tick', bump);
+      await step('invalidate', () async {
+        unawaited(client.invalidateQueries());
+        await tester.pump();
+      });
+      await step(
+          'refetch', () => tester.pump(const Duration(milliseconds: 20)));
+      await step('tick', bump);
+      await step('tick during a fetch', () async {
+        final refetch = client.refetchQueries();
+        await tester.pump();
+        await bump();
+        await tester.pump(const Duration(milliseconds: 20));
+        await refetch;
+      });
+      await step('tick', bump);
+      await step('setQueryData', () async {
+        client.setQueryData<String>(options.queryKey, 'x');
+        await tester.pump();
+      });
+      await step('tick', bump);
+
+      expect(
+        log.join(' '),
+        'mount:1,1 fetch:2,2 tick:2,3 tick:2,4 invalidate:3,5 refetch:4,6 '
+        'tick:4,7 tick during a fetch:6,10 tick:6,11 setQueryData:7,12 '
+        'tick:7,13',
+      );
+      expect(find.text('outer:x'), findsOneWidget);
+      expect(find.text('inner:x'), findsOneWidget);
+    });
+  }
+
+  // The advice for a nested part that writes: write in a callback, not in
+  // build. The owner then rebuilds once for the one change.
+  queryWidgetTest('a write from a callback rebuilds the owner once',
+      (tester, client) async {
+    final options = _r3Options('callback-write');
+    var builds = 0;
+    await tester.pumpWidget(app(client, Builder(builder: (context) {
+      builds++;
+      final out = context.query(options);
+      return Column(children: [
+        Text('outer:${out.dataOrNull}'),
+        Builder(
+          builder: (_) => Text('inner:${context.query(options).dataOrNull}'),
+        ),
+      ]);
+    })));
+    client.setQueryData<String>(options.queryKey, 'b');
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.text('outer:b'), findsOneWidget);
+    expect(find.text('inner:b'), findsOneWidget);
+    expect(builds, 2, reason: 'the mount, and the one change');
+  });
+
+  // A zero-read owner whose two inline nested readers share its context: the
+  // second must see the write the first made.
+  for (final parentForced in [false, true]) {
+    for (final layoutOwner in [false, true]) {
+      queryWidgetTest(
+          'a zero-read owner, two inline nested readers '
+          '(parent forced: $parentForced, layout owner: $layoutOwner)',
+          (tester, client) async {
+        final parentTick = ValueNotifier<int>(0);
+        final a = ValueNotifier<int>(0);
+        final b = ValueNotifier<int>(0);
+        addTearDown(parentTick.dispose);
+        addTearDown(a.dispose);
+        addTearDown(b.dispose);
+        final options = _r3Options('zero-$parentForced-$layoutOwner');
+        var wrote = false;
+        Widget kids(BuildContext context) => Column(children: [
+              ValueListenableBuilder<int>(
+                valueListenable: a,
+                builder: (_, v, __) {
+                  if (v >= 1 && !wrote) {
+                    wrote = true;
+                    client.setQueryData<String>(options.queryKey, 'b');
+                  }
+                  return Text('A:${context.query(options).dataOrNull}');
+                },
+              ),
+              ValueListenableBuilder<int>(
+                valueListenable: b,
+                builder: (_, __, ___) =>
+                    Text('B:${context.query(options).dataOrNull}'),
+              ),
+            ]);
+        Widget owner() => layoutOwner
+            ? LayoutBuilder(builder: (c, _) => kids(c))
+            : _R3Stateless(kids);
+        await tester.pumpWidget(app(
+            client,
+            parentForced
+                ? ValueListenableBuilder<int>(
+                    valueListenable: parentTick,
+                    builder: (_, __, ___) => owner())
+                : owner()));
+        if (parentForced) {
+          parentTick.value++;
+          await tester.pump();
+        }
+        a.value = 1;
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('A:b'), findsOneWidget);
+        expect(find.text('B:b'), findsOneWidget);
+      });
+    }
+  }
+
+  // Structural frames around the write: a reparent, an unmount, a second key.
+  queryWidgetTest('the owner moves with a GlobalKey in the frame of the write',
+      (tester, client) async {
+    final tick = ValueNotifier<int>(0);
+    addTearDown(tick.dispose);
+    final options = _r3Options('reparent');
+    var wrote = false;
+    final moving = GlobalKey<_R3ReparentState>();
+    final owner = Builder(builder: (context) {
+      final out = context.query(options);
+      return Column(children: [
+        Text('outer:${out.dataOrNull}'),
+        ValueListenableBuilder<int>(
+          valueListenable: tick,
+          builder: (_, v, __) {
+            if (v >= 1 && !wrote) {
+              wrote = true;
+              client.setQueryData<String>(options.queryKey, 'b');
+            }
+            return Text('inner:${context.query(options).dataOrNull}');
+          },
+        ),
+      ]);
+    });
+    await tester
+        .pumpWidget(app(client, _R3Reparent(key: moving, child: owner)));
+    tick.value = 1;
+    moving.currentState!.moveRight();
+    await tester.pump();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('outer:b'), findsOneWidget);
+    expect(find.text('inner:b'), findsOneWidget);
+  });
+
+  queryWidgetTest('the owner unmounts in the frame of the write',
+      (tester, client) async {
+    final tick = ValueNotifier<int>(0);
+    final show = ValueNotifier<bool>(true);
+    addTearDown(tick.dispose);
+    addTearDown(show.dispose);
+    final options = _r3Options('unmount');
+    var wrote = false;
+    await tester.pumpWidget(app(
+        client,
+        ValueListenableBuilder<bool>(
+          valueListenable: show,
+          builder: (_, visible, __) => visible
+              ? Builder(builder: (context) {
+                  final out = context.query(options);
+                  return Column(children: [
+                    Text('outer:${out.dataOrNull}'),
+                    ValueListenableBuilder<int>(
+                      valueListenable: tick,
+                      builder: (_, v, __) {
+                        if (v >= 1 && !wrote) {
+                          wrote = true;
+                          client.setQueryData<String>(options.queryKey, 'b');
+                          // Gone before the deferred notification arrives.
+                          WidgetsBinding.instance
+                              .addPostFrameCallback((_) => show.value = false);
+                        }
+                        return Text(
+                            'inner:${context.query(options).dataOrNull}');
+                      },
+                    ),
+                  ]);
+                })
+              : const Text('gone'),
+        )));
+    tick.value = 1;
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('gone'), findsOneWidget);
+  });
+
+  queryWidgetTest('a pending change on one key leaves another key alone',
+      (tester, client) async {
+    final tick = ValueNotifier<int>(0);
+    addTearDown(tick.dispose);
+    final first = _r3Options('two-keys-1');
+    final second = _r3Options('two-keys-2');
+    var wrote = false;
+    var builds = 0;
+    await tester.pumpWidget(app(client, Builder(builder: (context) {
+      builds++;
+      final a = context.query(first);
+      final b = context.query(second);
+      return Column(children: [
+        Text('outer:${a.dataOrNull}${b.dataOrNull}'),
+        ValueListenableBuilder<int>(
+          valueListenable: tick,
+          builder: (_, v, __) {
+            if (v >= 1 && !wrote) {
+              wrote = true;
+              client.setQueryData<String>(first.queryKey, 'b');
+            }
+            return Text('inner:${context.query(first).dataOrNull}');
+          },
+        ),
+      ]);
+    })));
+    tick.value = 1;
+    await tester.pump();
+    await tester.pump();
+    final afterFirst = builds;
+    client.setQueryData<String>(second.queryKey, 'z');
+    await tester.pump();
+    expect(builds, afterFirst + 1, reason: 'one build for the second key');
+    expect(find.text('outer:bz'), findsOneWidget);
+    expect(find.text('inner:b'), findsOneWidget);
+  });
+
+  // A mutation started by a nested builder, reread through the owner's
+  // context without a predicate: the owner reaches `success` as well.
+  queryWidgetTest('a mutation started in a nested builder reaches the owner',
+      (tester, client) async {
+    final tick = ValueNotifier<int>(0);
+    addTearDown(tick.dispose);
+    final options = MutationOptions<String, String, void>(
+      mutationKey: QueryKey(<Object?>['pr116r3mut']),
+      mutationFn: (v) async {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        return v;
+      },
+    );
+    var started = false;
+    await tester.pumpWidget(app(client, Builder(builder: (context) {
+      final mutation = context.mutation(options, id: 'x');
+      return Column(children: [
+        Text('outer:${mutation.value.status.name}'),
+        ValueListenableBuilder<int>(
+          valueListenable: tick,
+          builder: (_, v, __) {
+            if (v >= 1 && !started) {
+              started = true;
+              mutation.mutate('go');
+            }
+            final again = context.mutation(options, id: 'x');
+            return Text('inner:${again.value.status.name}');
+          },
+        ),
+      ]);
+    })));
+    tick.value = 1;
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('inner:pending'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+    expect(find.text('outer:success'), findsOneWidget);
+    expect(find.text('inner:success'), findsOneWidget);
+  });
+}
+
+class _R3Reparent extends StatefulWidget {
+  const _R3Reparent({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<_R3Reparent> createState() => _R3ReparentState();
+}
+
+class _R3ReparentState extends State<_R3Reparent> {
+  bool left = true;
+
+  void moveRight() => setState(() => left = false);
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        Expanded(child: left ? widget.child : const SizedBox()),
+        Expanded(child: left ? const SizedBox() : widget.child),
+      ]);
 }

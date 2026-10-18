@@ -32,8 +32,8 @@ import 'rebuild_rule.dart';
 /// still request one conservative extra rebuild.
 /// Filtered reads use only the latest read: Flutter provides no general
 /// signal that an owner rebuilt with zero reads, so keeping an older value
-/// would violate the predicate's `previous` contract. Consequently #108
-/// remains for a filtered reread through an outer context; a nested part
+/// would violate the predicate's `previous` contract. So a filtered reread
+/// through an outer context can still leave the owner stale; a nested part
 /// reading through its own context has its own independent baseline.
 class ReadEntry<T> {
   /// Watches [controller] and calls [rebuild] when a notification of its is
@@ -59,7 +59,7 @@ class ReadEntry<T> {
   /// Keyless reads can be shared by an owner and its descendants. When no
   /// predicate filters them, remember a displaced read until the controller
   /// notifies: rereading a write during build must not consume that pending
-  /// notification (#108). Builder widgets have one build and leave this off.
+  /// notification. Builder widgets have one build and leave this off.
   final bool preserveUnnotifiedRead;
 
   /// The decision, over the controller's value and [observedStateOf] it: the
@@ -103,7 +103,7 @@ class ReadEntry<T> {
     // A retired owner's value must never reach buildWhen or take the
     // infinite controller's unconditional `beside` path. Flutter exposes no
     // general signal for a build that reads nothing, so filtered reads keep
-    // the single latest-read contract from before #108.
+    // the single latest-read contract from before the pending flag.
     _unnotified = unfiltered && (_unnotified || displaced);
     _buildWhen = buildWhen;
     _recorded = true;

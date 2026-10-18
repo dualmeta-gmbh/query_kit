@@ -7169,8 +7169,9 @@ public adapter API, and the hook implementation are unchanged.
 
 **Remaining boundary, explicitly accepted.** #108 remains when a descendant
 writes during build and then reads the same identity through an outer
-context/`watchQuery` **with a predicate**, including an always-true predicate.
-This covers component and layout owners, first or later direct reads,
+context/`watchQuery` **with a predicate on that reread**, including an
+always-true predicate. The owner's own predicate does not matter (measured
+in round 3 below). This covers component and layout owners, first or later direct reads,
 initial/replacement/ordinary descendant builds, and plain/select queries,
 infinite results/paging flags and mutations wherever this write/reread
 sequence can occur. Mixed predicate/unfiltered call sites sharing one
@@ -7293,3 +7294,51 @@ that the current fix classifies ownership.
   is retained for a filtered read; restore the latest-read rule from
   `a5afe7d`, so deferred keys cannot consult or bypass with a retired value.
   This gives up a complete filtered #108 fix, as explicitly bounded above.
+
+#### Review round 3 and resolution (`8353d53`)
+
+A Claude review of the narrowed fix found no P1 and recommended merging after
+four things: a failing documentation gate, a boundary described wider than it
+is, one undocumented cost, and missing site documentation. No library logic
+changed in this round; the work is wording, the site, and tests.
+
+- **Jargon gate (P2).** Three `///` lines carried an issue number in
+  parentheses; `check_docs_jargon.dart` failed `gates`. Reworded plainly.
+- **The boundary, measured.** The review ran a 108-case matrix: 4 owners
+  (`Builder`, `QueryMixin`, `LayoutBuilder`, a stateless widget forced by its
+  parent) x 3 nested kinds (`ValueListenableBuilder`, `StatefulBuilder`, a
+  nested `LayoutBuilder`) x 3 owner predicates (none, always true, selective)
+  x 3 nested predicates. The owner follows in exactly the **36** cases where
+  the nested reread through the shared context has **no** `buildWhen`; the
+  owner's own predicate does not matter. In all **72** cases where the nested
+  reread has any `buildWhen`, even an always-true one, the owner stays on the
+  old data. The earlier wording ("a filtered reread", "with a predicate")
+  suggested the owner's predicate also mattered, and it does not. The notes
+  above, the changelog and the `QueryContext` dartdoc now say exactly this and
+  name the remedy: read through the nested builder's own context, or give it
+  a widget of its own. All 108 cases are now permanent tests.
+- **A cost, documented (P3).** A nested build that writes the cache
+  unconditionally (`setQueryData` on every build, even identical data, which
+  still moves `dataUpdatedAt`) and rereads through the outer context now
+  rebuilds the owner on every frame: 10 owner builds in 10 frames, against 1
+  at `a5afe7d`. This is the intended mechanism, since every write is a change
+  that the owner has not shown, and it needs no fix; writing the cache in a
+  callback instead of in `build` avoids it. It is a troubleshooting entry on
+  the site and a sentence in the dartdoc. It is not pinned by a test, because
+  it is a pitfall, not a contract.
+- **Site (P3).** `reference/troubleshooting.md` gains "After a cache write in
+  a nested builder the outer widget shows old data", and the nested-builder
+  bullet in "Reading queries in widgets" links to it.
+- **Permanent verification.** Eleven further cases beside the matrix, all
+  passing at `8353d53`: build counts of a real flow with ticks, an
+  invalidation, a refetch during a tick and a manual write (identical to
+  `a5afe7d` step by step, for the context and the mixin style); a write from
+  a callback costs the owner one rebuild; a zero-read owner with two inline
+  nested readers (parent forced or not, `LayoutBuilder` owner or not); a
+  `GlobalKey` reparent and an unmount in the frame of the write; a pending
+  change on one key leaves a second key alone; a mutation started in a nested
+  builder reaches the owner. Two cached-child shapes the review also probed
+  (a zero-read owner whose two nested readers are cached widgets, with or
+  without a parent rebuild) still show the stale value for the second
+  reader; this is the documented rule that Flutter does not re-run a cached
+  child, and they are not pinned.

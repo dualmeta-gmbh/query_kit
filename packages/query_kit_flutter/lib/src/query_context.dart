@@ -112,14 +112,18 @@ import 'read_set.dart';
 ///   again and reads. (Flutter does not re-run such a builder when this
 ///   widget rebuilds, so it shows a change only when it runs again anyway.)
 ///   Read in `build`, or give the nested part a widget of its own.
-/// * **Cache writes during a nested build.** Without `buildWhen`, a reread
-///   through an outer context remembers that it saw a change until its
-///   notification arrives, so the owner also rebuilds (#108). With a
-///   predicate, only the latest read is the baseline: Flutter cannot report
-///   that an owner rebuilt without reading. Such a shared-context reread can
-///   still consume the owner's notification, even with a predicate that
-///   always returns true, including for infinite paging flags. Give the
-///   nested part its own context (or a widget of its own).
+/// * **Cache writes during a nested build.** A nested builder that writes
+///   the cache while it builds, then rereads through the outer `context`,
+///   moves the baseline the owner compares against before the owner's own
+///   notification arrives. If that reread has no `buildWhen`, the binding
+///   remembers the change and the owner rebuilds as well, whatever
+///   predicate the owner itself reads with. If the reread has a
+///   `buildWhen` — even one that always returns true — the owner can go on
+///   showing the old data (and, for an infinite query, the old paging
+///   flags). Read through the nested builder's own `context`, or give it
+///   a widget of its own. And write the cache from a callback, not from
+///   `build`: a write on every build, even of identical data, rebuilds the
+///   owner on every frame.
 /// * **A `LayoutBuilder`'s own context.** Reads through the `context` a
 ///   `LayoutBuilder`, `SliverLayoutBuilder` or `OrientationBuilder` hands its
 ///   builder start over whenever that builder provably runs: its constraints

@@ -326,6 +326,31 @@ keeps its key.
 `build`; it can then be kept in a field, or be `const`, and its reads live
 and go with it.
 
+## After a cache write in a nested builder the outer widget shows old data
+
+**Symptom.** A nested builder — a `ValueListenableBuilder`, a `StatefulBuilder`
+or a `LayoutBuilder` — writes the cache while it builds (a `setQueryData`, a
+`mutate`) and then reads the same query through the *outer* `context` (or the
+mixin's `watchQuery`). The nested part shows the new data; the outer widget,
+which read it in its own `build`, goes on showing the old.
+
+**Mechanism.** The nested read happens before the write's notification
+reaches the outer widget, and it moves the baseline the outer widget compares
+the notification against. When the nested read has no `buildWhen`, the binding
+remembers that the outer widget has not shown the change, and it rebuilds once
+more. The outer widget's own `buildWhen` makes no difference. When the nested
+read has a `buildWhen` — even one that always returns true — that memory is
+not kept: the predicate has to be handed the value it saw last, and handing it
+an older one would break its contract. The outer widget stays on the old data
+until the next real change.
+
+**Fix.** Give the nested part its own reader: read through the `context` the
+nested builder is handed, or move it into a widget of its own that reads in its
+`build`. Its baseline is then its own. And write the cache from a callback, an
+`onPressed` or a `Future`'s completion, not from `build`: a write on every
+build, even of identical data, is a change the outer widget has not shown, so
+it rebuilds on every frame.
+
 ## "QueryClientProvider could not listen to its onlineStatus"
 
 **Symptom.** `OnlineStatus.stream(changes, …)` with a single-subscription

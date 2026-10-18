@@ -2,19 +2,24 @@
 
 ## Unreleased
 
-- Fixed #108 for reads without `buildWhen`: a nested builder that writes
+- Fixed #108 for nested rereads without `buildWhen`: a nested builder that writes
   the cache and rereads through an outer `context` or `QueryMixin` no longer
   consumes the owner's pending notification. This covers direct reads in
   `LayoutBuilder` callbacks, parent-forced builds, initial and replacement
   child mounts, and query, infinite-query and mutation reads. A flag remembers
   displaced reads until a notification requests a rebuild; this can request
   one conservative extra rebuild if everything has already updated.
-- Filtered reads retain the pre-PR latest-read baseline. An older owner's
+- Filtered reads retain the pre-fix latest-read baseline. An older owner's
   value is never passed to `buildWhen` or used to bypass it via retired
-  paging flags. **Remaining #108 boundary:** a write and filtered reread
-  through an outer context can still leave the owner stale, even with an
-  always-true predicate. Read through the nested builder's own context.
-  Read lifetimes and the public `RebuildRule` adapter remain unchanged.
+  paging flags. **Remaining boundary:** when a nested builder writes the
+  cache while it builds and rereads through the outer `context` or
+  `QueryMixin`, the owner follows only if that reread has no `buildWhen`
+  (whatever predicate the owner itself reads with). A nested reread with any
+  `buildWhen`, even one that always returns true, can leave the owner showing
+  old data. Read through the nested builder's own context, or give it a
+  widget of its own. Writing the cache from `build` on every build rebuilds
+  the owner on every frame: write from a callback instead. Read lifetimes
+  and the public `RebuildRule` adapter remain unchanged.
 
 ## 1.1.0
 
