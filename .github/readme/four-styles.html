@@ -1,0 +1,77 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- README graphic: the four ways to read a query, one cache behind them.
+     1280x640, rendered at 2x per theme with a transparent outside, as the banner:
+     Chrome --headless=new --force-device-scale-factor=2 --window-size=1280,640
+       --default-background-color=00000000 --virtual-time-budget=5000
+       --screenshot=four-styles-light.png "four-styles.html"
+     and the same with --screenshot=four-styles-dark.png "four-styles.html#dark". -->
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=block" rel="stylesheet">
+<script>if (location.hash === '#dark') document.documentElement.className = 'dark'</script>
+<style>
+  :root{--bg:#f7f9fc;--border:#e2e7ef;--grid:#e6ebf2;--text:#0d1117;--muted:#545d6b;--blue:#0b6bcb;
+    --code-bg:#ffffff;--code-border:#dfe5ee;--code:#1f2733;--kw:#0b6bcb;--fn:#8a3ffc;--str:#0b3c70;
+    --line:#9cc3ec;--shadow:rgba(11,107,203,.14)}
+  .dark{--bg:#0a0b0f;--border:#1d2028;--grid:#1a1d24;--text:#ececf1;--muted:#9aa1ad;--blue:#56b8ff;
+    --code-bg:#12141a;--code-border:#232733;--code:#d6dae2;--kw:#56b8ff;--fn:#c39bff;--str:#a8cdf4;
+    --line:#2f5d8f;--shadow:rgba(0,0,0,.45)}
+  html,body{margin:0;background:transparent}
+  .card{position:relative;width:1280px;height:640px;box-sizing:border-box;overflow:hidden;
+    border-radius:28px;border:1px solid var(--border);background:var(--bg);
+    font-family:'Geist',system-ui,sans-serif;color:var(--text)}
+  .grid{position:absolute;left:820px;top:0;right:0;bottom:0;
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:64px 64px;background-position:16px 16px;
+    -webkit-mask-image:radial-gradient(ellipse at 55% 55%,#000 25%,transparent 70%)}
+  .glow{position:absolute;left:860px;top:150px;width:380px;height:380px;border-radius:50%;
+    background:radial-gradient(circle,rgba(75,155,234,.20),transparent 65%)}
+  h2{position:absolute;left:64px;top:44px;margin:0;font-size:40px;font-weight:700;letter-spacing:-1.2px}
+  h2 .blue{color:var(--blue)}
+  .sub{position:absolute;left:64px;top:102px;font-size:20px;color:var(--muted)}
+  .styles{position:absolute;left:64px;top:164px;width:740px}
+  .s{height:96px;box-sizing:border-box;border-radius:20px;background:var(--code-bg);margin-bottom:16px;
+    border:1px solid var(--code-border);box-shadow:0 10px 24px var(--shadow);padding:0 26px;
+    display:flex;align-items:center;gap:18px}
+  .s .label{width:118px;flex:none;font-size:14px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+  .s pre{margin:0;font-family:'Geist Mono',monospace;font-size:17px;line-height:1.5;color:var(--code);white-space:pre}
+  .kw{color:var(--kw)} .fn{color:var(--fn)}
+  svg.lines{position:absolute;left:0;top:0}
+  .cache{position:absolute;left:900px;top:236px;width:340px}
+  .cache .title{font-size:14px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0 0 14px 6px}
+  .e{width:300px;height:96px;border-radius:32px;box-shadow:0 14px 30px var(--shadow);
+    font-family:'Geist Mono',monospace;font-size:19px;box-sizing:border-box;padding:0 28px;
+    display:flex;justify-content:space-between;align-items:center;margin-bottom:-28px;position:relative}
+  .e .st{font-size:13px;letter-spacing:.6px;text-transform:uppercase;opacity:.85}
+  .e1{background:#a8cdf4;color:#0b3c70}
+  .e2{background:#4b9bea;color:#fff;margin-left:16px}
+  .e3{background:#0b6bcb;color:#fff;margin-left:32px}
+  .note{position:absolute;left:932px;top:530px;font-size:18px;color:var(--muted);line-height:1.45}
+  .note b{color:var(--text);font-weight:600}
+  .note code{font-family:'Geist Mono',monospace;color:var(--text)}
+</style></head>
+<body><div class="card">
+  <div class="grid"></div><div class="glow"></div>
+  <h2>Four ways to read a query. <span class="blue">One cache.</span></h2>
+  <div class="sub">Pick the shape that suits the screen. All four take the same options and behave the same.</div>
+  <svg class="lines" width="1280" height="640">
+    <g fill="none" stroke="var(--line)" stroke-width="2.5" stroke-linecap="round">
+      <path d="M804 212 C 870 212, 870 451, 934 451"/>
+      <path d="M804 324 C 870 324, 870 451, 934 451"/>
+      <path d="M804 436 C 870 436, 870 451, 934 451"/>
+      <path d="M804 548 C 870 548, 870 451, 934 451"/>
+    </g>
+  </svg>
+  <div class="styles">
+    <div class="s"><div class="label">Extension</div><pre><span class="kw">final</span> task = context.<span class="fn">query</span>(<span class="fn">taskQuery</span>(id));</pre></div>
+    <div class="s"><div class="label">Builder</div><pre><span class="fn">QueryBuilder</span>(options: <span class="fn">taskQuery</span>(id), builder: …)</pre></div>
+    <div class="s"><div class="label">State mixin</div><pre><span class="kw">with</span> <span class="fn">QueryMixin</span> … <span class="fn">watchQuery</span>(<span class="fn">taskQuery</span>(id))</pre></div>
+    <div class="s"><div class="label">Controller</div><pre><span class="fn">QueryController</span>.<span class="fn">create</span>(client, <span class="fn">taskQuery</span>(id))</pre></div>
+  </div>
+  <div class="cache">
+    <div class="title">One cache</div>
+    <div class="e e1"><span>['tasks']</span><span class="st">stale</span></div>
+    <div class="e e2"><span>['user']</span><span class="st">fetching</span></div>
+    <div class="e e3"><span>['task', 42]</span><span class="st">fresh</span></div>
+  </div>
+  <div class="note"><b>One request</b> for every reader<br>of <code>['task', 42]</code></div>
+</div></body></html>
