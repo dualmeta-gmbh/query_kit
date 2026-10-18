@@ -3,6 +3,11 @@ import { defineConfig, devices } from '@playwright/test'
 // The app under test is `flutter build web --dart-define=E2E=true` (npm run
 // build), served as static files; the backend is the real express server in
 // `../server`. Both are started here.
+// APP_PORT lets several checkouts serve their own build side by side. The
+// backend is one world per process and stays on 5174, which is where the web
+// build is compiled to look for it.
+const appPort = process.env.APP_PORT ?? '8123'
+
 export default defineConfig({
   testDir: './tests',
   // The backend keeps one in-memory state per run and scripts "every second
@@ -14,7 +19,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: 'http://localhost:8123',
+    baseURL: `http://localhost:${appPort}`,
     trace: 'retain-on-failure',
     // The build registers Flutter's service worker, and in WebKit a request
     // from a page it controls goes past `page.route`: the tests that refuse
@@ -44,7 +49,8 @@ export default defineConfig({
     },
     {
       command: 'node serve.mjs ../build/web',
-      url: 'http://localhost:8123',
+      env: { PORT: appPort },
+      url: `http://localhost:${appPort}`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
