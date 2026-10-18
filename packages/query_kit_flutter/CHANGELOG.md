@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2
+
+- README only: a "Why this package" section with a diagram of the four call
+  styles reading one cache. No code changes.
+
 ## 1.1.1
 
 - Fixed #108: a widget that read a query through an outer `context` or `QueryMixin` could keep
