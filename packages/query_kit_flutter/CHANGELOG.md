@@ -1,25 +1,23 @@
 # Changelog
 
-## Unreleased
+## 1.1.1
 
-- Fixed #108 for nested rereads without `buildWhen`: a nested builder that writes
-  the cache and rereads through an outer `context` or `QueryMixin` no longer
-  consumes the owner's pending notification. This covers direct reads in
-  `LayoutBuilder` callbacks, parent-forced builds, initial and replacement
-  child mounts, and query, infinite-query and mutation reads. A flag remembers
-  displaced reads until a notification requests a rebuild; this can request
-  one conservative extra rebuild if everything has already updated.
-- Filtered reads retain the pre-fix latest-read baseline. An older owner's
-  value is never passed to `buildWhen` or used to bypass it via retired
-  paging flags. **Remaining boundary:** when a nested builder writes the
-  cache while it builds and rereads through the outer `context` or
-  `QueryMixin`, the owner follows only if that reread has no `buildWhen`
-  (whatever predicate the owner itself reads with). A nested reread with any
-  `buildWhen`, even one that always returns true, can leave the owner showing
-  old data. Read through the nested builder's own context, or give it a
-  widget of its own. Writing the cache from `build` on every build rebuilds
-  the owner on every frame: write from a callback instead. Read lifetimes
-  and the public `RebuildRule` adapter remain unchanged.
+- Fixed #108: a widget that read a query through an outer `context` or `QueryMixin` could keep
+  showing old data after a nested builder wrote the cache and reread it
+  through that same outer `context` or `QueryMixin`. The reread consumed the
+  outer reader's pending notification, so the outer widget never rebuilt. It now
+  rebuilds. This covers direct reads in a `LayoutBuilder` callback, builds
+  forced by a parent, and nested children mounted first or replaced later, for
+  queries, infinite queries and mutations.
+- To be safe, a widget may now rebuild once more than before in those cases,
+  when everything on screen has already updated.
+- **Remaining limit:** the outer widget follows only if the nested reread has no
+  `buildWhen`. A nested reread with any `buildWhen`, even one that always
+  returns true, can still leave the outer widget showing old data. Read through
+  the nested builder's own context, or give it a widget of its own. Writing the
+  cache from `build` on every build rebuilds the outer widget on every frame:
+  write from a callback instead.
+- Nothing else changes: reads end as before, and `RebuildRule` is unchanged.
 
 ## 1.1.0
 
