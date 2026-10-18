@@ -2,10 +2,23 @@
 # formatter, and one real app build of the demo.
 name: ci
 
+# A change that touches only what no job reads skips the run. Package READMEs
+# stay in: the jargon check reads them and the fence tests compile their
+# samples. `*.md` matches the root only.
 on:
   push:
     branches: [main]
+    paths-ignore: &unread
+      - '*.md'
+      - 'LICENSE'
+      - 'docs/**'
+      - '.claude/**'
+      - '.github/readme/**'
+      - '.github/social-preview/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
   pull_request:
+    paths-ignore: *unread
 
 jobs:
   gates:
