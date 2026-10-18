@@ -373,6 +373,14 @@ the ticket that decided its shape in its dartdoc.
 
 ## Agent skills
 
+### The project skills
+
+Eight skills under `.claude/skills/`, adapted to this repository; their shared
+constraints are stated once in `codebase-design/REPOSITORY.md`. Two are started
+by hand: `/thermonuclear-review <path>` for a strict structural sweep of a
+module or package, `/improve-codebase-architecture` for a scan for deepening
+candidates. `blast-radius` is reached before every `lib/` change or review fix.
+
 ### Issue tracker
 
 Issues live in this repo's GitHub Issues (`dualmeta-gmbh/query_kit`, via the

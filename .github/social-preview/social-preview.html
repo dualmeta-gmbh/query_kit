@@ -1,0 +1,55 @@
+<!doctype html>
+<html><head>
+<!-- GitHub social preview (Settings → General → Social preview). 1280×640, every element inside an 80px safe border. Render at 2x:
+     Chrome --headless=new --force-device-scale-factor=2 --window-size=1280,640 --virtual-time-budget=5000 --screenshot=social-preview.png social-preview.html --><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#0a0b0f}
+  .card{position:relative;width:1280px;height:640px;overflow:hidden;background:#0a0b0f;
+    font-family:'Geist',system-ui,sans-serif;color:#ececf1}
+  /* Faint grid behind the mark, as on the site's OG image. */
+  .grid{position:absolute;left:760px;top:0;width:520px;height:640px;
+    background-image:linear-gradient(#1c1f26 1px,transparent 1px),linear-gradient(90deg,#1c1f26 1px,transparent 1px);
+    background-size:80px 80px;background-position:0 0;
+    -webkit-mask-image:radial-gradient(ellipse at 55% 50%,#000 30%,transparent 72%)}
+  .glow{position:absolute;left:800px;top:120px;width:420px;height:420px;border-radius:50%;
+    background:radial-gradient(circle,rgba(75,155,234,.22),transparent 65%)}
+  .mark{position:absolute;left:820px;top:150px}
+  /* Safe area: 80px on every side (GitHub's 40pt at 2x). */
+  .safe{position:absolute;left:96px;top:96px;right:96px;bottom:96px;display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:16px}
+  .brand .name{font-size:38px;font-weight:700;letter-spacing:-1px}
+  .brand .pill{margin-left:6px;font-family:'Geist Mono',monospace;font-size:17px;color:#9aa1ad;
+    border:1px solid #2c3039;border-radius:999px;padding:5px 13px}
+  h1{margin:46px 0 0;font-size:72px;line-height:1.02;font-weight:700;letter-spacing:-2.6px}
+  h1 .blue{color:#56b8ff}
+  .sub{margin-top:24px;font-size:26px;line-height:1.35;color:#9aa1ad;max-width:640px}
+  .foot{margin-top:auto;display:flex;align-items:center;gap:10px;font-family:'Geist Mono',monospace;font-size:18px;color:#c6cbd4}
+  .foot span{background:#14161c;border:1px solid #262a33;border-radius:8px;padding:7px 12px}
+  .foot .note{margin-left:auto;background:none;border:none;padding:0;font-family:'Geist',sans-serif;font-size:18px;color:#7d8491}
+</style></head>
+<body><div class="card">
+  <div class="grid"></div><div class="glow"></div>
+  <svg class="mark" width="360" height="360" viewBox="2 2 28 28">
+    <rect x="4" y="4.5" width="20" height="8" rx="2.5" fill="#a8cdf4"/>
+    <rect x="6" y="11.5" width="20" height="8" rx="2.5" fill="#4b9bea"/>
+    <rect x="8" y="18.5" width="20" height="8" rx="2.5" fill="#0b6bcb"/>
+  </svg>
+  <div class="safe">
+    <div class="brand">
+      <svg width="46" height="46" viewBox="2 2 28 28">
+        <rect x="4" y="4.5" width="20" height="8" rx="2.5" fill="#a8cdf4"/>
+        <rect x="6" y="11.5" width="20" height="8" rx="2.5" fill="#4b9bea"/>
+        <rect x="8" y="18.5" width="20" height="8" rx="2.5" fill="#0b6bcb"/>
+      </svg>
+      <div class="name">query_kit</div>
+      <div class="pill">pub.dev</div>
+    </div>
+    <h1>TanStack Query<br><span class="blue">for Dart and Flutter.</span></h1>
+    <div class="sub">A port of query-core, checked against upstream's own test suite — ported case by case.</div>
+    <div class="foot">
+      <span>query_kit</span><span>query_kit_flutter</span><span>query_kit_hooks</span>
+      <div class="note">AI-coded · MIT</div>
+    </div>
+  </div>
+</div></body></html>

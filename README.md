@@ -1,3 +1,16 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/readme/banner-dark.png">
+  <img src=".github/readme/banner-light.png" alt="query_kit: TanStack Query for Dart and Flutter" width="100%">
+</picture>
+
+<p align="center">
+  <a href="https://pub.dev/packages/query_kit"><img src="https://img.shields.io/pub/v/query_kit?label=query_kit&color=0b6bcb" alt="query_kit on pub.dev"></a>
+  <a href="https://pub.dev/packages/query_kit_flutter"><img src="https://img.shields.io/pub/v/query_kit_flutter?label=query_kit_flutter&color=0b6bcb" alt="query_kit_flutter on pub.dev"></a>
+  <a href="https://pub.dev/packages/query_kit_hooks"><img src="https://img.shields.io/pub/v/query_kit_hooks?label=query_kit_hooks&color=0b6bcb" alt="query_kit_hooks on pub.dev"></a>
+  <a href="https://github.com/dualmeta-gmbh/query_kit/actions/workflows/ci.yml"><img src="https://github.com/dualmeta-gmbh/query_kit/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0b6bcb" alt="MIT licence"></a>
+</p>
+
 # query_kit
 
 TanStack Query for Dart and Flutter: cached server state with background
