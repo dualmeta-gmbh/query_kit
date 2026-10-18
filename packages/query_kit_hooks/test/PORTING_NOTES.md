@@ -866,7 +866,7 @@ Runs after the fixes:
 - Native on this Mac, the flows: no verdict. The window fell behind the
   others twice, and an occluded window gets no frames. The locked-box case
   timed out while its write finished unseen, and its finder passes in a
-  widget test. That is #109's cause, below.
+  widget test. That is #109's cause, below: a Mac at the login window.
 
 CI on the first push ran the native suites on every platform:
 
@@ -883,6 +883,13 @@ CI on the first push ran the native suites on every platform:
   activated. The device control is the showcase's, so this is
   [#109](https://github.com/dualmeta-gmbh/query_kit/issues/109), not a
   change here.
+  The cause, found later: the runner's session sits at the login window.
+  `lsappinfo front` is `com.apple.loginwindow` after every activation
+  (`open -b`, the bundle's path, AppleScript all exit 0), so no app can
+  come to the front, and a trip away changes no focus. The trip-away cases
+  now skip with a printed reason when the device control saw that when asked
+  (`probeDevice`, `canLeave`, a warning annotation and a summary line on CI; the showcase's network case degrades to `setFocused`); everywhere else a failure to come to the
+  front fails the case. The by-hand run on an unlocked Mac covers them.
 
 ### Third pass (verification of the second review's fixes)
 
@@ -987,7 +994,7 @@ CI on `ee034bf` (`ci` and `native-e2e`):
 
 - green on every leg but macOS;
 - iOS, which the log reader had stopped, was green when run again;
-- macOS is #109.
+- macOS is #109: a runner at the login window, where the trip-away cases skip.
 
 AP10 changed nothing in the package's `lib/`, so no further AP11 pass is
 owed.
