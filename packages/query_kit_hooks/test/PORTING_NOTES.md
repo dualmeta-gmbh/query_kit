@@ -1213,3 +1213,17 @@ Runs after the fixes:
 - **Widget, interleavings, contract and repository:** 71 of 71 with the
   showcase server.
 - **The app:** unchanged since the fifth pass's Playwright and native runs.
+
+
+### PR #116, #108 companion verification after review round 2
+
+Three regressions from the binding review now live in
+`review_reproductions_test.dart`: a hook owner plus a shared-context nested
+read during initial/replacement mount, and declined infinite-query results
+whose current paging flags still rebuild. No hook implementation or existing
+assertion changed. The binding's #108 fix uses a pending-change bit only for
+unfiltered keyless reads; hooks keep their own ordinary `RebuildRule`.
+
+Validation: hooks **335** (332 existing + 3 companion cases), binding **427**;
+full workspace analyzer and the exact CLAUDE formatting scope pass. The hooks
+example has **61** passing cases and its 10 existing server-dependent skips.

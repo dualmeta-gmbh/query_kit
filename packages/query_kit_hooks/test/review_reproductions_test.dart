@@ -11,6 +11,7 @@ import 'package:query_kit_hooks/query_kit_hooks.dart';
 import 'harness.dart';
 
 void main() {
+  group('#108 companion probes', _review108CompanionProbes);
   // H-01: two sources fail, the second is then repaired. The combination
   // stays `CombinedError` with the first error — equal to the one built —
   // but `retry` now acts on fewer sources. A gate on the value alone would
@@ -313,4 +314,89 @@ void main() {
       observer,
     );
   });
+}
+
+void _review108CompanionProbes() {
+  for (final replacement in [false, true]) {
+    hookTest('hook baseline survives nested mount write: replace=$replacement',
+        (tester, client) async {
+      final parent = ValueNotifier<int>(0);
+      addTearDown(parent.dispose);
+      final options = QueryObserverOptions<String>(
+        queryKey: QueryKey(['hook-mount']),
+        queryFn: (_) async => 'a',
+        initialData: InitialData.value('a'),
+        staleTime: StaleTime.infinite,
+      );
+      var wrote = false;
+      await tester.pumpWidget(app(
+        client,
+        ValueListenableBuilder<int>(
+          valueListenable: parent,
+          builder: (_, run, __) => HookBuilder(builder: (context) {
+            final outer = useQuery(options);
+            final children = [
+              Text('outer:${outer.dataOrNull}'),
+              Builder(builder: (_) {
+                if ((!replacement || run > 0) && !wrote) {
+                  wrote = true;
+                  client.setQueryData<String>(options.queryKey, 'b');
+                }
+                return Text('inner:${context.query(options).dataOrNull}');
+              }),
+            ];
+            return run == 0
+                ? Column(children: children)
+                : Row(children: children);
+          }),
+        ),
+      ));
+      if (replacement) parent.value = 1;
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('inner:b'), findsOneWidget);
+      expect(find.text('outer:b'), findsOneWidget);
+    });
+  }
+
+  hookTest('HookWidget keeps infinite beside flags with a declined result',
+      (tester, client) async {
+    final options =
+        InfiniteQuerySelectOptions<({String text, int? next}), int, String>(
+      queryKey: QueryKey(['hook-flags']),
+      pageFn: (_) async => (text: 'a', next: null),
+      initialPageParam: 0,
+      initialData: InitialData.value(InfiniteData(
+        pages: [(text: 'a', next: 1)],
+        pageParams: [0],
+      )),
+      staleTime: StaleTime.infinite,
+      select: (data) => data.pages.first.text,
+      getNextPageParam: (page, _, __, ___) => page.next,
+    );
+    await tester.pumpWidget(app(client, _Review108FlagsHook(options)));
+    expect(find.text('more:true'), findsOneWidget);
+    client.setQueryData<InfiniteData<({String text, int? next}), int>>(
+      options.queryKey,
+      InfiniteData(pages: [(text: 'a', next: null)], pageParams: [0]),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('more:false'), findsOneWidget);
+  });
+}
+
+class _Review108FlagsHook extends HookWidget {
+  const _Review108FlagsHook(this.options);
+  final InfiniteQuerySelectOptions<({String text, int? next}), int, String>
+      options;
+
+  @override
+  Widget build(BuildContext context) {
+    final feed = useInfiniteQuery(options, buildWhen: (_, __) => false);
+    return Column(children: [
+      Text('more:${feed.hasNextPage}'),
+      const SizedBox(),
+    ]);
+  }
 }

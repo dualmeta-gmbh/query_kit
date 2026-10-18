@@ -181,7 +181,10 @@ it does.
   builder it does not re-run — its widget kept in a field — reads nothing
   then, so its keys are released after that frame while it still shows
   them, until it runs again and reads. Give such a part a widget of its
-  own.
+  own. A nested builder that writes the cache while it builds and rereads
+  through the outer `context` with a `buildWhen` can leave the outer widget
+  on old data: see
+  [After a cache write in a nested builder the outer widget shows old data](../reference/troubleshooting.md#after-a-cache-write-in-a-nested-builder-the-outer-widget-shows-old-data).
 - **A `LayoutBuilder`'s or `OrientationBuilder`'s own `context`.** A read
   through it starts over when its builder provably runs: new constraints (the
   wide layout's key goes after a resize), a notification from one of its own
