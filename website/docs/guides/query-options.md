@@ -95,7 +95,7 @@ about differs. `InfiniteQueryObserverOptions.withSelect` does the same for
 the paged shape. What a `select` does to rebuilds is in [what rebuilds, and
 when](render-optimizations.md).
 
-The showcase's *select and sharing* screen puts five readers on one list of
+The showcase's [*select and sharing* screen](../examples/select-and-sharing.mdx) puts five readers on one list of
 todos — four with a `select`, one without — each with a `data builds` count.
 Press *Refetch*: the server sends the same list, and no `data builds` count
 moves. *Toggle todo 1* moves only the reader that selects done and open
@@ -171,3 +171,8 @@ shape so its second type argument can be inferred, and `withSelect` adds one
 to an existing description. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Examples: the [playground](../examples/playground.mdx) changes the defaults while the app runs, and the [stale time and garbage collection example](../examples/stale-and-gc.mdx) has a knob for each value.
+- Cookbook: [List to detail, seeded](../cookbook/list-detail-seeding.md) builds its options in functions that the list and the detail screen share.

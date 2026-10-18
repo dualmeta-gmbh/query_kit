@@ -183,7 +183,7 @@ overrule each other. Toggle `simulateOffline` from a debug menu. `OnlineStatus.f
 source of changes; a changed one reaches the client on the rebuild that
 changes it.
 
-Try it: turn "Online" off in the demo and press "Refetch" — the query pauses
+Try it: turn "Online" off in the demo (the [offline example](../examples/offline.mdx)) and press "Refetch" — the query pauses
 instead of failing. Turn it back on and the paused work continues.
 
 <LiveDemo feature="offline" height={560} />

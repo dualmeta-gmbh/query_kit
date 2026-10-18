@@ -78,7 +78,7 @@ A failed mutation hands the scope on like a successful one; so does a
 [cancelled one](cancelling-mutations.md). The writes behind it run anyway —
 if they depended on it, check in their own function or cancel them.
 
-The `mutations` screen has two buttons for this. *Run two unscoped* starts two
+The [`mutations` screen](../examples/mutations.mdx) has two buttons for this. *Run two unscoped* starts two
 slow writes at once and both are pending together; *Run two scoped* starts
 the same two in one scope, and the second shows paused until the first has
 finished.
@@ -99,3 +99,8 @@ class, `MutationScope('device-42')`, and the rules are the same: only the
 function waits, a queued mutation is paused, and mutations without a scope
 run in parallel.
 :::
+
+## See also
+
+- Cookbook: [Offline first, and surviving a restart](../cookbook/offline-first-and-persistence.md) for the writes that wait while the device is offline.
+- Guides: [Mutations](mutations.md) and [network mode](network-mode.md), the other reasons a write waits.

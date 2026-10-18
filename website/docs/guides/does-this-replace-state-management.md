@@ -54,7 +54,7 @@ never sees. Keep those in whatever you use today.
 
 The four ways the binding reads a query — `context.query`, the builder
 widgets, `QueryMixin` and `QueryController` — are equal alternatives, and
-they mix in one screen. In the *Four call styles* example, five readers
+they mix in one screen. In the [*Four call styles* example](../examples/four-call-styles.mdx), five readers
 share one cache entry; press *Refetch*, then *Invalidate*, and watch one
 request go out and every card update, with the strip still saying
 `fetches=1` per request.
@@ -175,3 +175,8 @@ project filter — is one small `ChangeNotifier`, `AppState` in
 with no copy of any task in it. The search text and the project go into the
 list's query key, debounced, so the list follows them. A larger app keeps
 its package for the client side and loses most of the server-side code.
+
+## See also
+
+- Cookbook: [Next to Riverpod, Bloc or Provider](../cookbook/riverpod-bloc-provider.md) connects the cache to a store, and [where the client lives](../cookbook/dependency-injection.md) shows how to provide and reach it.
+- Examples: the [Task manager](../examples/task-manager.mdx) runs the split described under "In practice" in a live app.

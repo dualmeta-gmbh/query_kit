@@ -127,7 +127,7 @@ MutationOptions<Device, String, void> renameDeviceQuickly(
 Either way the invalidation happens. What you choose is which moment the UI
 calls "done".
 
-Press *Increment (mutate)* on the `mutations` screen: the mutation goes
+Press *Increment (mutate)* on the [`mutations` screen](../examples/mutations.mdx): the mutation goes
 `pending`, then `success`, and the counter query its `onSuccess` invalidates
 refetches to the new value.
 
@@ -157,3 +157,8 @@ The same pattern: `queryClient.invalidateQueries` in `useMutation`'s
 `onSuccess` or `onSettled`, and returning the promise to keep the mutation
 pending. A Dart callback returns the `Future` the same way.
 :::
+
+## See also
+
+- Cookbook: [Forms and server validation](../cookbook/forms-and-server-validation.md) invalidates after a save, and [realtime updates over a WebSocket](../cookbook/realtime-websockets.md) invalidates on a server event instead of a write.
+- Reference: [`QueryClient`](../reference/query-client.md).

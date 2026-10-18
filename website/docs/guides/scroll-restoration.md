@@ -127,7 +127,7 @@ as with a `PageStorageKey`, build it only once the rows are there. An
 infinite query starts again from its first page. There is no persistence of
 the cache in 1.0.
 
-Try it: in the screen below, press *Load more* a couple of times, then press
+Try it: in the [load more screen](../examples/load-more.mdx) below, press *Load more* a couple of times, then press
 *Go to about*. The list is unmounted — its query has no reader — and *Back
 to list* rebuilds it with every page on the first frame and no new request.
 This demo's list has no `PageStorageKey`, so it comes back at the top: the
@@ -142,3 +142,7 @@ Flutter the position is `PageStorage`'s or state restoration's, and the
 cache supplies the same thing — the rows on the first build. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [An infinite list view](../cookbook/infinite-list-view.md) and [routing with go_router](../cookbook/routing-go-router.md), both lists that are left and returned to.

@@ -220,3 +220,8 @@ does not have: a `dispose` that runs after the children's, which is the right
 moment to clear. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Query keys](../guides/query-keys.md) for the prefix an account is kept apart by, and [query invalidation](../guides/query-invalidation.md) for the narrower alternative to clearing.
+- Reference: [`QueryClient`](../reference/query-client.md) for `clear` and `removeQueries`.

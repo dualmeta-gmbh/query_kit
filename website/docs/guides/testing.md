@@ -576,9 +576,15 @@ when a test ends, and Flutter's test binding does.
 
 ## In the examples
 
-The *Task manager* example's acceptance suite,
+The [*Task manager* example](../examples/task-manager.mdx)'s acceptance suite,
 [`examples/task_manager/test/acceptance_test.dart`](https://github.com/dualmeta-gmbh/query_kit/blob/main/examples/task_manager/test/acceptance_test.dart),
 is one widget test per feature of a whole app — the first load, detail
 entries seeded from the list, a debounced search, a rename that rolls back,
 a switch confirmed by polling, a retried error — against a fake of its
 backend, in the shape this page describes.
+
+## See also
+
+- Cookbook: [Testing a screen](../cookbook/testing-a-screen.md) builds a fake API with latency, a harness with the teardown, and tests that step fake time.
+- Guides: [Polling](polling.md), [query retries](query-retries.md) and [connectivity](connectivity.md) each have a section on testing what they do, and [reading queries in widgets](reading-queries-in-widgets.md) covers the code under test.
+- Reference: [`QueryClient`](../reference/query-client.md) for `clear` and the other methods a teardown uses, and [how the examples are built](../project/examples.md) for the suites behind the showcase.

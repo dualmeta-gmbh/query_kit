@@ -211,7 +211,7 @@ That covers the frame's build phase and the app's very first build, which
 
 ## Seeing it
 
-The `select-and-sharing` screen reads one entry five times, with a different
+The [`select-and-sharing` screen](../examples/select-and-sharing.mdx) reads one entry five times, with a different
 `select` each, and counts every reader's builds and its *data builds* — the
 builds whose selected value changed. Press *Refetch*: the data comes back
 equal, every reader's *data builds* stays put, and only the builder with a
@@ -222,7 +222,7 @@ time now count a data change for equal data.
 
 <LiveDemo feature="select-and-sharing" />
 
-The `build-when` screen is this page's other half: each of the eight keyless
+The [`build-when` screen](../examples/build-when.mdx) is this page's other half: each of the eight keyless
 reads is made twice over one entry — once with a predicate, once without — so
 what the predicate costs and saves is the difference between two counters.
 Press *Refetch the posts* and watch the unfiltered counters move while the
@@ -239,3 +239,8 @@ decide there which result fields re-render a component; `buildWhen` is that
 decision written as a function of the previous and the current result, on
 every builder and every keyless read.
 :::
+
+## See also
+
+- Cookbook: [Models with freezed and JSON](../cookbook/freezed-and-json-models.md) and [normalised data or one key per entity](../cookbook/normalised-vs-per-entity-keys.md), for models that compare equal and lists that keep their unchanged items.
+- Reference: [`buildWhen` on the widgets and controllers](../reference/widgets-and-controllers.md).

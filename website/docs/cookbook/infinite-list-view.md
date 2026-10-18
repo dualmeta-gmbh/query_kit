@@ -187,7 +187,7 @@ page starts at, `null` on the last one — and `ProductApi.page` is its call in
    the list holds again, first to last, each from the param the page before it
    now gives, so the list stays consistent if products were added.
 
-Try it: scroll the demo's list to the bottom — the next page loads as you near
+Try it: scroll the [load more example](../examples/load-more.mdx)'s list to the bottom — the next page loads as you near
 it, and "Load more" does the same by hand. Leave with "Go to about" and come
 back: the pages are still cached.
 

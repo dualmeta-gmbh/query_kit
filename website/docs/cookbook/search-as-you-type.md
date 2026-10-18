@@ -137,7 +137,7 @@ class _ProductSearchScreenState extends State<ProductSearchScreen>
    key. Without it, a changed key would be a new read, and a new read has no
    previous data to keep.
 
-Try it in the demo's "Search as you type" card: type a few letters, pause,
+Try it in the "Search as you type" card of the [cancellation example](../examples/cancellation.mdx): type a few letters, pause,
 then type again before the answer arrives — `searchCancels` counts the
 searches stopped in flight. The demo's backend is in memory, with a deliberate
 delay.

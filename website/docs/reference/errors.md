@@ -106,7 +106,7 @@ result shows `status: error`, and `mutateAsync` throws it.
 `client.setMutationDefaults` for the mutation's key.
 
 Both type errors and a missing mutation function can be tried in the
-diagnostics screen below. "Read as int" reads the counter with its own type;
+[diagnostics example](../examples/diagnostics.mdx) below. "Read as int" reads the counter with its own type;
 "Read as String" reads it as the wrong type and shows the
 `QueryDataTypeError`; "Write a String" tries to write the wrong type and
 leaves the entry unchanged; "Mutate without a function" fails with
@@ -225,3 +225,8 @@ without the check, with the behaviour described.
 
 The full list is in
 [differences from TanStack Query](/docs/reference/differences-from-tanstack).
+
+## See also
+
+- Cookbook: [A global error snackbar](../cookbook/global-error-snackbar.md) for showing a failure to the user, and [forms and server validation](../cookbook/forms-and-server-validation.md) for a refusal that belongs next to a field.
+- Guides: [Query retries](../guides/query-retries.md).

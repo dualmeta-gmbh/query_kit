@@ -245,7 +245,7 @@ their last argument, typed by the options' third type argument. If `onMutate`
 itself throws, the mutation fails without running its function, and that
 argument is `null`.
 
-The `optimistic-updates` screen shows both shapes on one todo list. Pick *Via
+The [`optimistic-updates` screen](../examples/optimistic-updates.mdx) shows both shapes on one todo list. Pick *Via
 variables* or *Via cache*, type a todo and press *Add*; then tick *Refuse
 next write* and add another. Via variables, the refused row turns into an
 error with a *Retry*; via cache, it appears, disappears again and the card
@@ -279,7 +279,7 @@ Mutations in a [scope](mutation-scopes.md) run their `onMutate` when they are
 submitted, not when their turn comes — so, again, roll back the row a
 mutation changed rather than restoring a whole-list snapshot.
 
-The `playground` screen is the other half of the argument: its adds and
+The [`playground` screen](../examples/playground.mdx) is the other half of the argument: its adds and
 renames are not optimistic. Set *Latency* to *2 s* and add a todo — the wait
 between pressing and seeing is what an optimistic update removes.
 
@@ -291,3 +291,8 @@ The same two shapes: the UI one reads `variables` from `useMutation` (or
 `onError` and `onSettled`. What `onMutate` returns is called the *context* in
 TanStack Query and `onMutateResult` here.
 :::
+
+## See also
+
+- Examples: the [Task manager](../examples/task-manager.mdx) renames a task optimistically and rolls it back when the server refuses.
+- Cookbook: [Poll until a device confirms](../cookbook/poll-until-confirmed.md) for a write that is accepted before it is confirmed, and [normalised data or one key per entity](../cookbook/normalised-vs-per-entity-keys.md) for the cache writes behind the second shape.

@@ -84,7 +84,7 @@ once from the cache (and refetches behind it, if stale). `GcTime.never` keeps
 an entry until you remove it or clear the client.
 
 `staleTime` and `gcTime` answer different questions — *when do I ask again?*
-and *when do I forget?* — and the showcase's *stale and gc* screen sets each
+and *when do I forget?* — and the showcase's [*stale and gc* screen](examples/stale-and-gc.mdx) sets each
 one live. Pick `5 s` under *Stale time* and watch `isStale` flip five seconds
 after a fetch; press the *Detach reader* icon with GC time `5 s` and watch the
 strip turn to `status=absent` five seconds later. `static` ignores the
@@ -226,7 +226,7 @@ take effect wherever options are resolved next: a new reader, or an existing
 one the next time its options are applied — every build for `context.query`
 and `watchQuery`, a rebuild by its parent for a builder widget, a
 `setOptions` for a controller. A query already fetching keeps what it
-started with. The showcase's *playground* screen
+started with. The showcase's [*playground* screen](examples/playground.mdx)
 does exactly that — its *Stale time* and *GC time* knobs call
 `setDefaultOptions`. Set *Error rate* to `100 %` and press the refresh icon
 on *Todos* to watch `failureCount` climb through the retries, or pick *Stale
@@ -284,4 +284,6 @@ either. Call `unmount()` only to balance a `mount()` you made yourself.
 The [caching walkthrough](guides/caching.md) follows one query through these
 defaults step by step, and [default query
 function](guides/default-query-function.md) shows key defaults carrying a
-shared `queryFn`.
+shared `queryFn`. The [cookbook](cookbook/index.md) has recipes that set
+these defaults for a whole app, such as [auth and token refresh](cookbook/auth-and-token-refresh.md)
+and [lifecycle and connectivity wiring](cookbook/lifecycle-and-connectivity-wiring.md).

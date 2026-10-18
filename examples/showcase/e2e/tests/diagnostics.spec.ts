@@ -81,6 +81,61 @@ test('a default mutationFn registered for the key is the cure', async ({ page, o
   expect((await (await scenario.api('get', '/counter')).json()).value).toBe(1)
 })
 
+test('a refused read does not poison the entry: the next read as int still answers', async ({
+  page,
+  open,
+  scenario,
+}) => {
+  await scenario.config({ latency: 0 })
+  await open('/diagnostics')
+  await expect(page.getByText('counter=0', { exact: true })).toBeVisible()
+
+  await button(page, 'Read as String').click()
+  await expect(factOf(page, 'typed', 'read=QueryDataTypeError')).toBeVisible()
+
+  await button(page, 'Read as int').click()
+
+  await expect(factOf(page, 'typed', 'read=int 0')).toBeVisible()
+  // The error's facts are the last refusal's, and a good read leaves them.
+  await expect(factOf(page, 'typed', 'expected=String')).toBeVisible()
+  await expect(factOf(page, 'typed', 'actual=int')).toBeVisible()
+  // The entry was never touched: one update, still fresh from its one fetch.
+  await expect(fact(page, 'counter', 'status=success')).toBeVisible()
+  await expect(fact(page, 'counter', 'updates=1')).toBeVisible()
+  await expect(fact(page, 'counter', 'fetches=1')).toBeVisible()
+  expect(await scenario.count('GET', /^\/api\/counter$/)).toBe(1)
+})
+
+test('the cure is registered once, and every run after it succeeds without the error', async ({
+  page,
+  open,
+  scenario,
+}) => {
+  await scenario.config({ latency: 0 })
+  await open('/diagnostics')
+  await button(page, 'Mutate without a function').click()
+  await expect(factOf(page, 'no-function', 'error=MissingMutationFunctionError')).toBeVisible()
+  await expect(button(page, 'Register a default mutationFn')).not.toHaveAttribute('aria-disabled', 'true')
+
+  await button(page, 'Register a default mutationFn').click()
+
+  // Registered: there is nothing left to register.
+  await expect(factOf(page, 'no-function', 'default=registered')).toBeVisible()
+  await expect(button(page, 'Register a default mutationFn')).toHaveAttribute('aria-disabled', 'true')
+
+  await button(page, 'Mutate without a function').click()
+  await expect(factOf(page, 'no-function', 'data=1')).toBeVisible()
+  // The success replaced the error: neither its name nor its message remains.
+  await expect(factOf(page, 'no-function', 'error=MissingMutationFunctionError')).toBeHidden()
+  await expect(page.getByText(/No mutationFn was provided/)).toBeHidden()
+
+  // The default serves every run, not the first one only.
+  await button(page, 'Mutate without a function').click()
+  await expect(factOf(page, 'no-function', 'data=2')).toBeVisible()
+  expect(await scenario.count('POST', INCREMENT)).toBe(2)
+  expect((await (await scenario.api('get', '/counter')).json()).value).toBe(2)
+})
+
 test.describe('options that throw in a build', () => {
   // The third card sits below the fold of the default viewport.
   test.use({ viewport: { width: 1280, height: 2000 } })

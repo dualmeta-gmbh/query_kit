@@ -254,3 +254,9 @@ default — which report a link, like `connectivity_plus` — and
 `onlineStatus` or `onlineManager.setEventListener` is where a source goes.
 See [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Examples: the [offline example](../examples/offline.mdx) toggles the client's online verdict, and the [focus refetch example](../examples/focus-refetch.mdx) does the same for the app lifecycle.
+- Cookbook: [Lifecycle and connectivity wiring](../cookbook/lifecycle-and-connectivity-wiring.md) puts `connectivity_plus` and a reachability probe behind it, and [offline first, and surviving a restart](../cookbook/offline-first-and-persistence.md) keeps writes made offline.
+- Guides: [App focus refetching](window-focus-refetching.md) for what happens when the app returns, and [testing](testing.md) for fake time and a fake connection.

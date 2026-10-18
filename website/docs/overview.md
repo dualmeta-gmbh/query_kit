@@ -185,3 +185,9 @@ value equality and no `undefined` — the difference is written down: see
   matrix](reference/feature-matrix.md) says what is out and why.
 - Something behaves in a way you did not expect?
   [Troubleshooting](reference/troubleshooting.md) is symptom first.
+- Looking for a topic? The [guides](guides/index.md) list every concept in one place, grouped as the
+  sidebar groups them.
+- Learning by running something? The [examples](examples/index.md) show every feature as a live
+  screen in the browser, and the [cookbook](cookbook/index.md) answers tasks such as a token
+  refresh, a search box or an offline-first app.
+- Looking for a name or a signature? The [API reference](reference/api.md) says where each is.

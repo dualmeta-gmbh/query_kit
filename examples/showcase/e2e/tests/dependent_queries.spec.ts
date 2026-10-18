@@ -114,3 +114,64 @@ test('switching posts re-keys both queries, and Clear choice releases them', asy
   expect(await scenario.count('GET', anyPost)).toBe(3)
   expect(await scenario.count('GET', anyComments)).toBe(3)
 })
+
+test('changing the input cancels the dependent fetch that was out, and choosing it again starts a new one', async ({
+  page,
+  open,
+  scenario,
+}) => {
+  await open('/dependent-queries')
+
+  // Post 2's comments are asked for and not answered: held in the browser.
+  const hold = holdRequest(page, '**/api/posts/2/comments')
+  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await expect.poll(() => hold.seen).toBe(1)
+  await expect(fact(page, 'comments-2', 'fetchStatus=fetching')).toBeVisible()
+  await expect(fact(page, 'comments-2', 'fetches=1')).toBeVisible()
+
+  // The input changes: the screen reads post 3 and lets post 2's entries go.
+  await page.getByRole('button', { name: 'Choose post 3', exact: true }).click()
+  await expect(fact(page, 'comments-3', 'status=success')).toBeVisible()
+  await expect(strip(page, 'comments-2')).toBeHidden()
+
+  // Had the first request merely been abandoned, the entry would still be
+  // fetching it and this read would join it. It was cancelled — the entry
+  // went back to having no data — so the read starts a request of its own.
+  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await expect(fact(page, 'comments-2', 'fetches=2')).toBeVisible()
+  await expect.poll(() => hold.seen).toBe(2)
+  await expect(fact(page, 'comments-2', 'status=pending')).toBeVisible()
+  await expect(fact(page, 'comments-2', 'observers=1')).toBeVisible()
+  await hold.release()
+
+  await expect(fact(page, 'comments-2', 'status=success')).toBeVisible()
+  await expect(page.getByText('comments count=3', { exact: true })).toBeVisible()
+  // The first request never reached the backend; the second did.
+  expect(await scenario.count('GET', comments(2))).toBe(1)
+})
+
+test('ticking Pause while the comments are in flight does not cancel them', async ({ page, open, scenario }) => {
+  await open('/dependent-queries')
+
+  const hold = holdRequest(page, '**/api/posts/2/comments')
+  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await expect.poll(() => hold.seen).toBe(1)
+  await expect(fact(page, 'comments-2', 'fetchStatus=fetching')).toBeVisible()
+
+  const pause = page.getByRole('checkbox', { name: 'Pause comments' })
+  await pause.click()
+  await expect(pause).toBeChecked()
+
+  // Disabled is not cancelled: the query will not start another, and the one
+  // that is out is still out.
+  await expect(page.getByText('comments enabled=false', { exact: true })).toBeVisible()
+  await expect(fact(page, 'comments-2', 'fetchStatus=fetching')).toBeVisible()
+  await expect(fact(page, 'comments-2', 'observers=1')).toBeVisible()
+  await hold.release()
+
+  await expect(fact(page, 'comments-2', 'status=success')).toBeVisible()
+  await expect(fact(page, 'comments-2', 'fetches=1')).toBeVisible()
+  await expect(page.getByText('comments count=3', { exact: true })).toBeVisible()
+  await expect(page.getByText('comments enabled=false', { exact: true })).toBeVisible()
+  expect(await scenario.count('GET', comments(2))).toBe(1)
+})

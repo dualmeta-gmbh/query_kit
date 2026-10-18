@@ -9,7 +9,8 @@ description: React Query and TanStack Query in Flutter — every JavaScript name
 The behaviour is TanStack Query's — the tests say so — but the surface is Dart's.
 This page maps the JavaScript names to the ones here. Where the port
 deliberately *behaves* differently, [differences from TanStack
-Query](reference/differences-from-tanstack.md) says how.
+Query](reference/differences-from-tanstack.md) says how. It is a community port,
+not TanStack's own; [credits, and what this is not](project/credits.md) says what that means.
 
 Two rules shape most of the table:
 
@@ -149,23 +150,23 @@ starts with what it shows and how it is proven:
 
 | Topic | Screen |
 |---|---|
-| reading a query, the four call styles | `simple`, `four-call-styles` |
-| `select`, `buildWhen`, structural sharing | `select-and-sharing`, `build-when` |
-| `initialData`, `placeholderData` | `initial-and-placeholder` |
-| `staleTime`, `gcTime` | `stale-and-gc`, `cache-inspector` |
-| `enabled` | `dependent-queries` |
-| the client's imperative surface, filters | `invalidation-and-filters`, `prefetching`, `default-query-function` |
-| infinite queries | `load-more`, `max-pages`; `pagination` for the page-numbered shape |
-| mutations, optimistic updates | `mutations`, `optimistic-updates`, `playground` |
-| cancelling a mutation, `mutationFnWithContext` | `mutation-cancel` |
-| retries, cancellation | `retry`, `cancellation` |
-| `refetchInterval`, focus, online | `auto-refetching`, `focus-refetch`, `offline` |
-| cache callbacks, `meta` | `global-callbacks` |
-| a list of queries (`useQueries`) | `query-collections`, `parallel-queries` |
-| `useQueries`' `combine` | `combine` |
-| cache-wide mutation state (`useMutationState`) | `mutation-state` |
-| the provider's knobs — `QueryClientProvider.create`, `isAppShown`, `onlineStatus`, `maybeOf` | `focus-refetch` |
-| the errors the port adds — `QueryDataTypeError`, `MissingMutationFunctionError` | `diagnostics` |
+| reading a query, the four call styles | [`simple`](examples/simple.mdx), [`four-call-styles`](examples/four-call-styles.mdx) |
+| `select`, `buildWhen`, structural sharing | [`select-and-sharing`](examples/select-and-sharing.mdx), [`build-when`](examples/build-when.mdx) |
+| `initialData`, `placeholderData` | [`initial-and-placeholder`](examples/initial-and-placeholder.mdx) |
+| `staleTime`, `gcTime` | [`stale-and-gc`](examples/stale-and-gc.mdx), [`cache-inspector`](examples/cache-inspector.mdx) |
+| `enabled` | [`dependent-queries`](examples/dependent-queries.mdx) |
+| the client's imperative surface, filters | [`invalidation-and-filters`](examples/invalidation-and-filters.mdx), [`prefetching`](examples/prefetching.mdx), [`default-query-function`](examples/default-query-function.mdx) |
+| infinite queries | [`load-more`](examples/load-more.mdx), [`max-pages`](examples/max-pages.mdx); [`pagination`](examples/pagination.mdx) for the page-numbered shape |
+| mutations, optimistic updates | [`mutations`](examples/mutations.mdx), [`optimistic-updates`](examples/optimistic-updates.mdx), [`playground`](examples/playground.mdx) |
+| cancelling a mutation, `mutationFnWithContext` | [`mutation-cancel`](examples/mutation-cancel.mdx) |
+| retries, cancellation | [`retry`](examples/retry.mdx), [`cancellation`](examples/cancellation.mdx) |
+| `refetchInterval`, focus, online | [`auto-refetching`](examples/auto-refetching.mdx), [`focus-refetch`](examples/focus-refetch.mdx), [`offline`](examples/offline.mdx) |
+| cache callbacks, `meta` | [`global-callbacks`](examples/global-callbacks.mdx) |
+| a list of queries (`useQueries`) | [`query-collections`](examples/query-collections.mdx), [`parallel-queries`](examples/parallel-queries.mdx) |
+| `useQueries`' `combine` | [`combine`](examples/combine.mdx) |
+| cache-wide mutation state (`useMutationState`) | [`mutation-state`](examples/mutation-state.mdx) |
+| the provider's knobs — `QueryClientProvider.create`, `isAppShown`, `onlineStatus`, `maybeOf` | [`focus-refetch`](examples/focus-refetch.mdx) |
+| the errors the port adds — `QueryDataTypeError`, `MissingMutationFunctionError` | [`diagnostics`](examples/diagnostics.mdx) |
 
 ## Not here at all
 
@@ -186,3 +187,9 @@ starts with what it shows and how it is proven:
 
 [The feature matrix](reference/feature-matrix.md) lists everything that is
 out.
+
+## See also
+
+- The [overview](overview.md), a shorter introduction, then [installation](installation.md) and the [quick start](quick-start.md) if you have not set a project up yet.
+- The [cookbook](cookbook/index.md) for tasks that mix several of these names, such as [a token refresh](cookbook/auth-and-token-refresh.md) or [an offline-first app](cookbook/offline-first-and-persistence.md).
+- The [API reference](reference/api.md) for the Dart side of every row.

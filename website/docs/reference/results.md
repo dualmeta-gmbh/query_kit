@@ -374,3 +374,8 @@ A memo cannot see what the combiner captures. With a memo, the combiner must
 be a function of the sources and of `keys` alone: name everything else it
 reads in `keys:` (compared with `==`), or do that work after `combine`.
 `keys` without a `memo` does nothing.
+
+## See also
+
+- Cookbook: [Pull to refresh](../cookbook/pull-to-refresh.md) and [an infinite list view](../cookbook/infinite-list-view.md) read the flags on these types.
+- Examples: the [combine example](../examples/combine.mdx) shows a `CombinedResult` and the [mutation state example](../examples/mutation-state.mdx) a `MutationState`.
