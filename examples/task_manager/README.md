@@ -136,8 +136,11 @@ real express backend.
 flutter test
 ```
 
-Sixteen widget tests — one per row of the MVP feature checklist, plus two
-regressions found by review — running the real app, with its own client
+Eighteen widget tests — one per row of the MVP feature checklist, plus two
+regressions found by review and the two states of the detail screen no
+navigation reaches (its skeleton and its error panel: the demo has no
+per-task URL, so a browser never opens a detail before the list has seeded
+it) — running the real app, with its own client
 defaults, against [`test/fake_backend.dart`](test/fake_backend.dart) — the
 app's own [`lib/demo/in_memory_backend.dart`](lib/demo/in_memory_backend.dart),
 an in-memory stand-in for [`server/server.ts`](server/server.ts) wired in as a
@@ -211,7 +214,19 @@ npm run build                                          # flutter build web --dar
 npm test                                               # or: npx playwright test --ui
 ```
 
+The specs are split by subject: `tasks.spec.ts` (loading, the cache policy,
+rename, delete, search, an unreachable backend, the facts card),
+`creating.spec.ts` (the "New task" button and the empty state),
+`filtering.spec.ts` (the project filter, alone and with a search) and
+`reminder.spec.ts` (turning it off, a refused write, the "confirming" window,
+"not synced"). `APP_PORT=8141 npm test` serves the build on another port, so
+two checkouts can build side by side; the backend stays on 5174.
+
 The backend keeps one in-memory state per process and scripts "every second
 delete fails", so the tests run one at a time, create the tasks they act on,
-and never depend on the seed data or on each other. CI runs the same suite on
+and never depend on each other. (Two things are read from the seed, because
+no write can make them: the one task the backend has not synced, and the
+values of a task whose progress is not zero.) Why the backend was not given
+the showcase's per-test scenarios is
+[ADR-0006](../../docs/adr/0006-the-task-managers-backend-stays-single-world.md). CI runs the same suite on
 every push (`.github/workflows/ci.yml`, job `e2e`).

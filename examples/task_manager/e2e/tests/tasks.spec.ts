@@ -5,9 +5,10 @@
 // Flutter web paints to a canvas; the tests read the semantics tree the E2E
 // build switches on (`--dart-define=E2E=true`), the same tree a screen reader
 // gets: rows are groups named after the task, buttons carry their tooltips.
-import { expect, test, type Page } from '@playwright/test'
-import { createTask, getTask, requestCounter, sweepTestTasks, uniqueName } from './backend'
+import { expect, test } from '@playwright/test'
+import { createTask, getTask, listTasks, requestCounter, sweepTestTasks, uniqueName } from './backend'
 import { trackInputListeners, typeInto } from './flutter_input'
+import { deleteButton, heroTitle, holdRequests, holdWrite, open, row, waitingForScheduler } from './helpers'
 
 // The list builds only the rows in view, and a created task lands at the
 // end of it — so the leftovers of earlier runs are cleared away, and the
@@ -16,61 +17,6 @@ test.beforeAll(async ({ request }) => sweepTestTasks(request))
 test.afterAll(async ({ request }) => sweepTestTasks(request))
 test.use({ viewport: { width: 1280, height: 1600 } })
 test.beforeEach(({ page }) => trackInputListeners(page))
-
-const open = async (page: Page) => {
-  await page.goto('/')
-  // The toolbar is up as soon as the app has booted; the rows come after the
-  // backend's ~900 ms.
-  await expect(page.getByRole('button', { name: 'New task', exact: true })).toBeVisible()
-}
-
-const row = (page: Page, name: string) => page.getByRole('group', { name })
-const deleteButton = (page: Page, name: string) => page.getByRole('button', { name: `Delete ${name}` })
-const heroTitle = (page: Page) => page.getByText(/Normal · Inbox/)
-
-// Holds every rename write in the browser until `release()`, so an assertion
-// between the click and the release runs while the backend provably has not
-// answered. After the release the handler is a passthrough, so the rest of the
-// test talks to the backend normally — unrouting it here would race the
-// handler that is still letting the held request go.
-function holdWrite(page: Page) {
-  let letGo: () => void = () => {}
-  const held = new Promise<void>((resolve) => {
-    letGo = resolve
-  })
-  const routed = page.route('**/api/tasks/*/name', async (route) => {
-    await held
-    await route.continue()
-  })
-  return {
-    async release() {
-      await routed
-      letGo()
-    },
-  }
-}
-
-// The same for any other request: `method` requests to `glob` are held, so
-// "optimistic" is asserted while the backend provably owes its answer, not
-// within a guessed number of milliseconds a busy browser may not keep. Other
-// requests to the same paths pass.
-function holdRequests(page: Page, method: string, glob: string) {
-  let letGo: () => void = () => {}
-  const held = new Promise<void>((resolve) => {
-    letGo = resolve
-  })
-  const routed = page.route(glob, async (route) => {
-    if (route.request().method() !== method) return route.fallback()
-    await held
-    await route.continue()
-  })
-  return {
-    async release() {
-      await routed
-      letGo()
-    },
-  }
-}
 
 test('loads the tasks from the backend, one request for the whole screen', async ({ page, request }) => {
   const task = await createTask(request, uniqueName('First load'))
@@ -177,6 +123,83 @@ test('a refused rename rolls back on screen and in the field', async ({ page, re
   expect((await getTask(request, task.id))?.name).toBe(task.name)
 })
 
+test('renaming to an empty name is refused and the field keeps the old name', async ({ page, request }) => {
+  const task = await createTask(request, uniqueName('Keeps its name'))
+  await open(page)
+  await row(page, task.name).click()
+
+  const field = page.getByRole('textbox', { name: /^Name/ })
+  await field.click()
+  await expect(field).toHaveValue(task.name)
+  await typeInto(page, field, '')
+  // Nothing on screen reflects typed text before the press reads it, so Flutter
+  // is given two frames to take the emptied text up: the first runs of this
+  // test, on a loaded machine, met a press that still saw the old name (3 of
+  // ~50, none in ~450 since — the cause was not pinned down).
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+
+  // The app sends it: nothing on the screen stops an empty name, the backend
+  // does (a 400), and the optimistic empty title rolls back like any refusal.
+  const write = holdWrite(page)
+  const refused = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/name'))
+  await page.getByRole('button', { name: 'Rename', exact: true }).click()
+  await write.release()
+  expect((await refused).status()).toBe(400)
+
+  await expect(page.getByText('Field "name" is missing or empty')).toBeVisible()
+  await expect(heroTitle(page)).toContainText(task.name)
+  await field.click()
+  await expect(field).toHaveValue(task.name)
+  expect((await getTask(request, task.id))?.name).toBe(task.name)
+})
+
+test('the list shows its skeleton until the backend answers', async ({ page, request }) => {
+  const task = await createTask(request, uniqueName('After the skeleton'))
+  // Held at the network layer: the list is provably still owed while the
+  // screen is looked at, however long the browser takes to paint it.
+  const list = holdRequests(page, 'GET', '**/api/tasks?*')
+  await open(page)
+
+  // The skeleton has no semantics of its own; it is the screen with the
+  // toolbar and none of the alternatives — no rows, no header count, no empty
+  // state, no error panel — while the reload button is out of the tree
+  // because the list is fetching.
+  await expect(page.getByRole('button', { name: 'Reload', exact: true })).toHaveCount(0)
+  await expect(row(page, task.name)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Delete / })).toHaveCount(0)
+  await expect(page.getByText(/\d+ of \d+ synced/)).toHaveCount(0)
+  await expect(page.getByText('No tasks found.')).toHaveCount(0)
+  await expect(page.getByText('Try again')).toHaveCount(0)
+
+  await list.release()
+  await expect(row(page, task.name)).toBeVisible()
+  await expect(page.getByText(/\d+ of \d+ synced/)).toBeVisible()
+})
+
+test("the facts card shows the backend's progress, estimate, project and board state", async ({ page, request }) => {
+  // A seeded task, because its progress and estimate are not the ones a new
+  // task starts with — the expectation is read from the backend, not typed
+  // in, so it follows the seed.
+  const seeded = (await listTasks(request)).find((t) => t.name === 'Write the release notes')!
+  expect(seeded.priority).toBe('high')
+  expect(seeded.progress).toBeGreaterThan(0)
+  await open(page)
+  // A row's texts are one accessible name, one line per text.
+  await expect
+    .poll(async () => (await row(page, seeded.name).getAttribute('aria-label'))?.replace(/\s+/g, ' '))
+    .toBe(`${seeded.name} High · ${seeded.project} · ${seeded.progress} %`)
+
+  await row(page, seeded.name).click()
+  await expect(page.getByText(new RegExp(`High · ${seeded.project}$`))).toBeVisible()
+  // The card's rows are one node in the semantics tree, label and value in
+  // reading order, so it is read as one line.
+  await expect(
+    page.getByText(
+      `Progress ${seeded.progress} % Estimate ${seeded.estimate.toFixed(2)} h Project ${seeded.project} Board ${seeded.synced ? 'Synced' : 'Not synced'}`,
+    ),
+  ).toBeVisible()
+})
+
 test('the reminder switch flips at once, waits for the scheduler, then settles', async ({ page, request }) => {
   const task = await createTask(request, uniqueName('Nudge'))
   await open(page)
@@ -193,8 +216,8 @@ test('the reminder switch flips at once, waits for the scheduler, then settles',
 
   // Accepted, not confirmed: the backend answers with `pending`, the switch
   // is locked for the confirmation window, and the app polls the task.
-  await expect(page.getByRole('switch', { name: /Waiting for the scheduler/ })).toBeVisible()
-  await expect(reminder).toHaveAttribute('aria-disabled', 'true')
+  await expect(waitingForScheduler(page)).toBeVisible()
+  await expect(waitingForScheduler(page)).not.toHaveAttribute('flt-tappable')
   await expect.poll(() => requests.details(), { timeout: 3000 }).toBeGreaterThan(0)
 
   // The device confirms after ~3 s: the poll stops, the switch unlocks, and
