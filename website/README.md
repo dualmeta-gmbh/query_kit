@@ -196,7 +196,13 @@ The navbar's search box is [`@easyops-cn/docusaurus-search-local`](https://githu
 ([#74](https://github.com/dualmeta-gmbh/query_kit/issues/74)): `npm run build`
 writes a [lunr](https://lunrjs.com) index of the doc pages into
 `build/search-index-<hash>.json`, and the browser fetches it the first time
-the box is used. There is no account, crawler, API key or outside service, so
+the box is used. The index exists only after a build: under `npm start` the
+box renders but answers "The search index is only available when you run
+docusaurus build!", so try search with `npm run build && npm run serve`. The
+hash in the name covers the plugin's version and the raw `docs/` Markdown only,
+so an edit elsewhere (a Dart source a page imports, the sidebar, the options)
+keeps the name, and a reader's cache may serve the previous index until Pages'
+ten-minute `max-age` runs out. There is no account, crawler, API key or outside service, so
 it works from any static host and offline once loaded. Algolia DocSearch would
 need all four; the Orama and `docusaurus-lunr-search` plugins were the other
 candidates, and the first is less used and the second has not been released

@@ -61,11 +61,16 @@ test('the index is a static file with a hashed name, loaded when the box is used
 // The results page is `/search`. The plugin marks it `noindex` with a
 // `property` attribute that crawlers do not read, so the site says it with
 // `name` (src/theme/SearchPage), and keeps the page out of the sitemap.
-test('the search results page is neither indexable nor in the sitemap', async ({ page, request }) => {
-  await page.goto(`${BASE}search?q=QueriesController`)
-  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, follow')
+// The HTML as served, as a crawler first reads it: no hydration.
+test.describe('the search results page', () => {
+  test.use({ javaScriptEnabled: false })
 
-  const sitemap = await (await request.get(`${BASE}sitemap.xml`)).text()
-  expect(sitemap).toContain('/docs/overview')
-  expect(sitemap).not.toMatch(/<loc>[^<]*\/search<\/loc>/)
+  test('is neither indexable nor in the sitemap', async ({ page, request }) => {
+    await page.goto(`${BASE}search?q=QueriesController`)
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, follow')
+
+    const sitemap = await (await request.get(`${BASE}sitemap.xml`)).text()
+    expect(sitemap).toContain('/docs/overview')
+    expect(sitemap).not.toMatch(/<loc>[^<]*\/search<\/loc>/)
+  })
 })

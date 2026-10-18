@@ -146,9 +146,12 @@ const config: Config = {
     [
       '@easyops-cn/docusaurus-search-local',
       {
-        // A content hash in the index's file name (`true` would put it in a
-        // query string), so a deploy never serves a reader the old index from
-        // cache beside new pages.
+        // A hash in the index's file name (`true` would put it in a query
+        // string, so the file's name would not change). The plugin hashes its
+        // version and the raw `docs/**/*.md(x)` files only: a change to an
+        // imported Dart source, the sidebar, these options or Docusaurus keeps
+        // the name, so a reader's cache can serve the old index for as long as
+        // GitHub Pages' `max-age` (ten minutes) allows.
         hashed: 'filename',
         docsRouteBasePath: '/docs',
         indexDocs: true,
