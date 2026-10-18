@@ -17,6 +17,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
+import 'package:query_kit_flutter/src/read_entry.dart';
+import 'package:query_kit_flutter/src/read_set.dart';
 
 import 'harness.dart';
 
@@ -108,6 +110,9 @@ class _TwoSelects extends StatelessWidget {
 }
 
 void main() {
+  group('#108 review round 1 original probes', _review108Round1Probes);
+  group('#108 review round 2', _review108Round2Probes);
+  group('#108 notification baseline contract', _review108NotificationContract);
   // ---- fifth and sixth reviews (2026-09-10) --------------------------------
 
   group('R01 an overridden queryClient that changes with the widget', () {
@@ -5285,4 +5290,830 @@ class _FlagsMixinReaderState extends State<_FlagsMixinReader> with QueryMixin {
   @override
   Widget build(BuildContext context) => widget
       .onBuild(watchInfiniteQuery(widget.options, buildWhen: widget.buildWhen));
+}
+
+QueryObserverOptions<String> _review108Options(String key) =>
+    QueryObserverOptions(
+      queryKey: QueryKey([key]),
+      queryFn: (_) async => 'a',
+      initialData: InitialData.value('a'),
+      staleTime: StaleTime.infinite,
+    );
+
+void _review108Round1Probes() {
+  for (final precedingRead in [false, true]) {
+    queryWidgetTest('layout own baseline: precedingRead=$precedingRead',
+        (tester, client) async {
+      final tick = ValueNotifier<int>(0);
+      addTearDown(tick.dispose);
+      final first = _review108Options('first');
+      final target = _review108Options('target');
+      var wrote = false;
+      var builds = 0;
+      await tester.pumpWidget(app(client, LayoutBuilder(
+        builder: (context, constraints) {
+          builds++;
+          if (precedingRead) context.query(first);
+          final outer = context.query(target);
+          return Column(children: [
+            Text('outer:${outer.dataOrNull}'),
+            ValueListenableBuilder<int>(
+              valueListenable: tick,
+              builder: (_, value, __) {
+                if (value == 1 && !wrote) {
+                  wrote = true;
+                  client.setQueryData<String>(target.queryKey, 'b');
+                }
+                return Text('inner:${context.query(target).dataOrNull}');
+              },
+            ),
+          ]);
+        },
+      )));
+      expect(find.text('outer:a'), findsOneWidget);
+      tick.value++;
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('inner:b'), findsOneWidget);
+      expect(find.text('outer:b'), findsOneWidget,
+          reason: 'LayoutBuilder builds=$builds');
+    });
+  }
+
+  for (final mixin in [false, true]) {
+    queryWidgetTest('retired own baseline respects buildWhen: mixin=$mixin',
+        (tester, client) async {
+      final key = GlobalKey<_ProbeStoppedReaderState>();
+      final options = _review108Options('stopped');
+      final comparisons = <String>[];
+      bool buildWhen(
+          QueryResult<String> previous, QueryResult<String> current) {
+        final before = previous.dataOrNull;
+        final after = current.dataOrNull;
+        comparisons.add('$before->$after');
+        return before == 'a' && after == 'c';
+      }
+
+      await tester.pumpWidget(app(
+          client,
+          _ProbeStoppedReader(
+            key: key,
+            mixin: mixin,
+            options: options,
+            buildWhen: buildWhen,
+            write: () => client.setQueryData<String>(options.queryKey, 'b'),
+          )));
+      expect(find.text('outer:a'), findsOneWidget);
+      key.currentState!.stopOwnRead();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('outer:a'), findsNothing);
+      expect(find.text('inner:b'), findsOneWidget);
+      expect(key.currentState!.builds, 2);
+
+      client.setQueryData<String>(options.queryKey, 'c');
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('inner:b'), findsOneWidget,
+          reason: 'b->c is rejected; comparisons=$comparisons; '
+              'owner builds=${key.currentState!.builds}');
+    });
+  }
+
+  queryWidgetTest('retired paging flags bypass buildWhen never',
+      (tester, client) async {
+    final show = ValueNotifier<bool>(true);
+    addTearDown(show.dispose);
+    final options =
+        InfiniteQuerySelectOptions<({String text, int? next}), int, String>(
+      queryKey: QueryKey(['stopped-infinite']),
+      pageFn: (_) async => (text: 'a', next: null),
+      initialPageParam: 0,
+      initialData: InitialData.value(InfiniteData(
+        pages: [(text: 'a', next: 1)],
+        pageParams: [0],
+      )),
+      staleTime: StaleTime.infinite,
+      select: (data) => data.pages.first.text,
+      getNextPageParam: (page, _, __, ___) => page.next,
+    );
+    var builds = 0;
+    var write = false;
+    var asked = 0;
+    bool never(QueryResult<String> previous, QueryResult<String> current) {
+      asked++;
+      return false;
+    }
+
+    void writePage(String text) =>
+        client.setQueryData<InfiniteData<({String text, int? next}), int>>(
+          options.queryKey,
+          InfiniteData(pages: [(text: text, next: null)], pageParams: [0]),
+        );
+
+    await tester.pumpWidget(app(
+        client,
+        ListenableBuilder(
+          listenable: show,
+          builder: (context, _) {
+            builds++;
+            final outer = show.value
+                ? context.infiniteQuery(options, buildWhen: never)
+                : null;
+            return Column(children: [
+              if (outer != null) Text('outer:${outer.hasNextPage}'),
+              Builder(builder: (_) {
+                if (write) {
+                  write = false;
+                  writePage('a');
+                }
+                final inner = context.infiniteQuery(options, buildWhen: never);
+                return Text(
+                    'inner:${inner.value.dataOrNull}:${inner.hasNextPage}');
+              }),
+            ]);
+          },
+        )));
+    write = true;
+    show.value = false;
+    await tester.pumpAndSettle();
+    expect(find.text('inner:a:false'), findsOneWidget);
+    final before = builds;
+    final beforeAsked = asked;
+    writePage('b');
+    await tester.pumpAndSettle();
+    expect(find.text('inner:a:false'), findsOneWidget,
+        reason: 'result-only change must be declined: builds $before->$builds; '
+            'predicate calls $beforeAsked->$asked');
+  });
+
+  queryWidgetTest('dialog own context receives writes and releases on pop',
+      (tester, client) async {
+    final options = _review108Options('dialog');
+    await tester.pumpWidget(app(client, Builder(builder: (pageContext) {
+      return TextButton(
+        onPressed: () => showDialog<void>(
+          context: pageContext,
+          builder: (dialogContext) => AlertDialog(
+            content: Text('dialog:${dialogContext.query(options).dataOrNull}'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('close'),
+              ),
+            ],
+          ),
+        ).ignore(),
+        child: const Text('open'),
+      );
+    })));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('dialog:a'), findsOneWidget);
+    client.setQueryData<String>(options.queryKey, 'b');
+    await tester.pumpAndSettle();
+    expect(find.text('dialog:b'), findsOneWidget);
+    await tester.tap(find.text('close'));
+    await tester.pumpAndSettle();
+    expect(client.queryCache.findAll().single.observersCount, 0);
+  });
+
+  queryWidgetTest('additive entries release on generation sweep and unmount',
+      (tester, client) async {
+    final variant = ValueNotifier<bool>(false);
+    addTearDown(variant.dispose);
+    final first = _review108Options('first');
+    final second = _review108Options('second');
+    await tester.pumpWidget(app(
+        client,
+        ListenableBuilder(
+          listenable: variant,
+          builder: (context, _) {
+            final options = variant.value ? second : first;
+            context.query(options);
+            return Builder(
+                builder: (_) =>
+                    Text('nested:${context.query(options).dataOrNull}'));
+          },
+        )));
+    variant.value = true;
+    await tester.pumpAndSettle();
+    final queries = client.queryCache.findAll();
+    expect(
+        queries.singleWhere((q) => q.queryKey == first.queryKey).observersCount,
+        0);
+    expect(
+        queries
+            .singleWhere((q) => q.queryKey == second.queryKey)
+            .observersCount,
+        1);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    expect(queries.every((q) => q.observersCount == 0), isTrue);
+  });
+}
+
+class _ProbeStoppedReader extends StatefulWidget {
+  const _ProbeStoppedReader({
+    super.key,
+    required this.mixin,
+    required this.options,
+    required this.buildWhen,
+    required this.write,
+  });
+  final bool mixin;
+  final QueryObserverOptions<String> options;
+  final BuildWhen<QueryResult<String>> buildWhen;
+  final VoidCallback write;
+
+  @override
+  State<_ProbeStoppedReader> createState() => _ProbeStoppedReaderState();
+}
+
+class _ProbeStoppedReaderState extends State<_ProbeStoppedReader>
+    with QueryMixin {
+  bool ownRead = true;
+  bool writeNext = false;
+  int builds = 0;
+
+  void stopOwnRead() => setState(() {
+        ownRead = false;
+        writeNext = true;
+      });
+
+  QueryResult<String> read() => widget.mixin
+      ? watchQuery(widget.options, buildWhen: widget.buildWhen)
+      : context.query(widget.options, buildWhen: widget.buildWhen);
+
+  @override
+  Widget build(BuildContext context) {
+    builds++;
+    final outer = ownRead ? read() : null;
+    return Column(children: [
+      if (outer != null) Text('outer:${outer.dataOrNull}'),
+      Builder(builder: (_) {
+        if (writeNext) {
+          writeNext = false;
+          widget.write();
+        }
+        return Text('inner:${read().dataOrNull}');
+      }),
+    ]);
+  }
+}
+
+void _review108Round2Probes() {
+  for (final layout in [false, true]) {
+    queryWidgetTest('parent-handed cached child: layout=$layout',
+        (tester, client) async {
+      final parent = ValueNotifier<int>(0);
+      final tick = ValueNotifier<int>(0);
+      addTearDown(parent.dispose);
+      addTearDown(tick.dispose);
+      final target = _review108Options('cached-run');
+      Widget? cached;
+      var outerData = '';
+      var builds = 0;
+      var wrote = false;
+      Widget body(BuildContext context, int run) {
+        builds++;
+        outerData = context.query(target).dataOrNull!;
+        // The cached descendant observes a value supplied by its owner,
+        // while its widget identity is unchanged across the parent update.
+        tick.value = builds;
+        return cached ??= ValueListenableBuilder<int>(
+          valueListenable: tick,
+          builder: (_, __, ___) {
+            if (parent.value == 1 && !wrote) {
+              wrote = true;
+              client.setQueryData<String>(target.queryKey, 'b');
+            }
+            return Column(children: [
+              Text('outer:$outerData'),
+              Text('inner:${context.query(target).dataOrNull}'),
+            ]);
+          },
+        );
+      }
+
+      await tester.pumpWidget(app(
+        client,
+        ValueListenableBuilder<int>(
+          valueListenable: parent,
+          builder: (_, run, __) => layout
+              ? LayoutBuilder(builder: (context, _) => body(context, run))
+              : Builder(builder: (context) => body(context, run)),
+        ),
+      ));
+      expect(find.text('outer:a'), findsOneWidget);
+      parent.value = 1;
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('inner:b'), findsOneWidget);
+      expect(find.text('outer:b'), findsOneWidget,
+          reason: 'outer builds=$builds');
+    });
+  }
+
+  for (final layout in [false, true]) {
+    for (final replaceChild in [false, true]) {
+      queryWidgetTest(
+          'nested write during ${replaceChild ? 'replacement' : 'initial'} '
+          'child mount: layout=$layout', (tester, client) async {
+        final target = _review108Options('mount-target');
+        final parent = ValueNotifier<int>(0);
+        addTearDown(parent.dispose);
+        var wrote = false;
+        var builds = 0;
+        Widget body(BuildContext context, int run) {
+          builds++;
+          final outer = context.query(target);
+          final children = [
+            Text('outer:${outer.dataOrNull}'),
+            Builder(builder: (_) {
+              if ((!replaceChild || run > 0) && !wrote) {
+                wrote = true;
+                client.setQueryData<String>(target.queryKey, 'b');
+              }
+              return Text('inner:${context.query(target).dataOrNull}');
+            }),
+          ];
+          return run == 0
+              ? Column(children: children)
+              : Row(children: children);
+        }
+
+        await tester.pumpWidget(app(
+          client,
+          ValueListenableBuilder<int>(
+            valueListenable: parent,
+            builder: (_, run, __) => layout
+                ? LayoutBuilder(builder: (context, _) => body(context, run))
+                : Builder(builder: (context) => body(context, run)),
+          ),
+        ));
+        if (replaceChild) {
+          expect(find.text('outer:a'), findsOneWidget);
+          parent.value = 1;
+        }
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('inner:b'), findsOneWidget);
+        expect(find.text('outer:b'), findsOneWidget,
+            reason: 'outer builds=$builds');
+      });
+    }
+  }
+
+  for (final mixin in [false, true]) {
+    for (final shape in ['fresh', 'cached', 'const']) {
+      queryWidgetTest('retire deferred key: $shape mixin=$mixin',
+          (tester, client) async {
+        final key = GlobalKey<_ProbeDeferredState>();
+        final target = _review108Options('target');
+        final comparisons = <String>[];
+        await tester.pumpWidget(app(
+          client,
+          _ProbeDeferred(
+            key: key,
+            mixin: mixin,
+            shape: shape,
+            options: target,
+            other: _review108Options('other'),
+            compare: (previous, current) {
+              final before = previous.dataOrNull;
+              final after = current.dataOrNull;
+              comparisons.add('$before->$after');
+              return before == 'a' && after == 'c';
+            },
+          ),
+        ));
+        expect(find.text('inner:a'), findsOneWidget);
+        key.currentState!.stop();
+        await tester.pump();
+        // The owner read nothing. The descendant reads only another key in
+        // this frame, then starts reading the old target a frame later.
+        expect(key.currentState!.builds, 2);
+        key.currentState!.tick.value = 1;
+        client.setQueryData<String>(target.queryKey, 'b');
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('inner:b'), findsOneWidget);
+        comparisons.clear();
+        final beforeBuilds = key.currentState!.builds;
+        client.setQueryData<String>(target.queryKey, 'c');
+        await tester.pump();
+        await tester.pump();
+        expect(comparisons, isNot(contains('a->c')),
+            reason: 'builds $beforeBuilds -> ${key.currentState!.builds}; '
+                'screen=${find.text('inner:c').evaluate().length} c widgets');
+        expect(key.currentState!.builds, beforeBuilds);
+        expect(find.text('inner:b'), findsOneWidget);
+      });
+    }
+  }
+
+  for (final mixin in [false, true]) {
+    queryWidgetTest('GlobalKey reparent and unmount: mixin=$mixin',
+        (tester, client) async {
+      final move = ValueNotifier<bool>(false);
+      addTearDown(move.dispose);
+      final key = GlobalKey<_ProbeMovingState>();
+      final options = _review108Options('moving');
+      final child = _ProbeMoving(key: key, mixin: mixin, options: options);
+      await tester.pumpWidget(app(
+        client,
+        ValueListenableBuilder<bool>(
+          valueListenable: move,
+          builder: (_, right, __) => Row(children: [
+            Expanded(child: right ? const SizedBox() : child),
+            Expanded(child: right ? child : const SizedBox()),
+          ]),
+        ),
+      ));
+      final state = key.currentState;
+      move.value = true;
+      await tester.pump();
+      expect(key.currentState, same(state));
+      expect(client.queryCache.findAll().single.observersCount, 1);
+      client.setQueryData<String>(options.queryKey, 'b');
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('moving:b'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(client.queryCache.findAll().single.observersCount, 0);
+    });
+
+    queryWidgetTest('mount and deactivate before period sweep: mixin=$mixin',
+        (tester, client) async {
+      var show = false;
+      late StateSetter setHost;
+      await tester.pumpWidget(app(
+        client,
+        StatefulBuilder(builder: (_, set) {
+          setHost = set;
+          return show
+              ? _ProbeMoving(
+                  mixin: mixin, options: _review108Options('no-frame'))
+              : const SizedBox();
+        }),
+      ));
+      setHost(() => show = true);
+      tester.binding.buildOwner!.buildScope(tester.binding.rootElement!);
+      expect(client.queryCache.findAll().single.observersCount, 1);
+      setHost(() => show = false);
+      tester.binding.buildOwner!.buildScope(tester.binding.rootElement!);
+      // No frame was pumped between either build and deactivation.
+      await tester.pump();
+      expect(client.queryCache.findAll().single.observersCount, 0);
+    });
+  }
+
+  queryWidgetTest('sliver ReadSet release path with debug reader gate bypassed',
+      (tester, client) async {
+    final parent = ValueNotifier<int>(0);
+    addTearDown(parent.dispose);
+    final reads = ReadSet(rebuild: () {}, who: 'Review sliver');
+    var generation = 0;
+    var sweepScheduled = false;
+    int observers(String name) => client.queryCache
+        .findAll()
+        .singleWhere((q) => q.queryKey == QueryKey([name]))
+        .observersCount;
+    try {
+      await tester.pumpWidget(app(
+        client,
+        ValueListenableBuilder<int>(
+          valueListenable: parent,
+          builder: (_, __, ___) => ListView.builder(
+            itemCount: 100,
+            itemExtent: 100,
+            itemBuilder: (context, i) {
+              // QueryScope's assert-only debugCheckReader is deliberately
+              // bypassed; these are the exact production ReadSet methods.
+              reads.beginBuild(generation, context as Element);
+              if (!sweepScheduled) {
+                sweepScheduled = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  reads.sweep();
+                  generation++;
+                  sweepScheduled = false;
+                });
+              }
+              final result = reads.readQuery<String, String>(
+                client,
+                _review108Options('row$i'),
+                null,
+              );
+              return Text('row$i:${result.dataOrNull}');
+            },
+          ),
+        ),
+      ));
+      expect(observers('row0'), 1);
+      await tester.drag(find.byType(ListView), const Offset(0, -1800));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('row0:a'), findsNothing);
+      expect(observers('row0'), 1,
+          reason: 'a scroll is additive and must not release prior rows');
+      parent.value++;
+      await tester.pump();
+      await tester.pump();
+      expect(observers('row0'), 0,
+          reason: 'a parent-handed sliver widget starts a generation');
+    } finally {
+      reads.releaseAll();
+    }
+  });
+}
+
+class _ProbeMoving extends StatefulWidget {
+  const _ProbeMoving({super.key, required this.mixin, required this.options});
+  final bool mixin;
+  final QueryObserverOptions<String> options;
+
+  @override
+  State<_ProbeMoving> createState() => _ProbeMovingState();
+}
+
+class _ProbeMovingState extends State<_ProbeMoving> with QueryMixin {
+  @override
+  Widget build(BuildContext context) {
+    final result = widget.mixin
+        ? watchQuery(widget.options)
+        : context.query(widget.options);
+    return Text('moving:${result.dataOrNull}');
+  }
+}
+
+class _ProbeDeferred extends StatefulWidget {
+  const _ProbeDeferred({
+    super.key,
+    required this.mixin,
+    required this.shape,
+    required this.options,
+    required this.other,
+    required this.compare,
+  });
+  final bool mixin;
+  final String shape;
+  final QueryObserverOptions<String> options;
+  final QueryObserverOptions<String> other;
+  final BuildWhen<QueryResult<String>> compare;
+
+  @override
+  State<_ProbeDeferred> createState() => _ProbeDeferredState();
+}
+
+class _ProbeDeferredState extends State<_ProbeDeferred> with QueryMixin {
+  final tick = ValueNotifier<int>(0);
+  bool own = true;
+  int builds = 0;
+  late final Widget cached = descendant();
+
+  void stop() => setState(() => own = false);
+
+  QueryResult<String> read(QueryObserverOptions<String> options) => widget.mixin
+      ? watchQuery(options, buildWhen: widget.compare)
+      : context.query(options, buildWhen: widget.compare);
+
+  Widget descendant() => ValueListenableBuilder<int>(
+        valueListenable: tick,
+        builder: (_, value, __) {
+          if (!own && value == 0) {
+            read(widget.other);
+            return const Text('not reading target');
+          }
+          return Text('inner:${read(widget.options).dataOrNull}');
+        },
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    builds++;
+    if (own) read(widget.options);
+    return switch (widget.shape) {
+      'cached' => cached,
+      'const' => const _ProbeConstDescendant(),
+      _ => Column(children: [descendant()]),
+    };
+  }
+
+  @override
+  void dispose() {
+    tick.dispose();
+    super.dispose();
+  }
+}
+
+class _ProbeConstDescendant extends StatelessWidget {
+  const _ProbeConstDescendant();
+
+  @override
+  Widget build(BuildContext context) =>
+      context.findAncestorStateOfType<_ProbeDeferredState>()!.descendant();
+}
+
+// A controller whose state can move before its batched notification arrives.
+class _UnnotifiedValue extends ChangeNotifier
+    implements ValueListenable<String> {
+  String current = 'a';
+
+  @override
+  String get value => current;
+
+  void flush() => notifyListeners();
+}
+
+void _review108NotificationContract() {
+  test('a displaced unfiltered read consumes its notification once', () {
+    final source = _UnnotifiedValue();
+    var builds = 0;
+    final entry =
+        ReadEntry(source, () => builds++, preserveUnnotifiedRead: true);
+    addTearDown(entry.dispose);
+    expect(entry.read(), 'a');
+    source.current = 'b';
+    expect(entry.read(), 'b');
+    source.flush();
+    expect(builds, 1);
+    entry.read();
+    source.flush();
+    expect(builds, 1, reason: 'the consumed baseline cannot keep rebuilding');
+    source.current = 'a';
+    source.flush();
+    expect(builds, 2, reason: 'the return to an earlier value is still news');
+  });
+
+  test('several unnotified rereads need only one rebuild', () {
+    final source = _UnnotifiedValue();
+    var builds = 0;
+    final entry =
+        ReadEntry(source, () => builds++, preserveUnnotifiedRead: true);
+    addTearDown(entry.dispose);
+    entry.read();
+    for (final value in ['b', 'c', 'd']) {
+      source.current = value;
+      entry.read();
+    }
+    source.flush();
+    expect(builds, 1);
+    entry.read();
+    source.flush();
+    expect(builds, 1);
+  });
+
+  test('a reread round trip cannot hide an intermediate displayed value', () {
+    final source = _UnnotifiedValue();
+    var builds = 0;
+    final entry =
+        ReadEntry(source, () => builds++, preserveUnnotifiedRead: true);
+    addTearDown(entry.dispose);
+    entry.read();
+    source.current = 'b';
+    entry.read();
+    source.current = 'a';
+    entry.read();
+    source.flush();
+    expect(builds, 1, reason: 'a part may still display the intermediate b');
+    source.flush();
+    expect(builds, 1, reason: 'the pending change is consumed exactly once');
+  });
+
+  test('a proven own read acknowledges the change without another rebuild', () {
+    final source = _UnnotifiedValue();
+    var builds = 0;
+    final entry =
+        ReadEntry(source, () => builds++, preserveUnnotifiedRead: true);
+    addTearDown(entry.dispose);
+    entry.read(ownBuildProof: true);
+    source.current = 'b';
+    entry.read();
+    entry.read(ownBuildProof: true);
+    source.flush();
+    expect(builds, 0);
+    source.current = 'c';
+    entry.read(ownBuildProof: true);
+    source.flush();
+    expect(builds, 0);
+  });
+
+  test('a predicate discards every displaced unfiltered read', () {
+    final source = _UnnotifiedValue();
+    final comparisons = <String>[];
+    var builds = 0;
+    final entry =
+        ReadEntry(source, () => builds++, preserveUnnotifiedRead: true);
+    addTearDown(entry.dispose);
+    entry.read();
+    source.current = 'b';
+    entry.read();
+    entry.read(buildWhen: (previous, next) {
+      comparisons.add('$previous->$next');
+      return false;
+    });
+    source.flush();
+    expect(builds, 0);
+    source.current = 'c';
+    source.flush();
+    expect(comparisons, ['b->c']);
+    expect(builds, 0);
+  });
+
+  test('removing a predicate cannot resurrect its retired value', () {
+    final source = _UnnotifiedValue();
+    var builds = 0;
+    final entry =
+        ReadEntry(source, () => builds++, preserveUnnotifiedRead: true);
+    addTearDown(entry.dispose);
+    entry.read(buildWhen: (_, __) => false);
+    source.current = 'b';
+    entry.read();
+    source.flush();
+    expect(builds, 0);
+    source.current = 'c';
+    entry.read();
+    source.flush();
+    expect(builds, 1);
+  });
+
+  test('a builder entry retains its ordinary single-read equality gate', () {
+    final source = _UnnotifiedValue();
+    var builds = 0;
+    final entry = ReadEntry(source, () => builds++);
+    addTearDown(entry.dispose);
+    entry.read();
+    source.current = 'b';
+    entry.read();
+    source.flush();
+    expect(builds, 0);
+  });
+
+  // The narrower fix intentionally preserves a5afe7d's filtered contract.
+  // A nested part using its OWN context is the corrected case beside each
+  // shared-context boundary, rather than changing an old regression test.
+  for (final style in ['context', 'mixin', 'layout']) {
+    for (final shared in [false, true]) {
+      queryWidgetTest('filtered shared-context boundary: $style shared=$shared',
+          (tester, client) async {
+        final tick = ValueNotifier<int>(0);
+        addTearDown(tick.dispose);
+        final options = _review108Options('filtered-$style-$shared');
+        bool allow(QueryResult<String> previous, QueryResult<String> next) =>
+            true;
+        var wrote = false;
+        Widget body(QueryResult<String> outer,
+                QueryResult<String> Function(BuildContext) reread) =>
+            Column(children: [
+              Text('outer:${outer.dataOrNull}'),
+              ValueListenableBuilder<int>(
+                valueListenable: tick,
+                builder: (inner, value, _) {
+                  if (value == 1 && !wrote) {
+                    wrote = true;
+                    client.setQueryData<String>(options.queryKey, 'b');
+                  }
+                  return Text('inner:${reread(inner).dataOrNull}');
+                },
+              ),
+            ]);
+        Widget build(BuildContext context) => body(
+              context.query(options, buildWhen: allow),
+              (inner) =>
+                  (shared ? context : inner).query(options, buildWhen: allow),
+            );
+        final Widget reader;
+        if (style == 'mixin') {
+          late _TwoReadsMixinState owner;
+          reader = _TwoReadsMixin(
+            readBoth: (state) {
+              owner = state;
+              return state.watchQuery(options, buildWhen: allow);
+            },
+            body: (context, outer) => body(
+              outer,
+              (inner) => shared
+                  ? owner.watchQuery(options, buildWhen: allow)
+                  : inner.query(options, buildWhen: allow),
+            ),
+          );
+        } else {
+          reader = style == 'layout'
+              ? LayoutBuilder(builder: (context, _) => build(context))
+              : Builder(builder: build);
+        }
+        await tester.pumpWidget(app(client, reader));
+        tick.value = 1;
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('inner:b'), findsOneWidget);
+        expect(find.text(shared ? 'outer:a' : 'outer:b'), findsOneWidget,
+            reason: shared
+                ? 'known #108 boundary: filtered shared-context rereads'
+                : 'the nested part owns its own filtered baseline');
+      });
+    }
+  }
 }

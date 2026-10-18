@@ -2,19 +2,19 @@
 
 ## Unreleased
 
-- Fixed: a nested builder that wrote the cache during its build and then
-  read the same key again through an outer `context` (or `watchQuery`) took
-  the outer reader's rebuild: the notification that followed compared equal to
-  what the nested part had just read, and the outer widget kept showing the
-  old value with no error. A read outside the reader's own build is now
-  recorded beside the own build's, not over it, in `context.query`,
-  `context.infiniteQuery`, `context.mutation` and `QueryMixin`. The own
-  build's baseline is retired when a later build of the reader no longer
-  reads the key, so a `buildWhen` is never handed a value no screen shows and
-  an infinite query's paging flags do not bypass it; and a second direct read
-  in one build (a `LayoutBuilder` callback, or a widget its parent handed a
-  new widget) counts as the reader's own like the first. A reader's own reads
-  and the call styles' behaviour are otherwise unchanged.
+- Fixed #108 for reads without `buildWhen`: a nested builder that writes
+  the cache and rereads through an outer `context` or `QueryMixin` no longer
+  consumes the owner's pending notification. This covers direct reads in
+  `LayoutBuilder` callbacks, parent-forced builds, initial and replacement
+  child mounts, and query, infinite-query and mutation reads. A flag remembers
+  displaced reads until a notification requests a rebuild; this can request
+  one conservative extra rebuild if everything has already updated.
+- Filtered reads retain the pre-PR latest-read baseline. An older owner's
+  value is never passed to `buildWhen` or used to bypass it via retired
+  paging flags. **Remaining #108 boundary:** a write and filtered reread
+  through an outer context can still leave the owner stale, even with an
+  always-true predicate. Read through the nested builder's own context.
+  Read lifetimes and the public `RebuildRule` adapter remain unchanged.
 
 ## 1.1.0
 

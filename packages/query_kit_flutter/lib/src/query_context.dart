@@ -112,6 +112,14 @@ import 'read_set.dart';
 ///   again and reads. (Flutter does not re-run such a builder when this
 ///   widget rebuilds, so it shows a change only when it runs again anyway.)
 ///   Read in `build`, or give the nested part a widget of its own.
+/// * **Cache writes during a nested build.** Without `buildWhen`, a reread
+///   through an outer context remembers that it saw a change until its
+///   notification arrives, so the owner also rebuilds (#108). With a
+///   predicate, only the latest read is the baseline: Flutter cannot report
+///   that an owner rebuilt without reading. Such a shared-context reread can
+///   still consume the owner's notification, even with a predicate that
+///   always returns true, including for infinite paging flags. Give the
+///   nested part its own context (or a widget of its own).
 /// * **A `LayoutBuilder`'s own context.** Reads through the `context` a
 ///   `LayoutBuilder`, `SliverLayoutBuilder` or `OrientationBuilder` hands its
 ///   builder start over whenever that builder provably runs: its constraints

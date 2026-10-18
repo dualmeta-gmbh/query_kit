@@ -7085,130 +7085,211 @@ what changed in the binding, each finding reproduced first.
 
 **Counts after the fixes:** binding **320**.
 
-### S-1 — an additive reread took the owner's baseline (#108)
+### S-1 — an additive reread consumed a pending notification (#108)
 
-**What was wrong.** `ReadEntry` kept one baseline per controller, the state
-the last read recorded, and every read moved it — also an additive one, a
-nested builder re-running with the outer reader's `context`. A cache write
-during that nested build is notified later (the notify manager batches), so
-the nested builder's reread recorded the new state as built for the *outer*
-element, which still showed the old one. The notification then compared equal
-and was dropped: `outer:a` on screen, `inner:b`, one outer build. Reproduced
-first as the issue states it (`context.query`, shared context) and in two
-more shapes, all red before the fix: the same through `watchQuery` on a
-`State`, and `context.infiniteQuery` with the paging flags. Through the nested
-builder's own `context` it is green either way, and so is a write outside a
-build.
+**Current decision, PR #116 implementation after review round 2.** Narrow the
+fix to unfiltered keyless reads, restore `ReadSet`'s release-generation
+mechanism from `a5afe7d`, and remove the owner/additive baseline classifier.
+This is a partial fix for #108: a shared-context reread with `buildWhen`
+retains the pre-PR boundary described below. The original two-baseline fix
+and its round-1 child-identity heuristics are superseded, not evidence of a
+complete fix. The history and the unchanged tests remain below.
 
-**Options.**
-- *Option 1 as filed: an additive read leaves the owner's baseline alone.*
-  Simple, but the owner's baseline is only the owner's while its own build
-  still reads the key. Worked out as a flag on the entry cleared when a
-  new generation opens (built once, ran only the #108 cases), it has two
-  holes. An own build that reads nothing opens no
-  generation ("a build that reads nothing releases nothing"), so a key it read
-  once and then stopped reading stays held, stays "owned", and the nested
-  part's rereads never move its baseline: a→b→a flaps and the move back is
-  dropped, the same defect in a rarer shape. And a key read *only* additively
-  must still move on every reread, or it is compared with its first read.
-- *Option 2: an additive read that differs from the baseline schedules the
-  owner's rebuild.* Rejected. The reread runs inside a descendant's build,
-  where Flutter refuses `markNeedsBuild`/`setState` on an ancestor in debug
-  builds, and deferring it costs an extra frame. It would also bypass
-  `buildWhen`.
-- *Option 3: document it.* Rejected as the only answer: the result is a stale
-  widget with no error.
-- **Chosen: two baselines in `ReadEntry`.** `_rule` is what the reader's own
-  build read; `_additiveRule` is what an additive read saw last. A read of the
-  own build records the first and forgets the second; an additive read records
-  the second only. A notification is worth a frame when it moves what *either*
-  shows. That is option 1's guarantee (the owner's baseline survives a nested
-  reread) without its hole: an additive-only key behaves as before, and a key
-  the owner stopped reading is followed by the nested part's baseline. (The
-  first version of this entry called the leftover owner baseline "one excess
-  owner rebuild per real state change, not a loop". That understated it: the
-  stale baseline was also asked, so a `buildWhen` got a `previous` no screen
-  showed and an infinite query's paging flags took the unconditional
-  `beside` path, and a rebuild the predicate would have declined showed
-  rejected data. Review round 1, below, retires it.) `ReadSet` only passes
-  whether `beginBuild` found the read to be the reader's own. `RebuildRule`,
-  the public adapter surface, is untouched, and the hooks (no shared-context
-  reads) are not affected.
-- One consequence, deliberate: while a nested part has re-read a value the
-  owner has not shown, a `buildWhen` is asked against both baselines, and
-  either may rebuild. Before, only the nested part's mattered. That holds
-  only while the owner baseline is live, that is, while the owner's own
-  build still reads the key (review round 1).
+**Reproduction before changes.** At `3c12308`, the seven original round-1
+probes pass; all twelve round-2 defect probes fail. The round-2 file also
+contains five lifetime probes (two GlobalKey moves, two mount/deactivate
+sequences before a sweep, and the release-mode sliver path); those pass.
+The complete local reproduction is therefore **12 pass / 12 fail**, before
+any implementation edit. The failures split into six R2-1 stale-owner cases
+and six R2-2 predicates asked about retired values. These probes are now
+permanent cases in `review_regressions_test.dart`, rather than separate
+probe files, with all original assertions retained. The three companion
+hooks probes are in `review_reproductions_test.dart` in the hooks package.
 
-**Tests.** `review_regressions_test.dart`, group "#108 an additive reread
-does not move the owner baseline": the issue's case for `context.query` and
-`watchQuery`, both with the shared and the nested builder's own context; the
-infinite query and its flags; an own build that stopped reading the key (the
-hole above, written for the chosen design: it passes, and was not run against
-the rejected variant); and a key read only additively that must follow
-a→b→a→b. The three shared-context cases and the infinite one were red before
-the fix. No existing case changed, `reader_shapes_test.dart`'s 80 included.
+**What Flutter actually guarantees.** Read the installed SDK's
+`widgets/framework.dart` (`ComponentElement.performRebuild`,
+`StatelessElement.update`, `StatefulElement.update`) and
+`widgets/layout_builder.dart` (`_LayoutBuilderElement._rebuildWithConstraints`)
+at Flutter **3.41.4**, framework `ff37bef603`, Dart **3.11.1**:
 
-**Counts after the fix:** binding **377**, hooks **332** unchanged.
+- A dirty component stays dirty throughout `build()` and clears `_dirty`
+  after `build()` returns, **before** `updateChild` runs.
+- A parent update uses `rebuild(force: true)` without setting `_dirty`.
+  Therefore dirty is a precise positive signal, not a universal classifier
+  for all reads of a component's build. `debugDoingBuild` is debug-only.
+- A layout builder runs its callback during layout; its private rebuild
+  bookkeeping is not a public own-build signal for every read.
+- Descendants can mount/build **inside** `updateChild`. The owner's
+  `_child = updateChild(...)` assignment has not happened then. An initial
+  mount still exposes no child; a replacement may still expose the old one.
+  Unchanged child identity cannot prove a callback is still in its own build.
+- A zero-read owner build gives `ReadSet` no call at all. It can also return
+  an identical cached or const child. A later read cannot prove whether the
+  owner's earlier baseline is still displayed. This is an observational
+  limit, not something a third child snapshot could fix.
 
-#### S-1, review round 1 (GPT-6.1-Sol, xhigh, PR #116 at `a2ccda8`)
+**Chosen mechanism: remember an unfiltered change, not an owner's role.**
+`ReadEntry` has its ordinary latest-read `RebuildRule` and one boolean,
+`_unnotified`. `ReadSet` opts its entries into this behavior; the builder
+widgets leave it off. Before a successful unfiltered reread replaces the
+latest baseline, ask that baseline whether the controller has changed
+(`shouldRebuild(null)`). If both reads are unfiltered and this read carries
+no generation-opening proof, remember a change in the flag. A read with an
+existing generation-opening proof acknowledges the pending change instead:
+it clears the flag and refreshes the latest baseline. These are the old
+dirty/new-widget/constraints/self-notification signals from `a5afe7d`, with
+no children sampled and no attempt to infer the role of a second read. At the next controller notification, rebuild if either the normal
+rule or the flag asks, and consume the flag before invoking the usual
+rebuild callback. No rebuild is requested from inside the reread.
 
-Two P1 findings, both reproduced first from the reviewer's probes (4 of 7
-red at `a2ccda8`).
+A single bit covers every displaced value, including a->b->a before the
+notification: an intermediate part may still display b even when the first
+and latest snapshots both say a. There is no list of historical results,
+no element-child snapshot, and no need to decide that a proofless second
+or descendant read was the owner's. Unfiltered initial/replacement mounts,
+parent-forced builds, cached descendants that do rerun, multiple direct
+reads and LayoutBuilder callbacks use exactly the same mechanism. It may
+request **one conservative extra rebuild** when an intervening build already
+updated everything on screen. Once consumed it cannot repeatedly rebuild
+for that old change. Equality gating for ordinary notifications remains.
+The proof acknowledgement matters: the first flag-only candidate caused
+an extra own rebuild after query removal in two existing doc-snippet tests
+(`a disconnected device is not fetched again` and `removing first: the next
+poll tick fetches the device again`). Both failed before acknowledgement
+was added. The existing tests and their assertions were kept unchanged.
 
-**R1-1 (P1) — a retired owner baseline stayed live and bypassed
-`buildWhen`.** *Root cause:* `ReadEntry._ownRecorded` stayed true after the
-owner's own build stopped reading the key, so every notification kept asking
-a baseline nobody displays. Neither the generation sweep (an own build that
-reads nothing opens no generation) nor `ReadSet` saw that build at all, and
-an element gives no signal that it rebuilt. Shown by `context.query` and
-`watchQuery` (the predicate received the retired `a` while the screen showed
-`b`; owner builds 3→4 with a predicate that declines everything) and by an
-infinite query, whose retired paging flags took the unconditional `beside`
-path with zero predicate calls. All three were green at the PR's parent.
-*Fix:* the owner baseline is stamped with a period (`ReadSet._period`, ended
-by `sweep` for a set that read in it) and `ReadSet` keeps what its element
-held as children when the period ended (`_restChildren`: the widgets its last
-build returned; only a `ComponentElement` or a layout builder has a build
-whose result can be told this way). An additive read that finds the children
-changed knows the reader built again since, and an entry whose own baseline
-dates from an earlier period belongs to a build that did not read it: it is
-retired (`ReadEntry.retireOwner`) before the additive read is recorded. A
-nested part that re-runs alone leaves the children as they were, so a live
-owner baseline survives it, which is #108. Limit: a reader whose rebuild
-returns the *identical* widget instance (a cached child) leaves the children
-unchanged and is not noticed; the baseline then stays as in `a2ccda8`.
+**Predicates and paging flags.** A read with `buildWhen` clears the flag and
+records only its latest successful read. A previous filtered read does not
+create a flag when followed by an unfiltered read. Thus a predicate sees
+exactly the `(previous, next)` pair it saw at `a5afe7d`; no retired owner
+value is evaluated, and no retired infinite paging flags can take the
+unconditional `beside` path. Real changes to flags beside the latest read
+still rebuild regardless of the predicate, as before. `RebuildRule`, the
+public adapter API, and the hook implementation are unchanged.
 
-**R1-2 (P1) — #108 still unfixed for a second direct read.** *Root cause:*
-the own-build proofs (a new widget, constraints, the set's own notification)
-are consumed by the first read, so the second direct read of one build or
-builder callback found none and was classified additive; a `LayoutBuilder`
-callback reading X and then displaying Y recorded Y as additive and the
-bug returned for Y. The same shape for a `StatelessWidget` or `State` that
-the parent handed a new widget (its element is not dirty, so after the first
-read only the recorded widget is left to go by) is the same defect; a dirty
-`ComponentElement` was never affected (`dirty` holds for the whole build).
-Fails before the PR as well. *Fix:* when a proof fires, `ReadSet` records
-the period and the children the element held at that moment. Until the
-element is handed this build's result, a read in the same period that finds
-those children unchanged is the same build's own read; a descendant's read
-comes after `updateChild`, when the children have changed. Limit: as above,
-a build that returns an identical cached widget shows no change.
+**Remaining boundary, explicitly accepted.** #108 remains when a descendant
+writes during build and then reads the same identity through an outer
+context/`watchQuery` **with a predicate**, including an always-true predicate.
+This covers component and layout owners, first or later direct reads,
+initial/replacement/ordinary descendant builds, and plain/select queries,
+infinite results/paging flags and mutations wherever this write/reread
+sequence can occur. Mixed predicate/unfiltered call sites sharing one
+identity also have no preservation guarantee across a predicate read. The
+nested part has advanced the latest baseline before the notification, so
+the owner's earlier display may remain stale. Reading through the nested
+builder's own context (or its own widget) is the supported correction and
+is tested beside each context/mixin/layout boundary case. Writes outside
+build retain the ordinary behavior. This introduces no filtered behavior
+change against `a5afe7d`; it does not claim to solve that earlier defect.
 
-**Options not taken.** Retiring on every additive read in a later period
-(simpler) brings #108 back: the nested part re-runs alone in a later frame.
-Overriding `setState` in `QueryMixin` sees one trigger of three and no
-`context.query` reader. Asking an own baseline's key to be re-read by the
-owner (an extra rebuild) was Option 2, rejected above.
+Existing lifetime boundaries also remain: a cached/const descendant that
+Flutter does **not** rerun need not update when the outer owner rebuilds;
+an owner's next read-bearing generation can release its keys while it
+still displays them. A zero-read build opens no release generation. A
+LayoutBuilder dependency-only rebuild has no release proof, and a list's
+own item-builder context is still refused in debug (additive in release).
+These are the pre-existing documented release rules, not new #108 fixes.
 
-**Tests.** `review_regressions_test.dart`, group "#108 review round 1", 13
-cases: the retired baseline for `context.query` and `watchQuery`, with and
-without another key still read (4), the infinite query (1), an own baseline
-recorded in the running frame staying live (1), two direct reads in a
-`LayoutBuilder`, a `State` and a `QueryMixin` State, each with the displayed
-key read first and second (6), and a child the parent handed a new widget
-(1). Red at `a2ccda8`: the first five, the `LayoutBuilder` read-second case
-and the parent-handed case (7); the rest hold the other side. No existing
-case changed, `reader_shapes_test.dart`'s 80 included.
+**Alternatives considered.**
 
-**Counts after the round:** binding **390**, hooks **332** unchanged.
+1. **Separate owner and additive baselines (the first fix).** With arbitrary
+   `buildWhen`, every baseline must still be on screen: otherwise either a
+   retired value reaches the predicate or obsolete paging flags bypass it.
+   Zero-read builds cannot be observed, so unconditional retention is wrong.
+2. **Keep every live baseline.** Sound if their lifetimes are known, but
+   keyless outer-context reads do not identify the displaying element or
+   report its retirement. More snapshots do not provide that information;
+   historical values must not be treated as live filtered displays. Without
+   predicates the pending-change bit has the same conservative benefit,
+   constant memory, and handles intermediate values without snapshots.
+3. **A precise own-build signal.** Dirty components provide one positive
+   signal, but parent-forced updates and layout callbacks do not expose a
+   release-mode signal for every direct read. It also cannot report a
+   later zero-read build. A debug-only solution would differ in production.
+   Replacing users' elements or changing the public read API is outside
+   this compatible fix; no stack-trace or child-identity heuristic is used.
+4. **Rebuild immediately from the reread.** Flutter rejects marking an
+   ancestor during its descendant's build in debug. Deferring an independent
+   rebuild also needs a predicate decision and adds another scheduling path.
+   Keep the normal controller-notification path instead.
+5. **Documentation only.** Unnecessary for the unfiltered case: the pending
+   change can be preserved safely without knowing ownership. Document the
+   filtered limit honestly instead of changing the predicate contract.
+
+**Memory and lifetime.** There is one latest result baseline plus one bit
+per entry, not a growing set of results or any child/widget graph snapshot.
+Generation sweeps dispose omitted entries as at `a5afe7d`; release/unmount
+clears the pending flag and predicate. `ReadSet.releaseAll` also clears its
+reader/widget/constraints references and debug callback records, including
+on a client switch. No snapshot holds a widget/element graph after release.
+
+**Permanent verification.** No existing test was rewritten, removed, skipped
+or weakened. The 390 existing binding cases (the 80 reader shapes and all
+13 round-1 regressions included) stay intact. Add all seven original
+round-1 probes, all twelve round-2 defect probes and their five lifetime
+companions, plus seven notification-contract cases and six boundary/corrected
+context cases. Three companion hook probes join the existing hooks suite.
+Final gate on Flutter 3.41.4 / Dart 3.11.1: binding **427** (390 + 37),
+hooks **335** (332 + 3), showcase **324** / 25 existing server-dependent
+skips, task_manager **34** / 14 existing server-dependent skips,
+doc_snippets **48**, hooks example **61** / 10 existing server-dependent
+skips, core VM **1175**. All pass. `dart analyze --fatal-infos packages
+examples tool` is clean. The exact CLAUDE formatter scope passes:
+
+```bash
+dart format --set-exit-if-changed packages examples/task_manager/lib examples/task_manager/test examples/showcase/lib examples/showcase/test examples/showcase/integration_test examples/showcase/test_driver examples/doc_snippets/lib examples/doc_snippets/test tool
+```
+
+It reports 287 files, zero changes. No native app, simulator, Playwright or
+browser suite ran; no merge, deployment or release was performed.
+
+#### Historical first implementation (`a2ccda8`, superseded)
+
+The original issue reproduced `inner:b`, `outer:a` after a cache write in a
+nested build followed by a shared-context reread. It also reproduced with
+`watchQuery` and infinite paging flags; using the nested builder's own
+context or writing outside build passed. The first fix kept `_rule` for an
+own read and `_additiveRule` for an additive read, notifying when either
+moved. Seven tests brought the binding from **370 to 377**, hooks **332**.
+Its initial description called a leftover owner baseline only "one excess
+owner rebuild". That was wrong: arbitrary predicates and `beside` flags
+make the leftover baseline observable behavior, as R1-1 proved.
+
+#### Historical review round 1 (`3c12308`, superseded)
+
+**R1-1 (P1):** an owner stopped reading a key but `_ownRecorded` stayed
+true. Plain and mixin predicates received retired a while the nested part
+showed b; infinite paging flags forced a rebuild with zero predicate calls.
+These cases passed at `a5afe7d`. The attempted fix stamped own baselines
+with a period and retired an entry when changed child-widget snapshots
+suggested its owner had rebuilt. It did not cover cached children, and,
+as R2-2 proved, even observed evidence was forgotten for deferred keys.
+
+**R1-2 (P1):** a second direct LayoutBuilder read, or a second direct read
+in a parent-forced component update, consumed no own-build proof after the
+first and was misclassified additive. This also failed before the PR. The
+attempted fix called unchanged children in the same period `sameRun`. The
+old claim that every descendant read comes after `updateChild` finished
+was false: Flutter can build it before assigning `_child` (R2-1).
+
+Thirteen unchanged regressions brought the binding from **377 to 390**,
+hooks **332**. They describe valid observable requirements; none needs to
+be rewritten for the pending-change implementation. Their comments about
+baseline ownership explain the mechanism being reviewed then, not a claim
+that the current fix classifies ownership.
+
+#### Review round 2 and resolution
+
+- **R2-1 (P1), six probes:** `sameRun` misclassified descendant reads during
+  initial and Column->Row replacement mounts and parent-handed cached-child
+  builds, for both Builder and LayoutBuilder. A nested b overwrote the
+  owner's a, restoring #108. **Resolved:** remove `sameRun` and all child
+  snapshots; the unfiltered reread sets a pending-change bit, so descendant
+  mount timing and direct-read order cannot consume the notification.
+- **R2-2 (P1), six probes:** retirement affected only the entry being read;
+  the next sweep refreshed `_restChildren` and lost rebuild evidence for
+  another key reread later. Fresh, cached and const child shapes all failed
+  for context and mixin readers. **Resolved:** no historical owner baseline
+  is retained for a filtered read; restore the latest-read rule from
+  `a5afe7d`, so deferred keys cannot consult or bypass with a retired value.
+  This gives up a complete filtered #108 fix, as explicitly bounded above.
