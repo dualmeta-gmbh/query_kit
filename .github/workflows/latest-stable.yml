@@ -3,7 +3,10 @@
 # new stable release that breaks something would otherwise show up first in
 # someone else's app. Weekly and on demand, not per push: the SDK changes
 # under it independently of any commit, and a red run is about Flutter, not
-# about the change that happened to trigger it.
+# about the change that happened to trigger it. The `e2e` job runs the three
+# Playwright suites on that SDK too: they read Flutter's semantics tree, which
+# a new release may publish differently (a segment became a `button`, a
+# tapped button got its name twice) while every widget test stays green.
 name: latest-stable
 
 on:
@@ -50,3 +53,56 @@ jobs:
         working-directory: packages/query_kit_hooks
       - run: flutter test
         working-directory: packages/query_kit_hooks/example
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: task_manager
+            dir: examples/task_manager
+            server: examples/task_manager/server
+            build: --dart-define=E2E=true
+          - app: showcase
+            dir: examples/showcase
+            server: examples/showcase/server
+            build: --dart-define=E2E=true --pwa-strategy=none --no-web-resources-cdn
+          - app: hooks_example
+            dir: packages/query_kit_hooks/example
+            server: examples/showcase/server
+            build: --dart-define=E2E=true --dart-define=BACKEND=http://localhost:5178/api --pwa-strategy=none --no-web-resources-cdn
+    name: e2e (${{ matrix.app }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: flutter --version
+      - run: flutter pub upgrade
+      - name: app dependencies
+        run: flutter pub get
+        working-directory: ${{ matrix.dir }}
+      - name: web build with semantics on
+        run: flutter build web --no-pub ${{ matrix.build }}
+        working-directory: ${{ matrix.dir }}
+      - name: backend dependencies
+        run: npm ci
+        working-directory: ${{ matrix.server }}
+      - name: playwright
+        run: npm ci && npx playwright install --with-deps chromium
+        working-directory: ${{ matrix.dir }}/e2e
+      - name: end-to-end tests
+        run: npx playwright test
+        working-directory: ${{ matrix.dir }}/e2e
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: playwright-report-latest-stable-${{ matrix.app }}
+          path: ${{ matrix.dir }}/e2e/playwright-report
+          retention-days: 7

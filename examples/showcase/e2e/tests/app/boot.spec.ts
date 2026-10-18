@@ -17,10 +17,11 @@
 // `default`, they go red.
 import type { Page } from '@playwright/test'
 import { expect, fact, test } from '../fixtures'
+import { button } from './../fixtures'
 
 const catalogueTitle = (page: Page) => page.getByRole('heading', { name: 'query_kit showcase', exact: true })
 const heading = (page: Page, title: string) => page.getByRole('heading', { name: title, exact: true })
-const back = (page: Page) => page.getByRole('button', { name: 'Back', exact: true })
+const back = (page: Page) => button(page, 'Back')
 
 /// Every request the page sends to the backend, from now on.
 function backendRequests(page: Page) {

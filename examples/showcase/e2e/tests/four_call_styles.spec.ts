@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, fact, factIn, factNumber, group, holdRequest, test } from './fixtures'
+import { button, expect, fact, factIn, factNumber, group, holdRequest, test } from './fixtures'
 
 // Eight cards and three strips: taller than the default viewport, and a
 // lazily built list only has what is in view.
@@ -25,7 +25,6 @@ const mutation = (page: Page, name: string, text: string) => factIn(page, `mutat
 /// and `status=success` by the strip too.
 const infinite = (page: Page, name: string, text: string) => factIn(page, `infinite ${name}`, text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 async function expectEveryReader(page: Page, text: string) {
   for (const name of readers) {

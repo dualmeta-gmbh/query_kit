@@ -1,4 +1,4 @@
-import { expect, fact, holdRequest, strip, test } from './fixtures'
+import { button, expect, fact, holdRequest, strip, test } from './fixtures'
 
 const post = (id: number) => new RegExp(`^/api/posts/${id}$`)
 const comments = (id: number) => new RegExp(`^/api/posts/${id}/comments$`)
@@ -22,7 +22,7 @@ test('the comments wait for the post and are fetched once after it', async ({ pa
   // `/api/posts/2/comments`, so the comments request, if one went out, would
   // reach the backend and show in its log.
   const hold = holdRequest(page, '**/api/posts/2')
-  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await button(page, 'Choose post 2').click()
 
   // The post has provably not answered, and the comments have not started.
   await expect(fact(page, 'post-2', 'fetchStatus=fetching')).toBeVisible()
@@ -54,7 +54,7 @@ test('Pause comments keeps the comments idle despite the post; unticking fetches
   await pause.click()
   await expect(pause).toBeChecked()
 
-  await page.getByRole('button', { name: 'Choose post 3', exact: true }).click()
+  await button(page, 'Choose post 3').click()
   await expect(page.getByText('Code review: setup guide', { exact: true })).toBeVisible()
   await expect(fact(page, 'post-3', 'status=success')).toBeVisible()
   await expect(fact(page, 'comments-3', 'status=pending')).toBeVisible()
@@ -75,10 +75,10 @@ test('Pause comments keeps the comments idle despite the post; unticking fetches
 test('switching posts re-keys both queries, and Clear choice releases them', async ({ page, open, scenario }) => {
   await open('/dependent-queries')
 
-  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await button(page, 'Choose post 2').click()
   await expect(fact(page, 'comments-2', 'status=success')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Choose post 3', exact: true }).click()
+  await button(page, 'Choose post 3').click()
   await expect(page.getByText('Code review: setup guide', { exact: true })).toBeVisible()
   await expect(strip(page, 'post-2')).toBeHidden()
   await expect(strip(page, 'comments-2')).toBeHidden()
@@ -95,7 +95,7 @@ test('switching posts re-keys both queries, and Clear choice releases them', asy
   // refetch goes out once per entry on top, and the cumulative `fetches`
   // shows the strip reads the same entry as before.
   const hold = holdRequest(page, '**/api/posts/2')
-  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await button(page, 'Choose post 2').click()
   await expect(page.getByText('Continuous integration: setup guide', { exact: true })).toBeVisible()
   await expect(fact(page, 'post-2', 'status=success')).toBeVisible()
   await expect(fact(page, 'post-2', 'fetchStatus=fetching')).toBeVisible()
@@ -107,7 +107,7 @@ test('switching posts re-keys both queries, and Clear choice releases them', asy
   await expect(fact(page, 'comments-2', 'fetches=2')).toBeVisible()
   await expect(fact(page, 'comments-2', 'fetchStatus=idle')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Clear choice', exact: true }).click()
+  await button(page, 'Clear choice').click()
   await expect(page.getByText('Choose a post first.', { exact: true })).toBeVisible()
   await expect(strip(page, 'post-2')).toBeHidden()
   await expect(strip(page, 'comments-2')).toBeHidden()
@@ -124,20 +124,20 @@ test('changing the input cancels the dependent fetch that was out, and choosing 
 
   // Post 2's comments are asked for and not answered: held in the browser.
   const hold = holdRequest(page, '**/api/posts/2/comments')
-  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await button(page, 'Choose post 2').click()
   await expect.poll(() => hold.seen).toBe(1)
   await expect(fact(page, 'comments-2', 'fetchStatus=fetching')).toBeVisible()
   await expect(fact(page, 'comments-2', 'fetches=1')).toBeVisible()
 
   // The input changes: the screen reads post 3 and lets post 2's entries go.
-  await page.getByRole('button', { name: 'Choose post 3', exact: true }).click()
+  await button(page, 'Choose post 3').click()
   await expect(fact(page, 'comments-3', 'status=success')).toBeVisible()
   await expect(strip(page, 'comments-2')).toBeHidden()
 
   // Had the first request merely been abandoned, the entry would still be
   // fetching it and this read would join it. It was cancelled — the entry
   // went back to having no data — so the read starts a request of its own.
-  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await button(page, 'Choose post 2').click()
   await expect(fact(page, 'comments-2', 'fetches=2')).toBeVisible()
   await expect.poll(() => hold.seen).toBe(2)
   await expect(fact(page, 'comments-2', 'status=pending')).toBeVisible()
@@ -154,7 +154,7 @@ test('ticking Pause while the comments are in flight does not cancel them', asyn
   await open('/dependent-queries')
 
   const hold = holdRequest(page, '**/api/posts/2/comments')
-  await page.getByRole('button', { name: 'Choose post 2', exact: true }).click()
+  await button(page, 'Choose post 2').click()
   await expect.poll(() => hold.seen).toBe(1)
   await expect(fact(page, 'comments-2', 'fetchStatus=fetching')).toBeVisible()
 

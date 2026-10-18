@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test'
-import { expect, fact, holdRequest, test } from './fixtures'
+import { button, expect, fact, holdRequest, test } from './fixtures'
 
 // The screen is longer than the browser window, and the scaffold's list
 // builds only what is in view — so a section below the fold is not in the
@@ -58,7 +58,7 @@ test('a mutation with only a key runs the default mutationFn', async ({ page, op
   await expect(fact(page, 'posts', 'fetchStatus=idle')).toBeVisible()
 
   await reveal(page, text(page, 'Create a todo'))
-  await page.getByRole('button', { name: 'Create a todo', exact: true }).click()
+  await button(page, 'Create a todo').click()
 
   // The scenario was reseeded with three todos; the backend numbers the next one 4.
   await expect(text(page, 'new todo id=4')).toBeVisible()
@@ -74,7 +74,7 @@ test("a key with no post behind it shows the backend's 404", async ({ page, open
 
   // The strip sits under the card, so revealing it keeps the button in view too.
   await reveal(page, fact(page, 'post-999', 'status=absent'))
-  await page.getByRole('button', { name: 'Fetch a missing post', exact: true }).click()
+  await button(page, 'Fetch a missing post').click()
 
   await expect(text(page, 'Post not found')).toBeVisible()
   await expect(fact(page, 'post-999', 'status=error')).toBeVisible()
@@ -93,7 +93,7 @@ test('coming back registers the default again, and the kept entries refetch thro
   await expect(fact(page, 'posts', 'observers=1')).toBeVisible()
 
   // Leaving blanks the defaults and lets the reads go; the entries stay.
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(page.getByRole('heading', { name: 'query_kit showcase', exact: true })).toBeVisible()
 
   const hold = holdRequest(page, '**/api/posts')
@@ -123,7 +123,7 @@ test('the default mutationFn serves every press, not the first one only', async 
   await open('/default-query-function')
   await expect(fact(page, 'posts', 'fetchStatus=idle')).toBeVisible()
   await reveal(page, text(page, 'Create a todo'))
-  const create = page.getByRole('button', { name: 'Create a todo', exact: true })
+  const create = button(page, 'Create a todo')
 
   await create.click()
   await expect(text(page, 'new todo id=4')).toBeVisible()

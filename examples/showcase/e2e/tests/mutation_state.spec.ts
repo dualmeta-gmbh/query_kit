@@ -1,4 +1,4 @@
-import { expect, fact, holdRequest, test } from './fixtures'
+import { button, expect, fact, holdRequest, test } from './fixtures'
 
 test('the badge starts empty', async ({ page, open }) => {
   await open('/mutation-state')
@@ -15,7 +15,7 @@ test('two concurrent runs under one key count as two', async ({ page, open, scen
   // Hold both writes open in the browser, so "concurrent" is a fact about
   // the requests rather than about how fast the clicks were.
   const hold = holdRequest(page, '**/api/todos*')
-  const add = page.getByRole('button', { name: 'Add todo', exact: true })
+  const add = button(page, 'Add todo')
   await add.click()
   await add.click()
 
@@ -34,7 +34,7 @@ test('a failing run is an error, not a pending one', async ({ page, open }) => {
   await open('/mutation-state')
   await expect(page.getByText('saving=0', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add, failing', exact: true }).click()
+  await button(page, 'Add, failing').click()
 
   await expect(page.getByText('saving=1', { exact: true })).toBeVisible()
   await expect(page.getByText('failed=1', { exact: true })).toBeVisible()
@@ -45,7 +45,7 @@ test('a settled run leaves the todos entry refreshed', async ({ page, open }) =>
   await open('/mutation-state')
   await expect(page.getByText('saving=0', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add todo', exact: true }).click()
+  await button(page, 'Add todo').click()
 
   // onSuccess invalidates the list, so the strip shows a second fetch.
   await expect(page.getByText('saving=0', { exact: true })).toBeVisible()
@@ -57,7 +57,7 @@ test('a settled run leaves the count of running ones but stays in the cache', as
   await expect(page.getByText('tracked=0', { exact: true })).toBeVisible()
 
   const hold = holdRequest(page, '**/api/todos*')
-  await page.getByRole('button', { name: 'Add todo', exact: true }).click()
+  await button(page, 'Add todo').click()
   await expect.poll(() => hold.seen).toBe(1)
   await expect(page.getByText('saving=1', { exact: true })).toBeVisible()
   await expect(page.getByText('tracked=1', { exact: true })).toBeVisible()
@@ -75,8 +75,8 @@ test('a failing run and a succeeding one in flight together are counted apart', 
   await expect(page.getByText('tracked=0', { exact: true })).toBeVisible()
 
   const hold = holdRequest(page, '**/api/todos*')
-  await page.getByRole('button', { name: 'Add todo', exact: true }).click()
-  await page.getByRole('button', { name: 'Add, failing', exact: true }).click()
+  await button(page, 'Add todo').click()
+  await button(page, 'Add, failing').click()
   await expect.poll(() => hold.seen).toBe(2)
   await expect(page.getByText('saving=2', { exact: true })).toBeVisible()
   await expect(page.getByText('failed=0', { exact: true })).toBeVisible()

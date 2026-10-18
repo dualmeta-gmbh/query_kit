@@ -1,4 +1,4 @@
-import { expect, fact, factIn, test, type Page, typeInto } from './fixtures'
+import { button, expect, fact, factIn, test, typeInto, type Page } from './fixtures'
 
 // The rename card with its facts, the strip and the list: taller than the
 // default viewport, and the scaffold's list builds only what is in view.
@@ -14,7 +14,6 @@ const AFTER = 'Rewrite the deploy checklist'
 /// what the debug strip says about the list.
 const renameFact = (page: Page, text: string) => factIn(page, 'rename facts', text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 /// `holdRequest` for the write only: `page.route` cannot filter by method, so
 /// the handler lets everything but the PATCH through — the CORS preflight that

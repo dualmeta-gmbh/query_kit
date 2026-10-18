@@ -1,4 +1,4 @@
-import { expect, fact, factIn, holdRequest, test, type Page } from './fixtures'
+import { button, expect, fact, factIn, holdRequest, test, type Page } from './fixtures'
 
 // Four cards and a strip: taller than the default viewport, and a lazily
 // built list only has what is in view.
@@ -10,7 +10,6 @@ const INCREMENT = '**/api/counter/increment*'
 /// `status=success` is also what the counter's strip says about the query.
 const mutation = (page: Page, label: string, text: string) => factIn(page, `mutation ${label}`, text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 test('mutate is pending while the request is out, then success, and the invalidated counter refetches', async ({
   page,

@@ -403,10 +403,17 @@ Rules that cost someone a debugging session, in the order they bite:
 - **A read whose key the screen switches needs an `id:`** — with one, the
   observer follows the key (and `PlaceholderData.compute` gets the previous
   data); without one, a new key is a new read.
-- **`SegmentedButton` segments are `getByRole('radio')`**, a `SwitchListTile`
-  is `getByRole('switch')` and its subtitle is part of its name; Playwright's
+- **A segment is `segment(scope, label)` and a button is `button(scope,
+  label)`**, both from `tests/fixtures.ts`; never `getByRole` with either
+  role directly. Flutter changes how it publishes them: a `SegmentedButton`
+  segment is a `radio` with `aria-checked` under 3.38 and a `button` with
+  `aria-current` under 3.47, and 3.47 names a tapped button twice
+  ("Refetch Refetch"). The two helpers accept both, and `expectSelected`
+  reads a segment's selection either way. A `SwitchListTile` is
+  `getByRole('switch')` and its subtitle is part of its name; Playwright's
   `check()` races Flutter's next-frame semantics update, so click and then
-  assert `toBeChecked()`. The AppBar's back button is already named `Back`.
+  assert `toBeChecked()` (`expectSelected` for a segment). The AppBar's back
+  button is already named `Back`.
 - **Scrolling in the browser** is `locator.scrollIntoViewIfNeeded()` on a row
   that is already built. A row a lazy list has not built yet is reached with
   `mouse.wheel`, and the pointer must be over the list first

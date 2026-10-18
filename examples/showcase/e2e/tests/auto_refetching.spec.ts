@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, fact, test } from './fixtures'
+import { button, expect, fact, segment, test } from './fixtures'
 
 // Two cards, a bounded list and the strip are taller than the default
 // viewport, and a strip below the fold is never built.
@@ -13,8 +13,7 @@ const TICKS = /^\/api\/ticks$/
 const settle = 400
 const pollWindow = 1600
 
-const interval = (page: Page, name: string) => page.getByRole('radio', { name, exact: true })
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
+const interval = (page: Page, name: string) => segment(page, name)
 
 test('with the interval off the list is fetched once and stays', async ({ page, open, scenario }) => {
   await scenario.config({ latency: 0 })

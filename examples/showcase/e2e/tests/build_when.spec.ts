@@ -8,7 +8,7 @@
 // landing are two separate moments — a notification that reached the same
 // frame as the one before it would be one rebuild, and then there would be
 // nothing to filter.
-import { expect, fact, factIn, factNumber, group, holdRequest, test, type Page } from './fixtures'
+import { button, expect, fact, factIn, factNumber, group, holdRequest, segment, test, type Page } from './fixtures'
 
 // Five cards, two strips and sixteen readers: taller than the default 720,
 // and the list that holds them is lazy — without this the mutation card is
@@ -69,7 +69,6 @@ async function expectMoved(
   }
 }
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 /// Moves the knob, and waits for it to have reached the readers.
 ///
@@ -78,7 +77,7 @@ const button = (page: Page, name: string) => page.getByRole('button', { name, ex
 /// before it: the snapshot a delta is measured from would otherwise be the one
 /// taken a frame too early.
 async function pickFilter(page: Page, label: string) {
-  await group(page, 'predicate').getByRole('radio', { name: label, exact: true }).click()
+  await segment(group(page, 'predicate'), label).click()
   for (const member of queryMembers) {
     await expect(
       group(page, readerName(member, true)).getByText(`${member} \u00b7 buildWhen ${label}`, { exact: true }),

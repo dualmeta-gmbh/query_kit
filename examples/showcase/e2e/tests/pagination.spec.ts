@@ -4,14 +4,14 @@
 // prefetched as soon as the current one has data.
 import type { Page } from '@playwright/test'
 
-import { expect, fact, holdRequest, test, type Scenario } from './fixtures'
+import { button, expect, fact, holdRequest, test, type Scenario } from './fixtures'
 
 // The toolbar card, both strips and ten rows are taller than the default
 // viewport, and a strip below the fold is never built.
 test.use({ viewport: { width: 1280, height: 1100 } })
 
-const nextButton = (page: Page) => page.getByRole('button', { name: 'Next page', exact: true })
-const previousButton = (page: Page) => page.getByRole('button', { name: 'Previous page', exact: true })
+const nextButton = (page: Page) => button(page, 'Next page')
+const previousButton = (page: Page) => button(page, 'Previous page')
 
 /// The backend logs `/api/projects` without its query string, so a page's
 /// requests are counted by the `page` parameter logged alongside.

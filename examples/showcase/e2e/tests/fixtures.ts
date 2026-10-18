@@ -2,6 +2,17 @@
 // a feature inside it, and the two selectors the debug strip is built for.
 import { expect, test as base, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
+/// A button by its label, inside `scope`: the page, or a group.
+///
+/// Flutter 3.47's web engine names a button twice once it has been tapped
+/// ("Refetch Refetch": the label's text node is attached to the button as an
+/// owned child), so that name is accepted too. A button whose label merely
+/// starts with `name` is not: "Refetch all" is not "Refetch".
+export const button = (scope: Page | Locator, name: string) => {
+  const label = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return scope.getByRole('button', { name: new RegExp(`^${label}(?: ${label})?$`) })
+}
+
 export const BACKEND = 'http://localhost:5175/api'
 
 export type LogEntry = {
@@ -152,6 +163,25 @@ export async function typeInto(page: Page, field: Locator, text: string) {
 /// `test/harness.dart` (C56, #51). Every group locator in this suite goes
 /// through this function, so `getByRole('group', …)` is written once.
 export const group = (page: Page, name: string) => page.getByRole('group', { name, exact: true })
+
+/// A `SegmentedButton` segment, by its label, inside `scope`: a knob's group,
+/// or the page where only one segment carries that label.
+///
+/// Flutter 3.38 publishes a segment as a `radio` whose selection is
+/// `aria-checked`; Flutter 3.47 publishes it as a `button` whose selection is
+/// `aria-current`. Either is found, so the suite reads the same screen under
+/// both, and a segment is never located with a role of its own elsewhere.
+export const segment = (scope: Page | Locator, name: string) =>
+  scope.getByRole('radio', { name, exact: true }).or(button(scope, name))
+
+/// Waits until `seg` is the selected segment, under either way of saying so.
+/// A click is a DOM event and Flutter applies it a frame later, so a test
+/// that acts on a knob right after clicking it reads the selection first.
+export async function expectSelected(seg: Locator) {
+  await expect
+    .poll(() => seg.evaluate((element) => element.getAttribute('aria-checked') ?? element.getAttribute('aria-current')))
+    .toBe('true')
+}
 
 /// One fact inside that group, by its exact leaf text: `status=success`,
 /// `fetchStatus=idle`, `fetches=2`.

@@ -8,18 +8,7 @@
 import { expect, test } from '@playwright/test'
 import { createTask, getTask, listTasks, requestCounter, sweepTestTasks, uniqueName } from './backend'
 import { trackInputListeners, typeInto } from './flutter_input'
-import {
-  control,
-  deleteButton,
-  heroTitle,
-  holdRequests,
-  holdWrite,
-  listSettled,
-  open,
-  reminderControl,
-  row,
-  waitingForScheduler,
-} from './helpers'
+import { button, control, deleteButton, heroTitle, holdRequests, holdWrite, listSettled, open, reminderControl, row, waitingForScheduler } from './helpers'
 
 // The list builds only the rows in view, and a created task lands at the
 // end of it — so the leftovers of earlier runs are cleared away, and the
@@ -53,7 +42,7 @@ test('opening a task and coming back costs no request while the data is fresh', 
 
   await row(page, task.name).click()
   await expect(heroTitle(page)).toContainText(task.name)
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(row(page, task.name)).toBeVisible()
 
   await page.waitForTimeout(1000)
@@ -67,11 +56,11 @@ test('the refresh button refetches without dropping the rows', async ({ page, re
   await expect(row(page, task.name)).toBeVisible()
 
   const refetch = page.waitForRequest((r) => r.method() === 'GET' && /\/api\/tasks$/.test(new URL(r.url()).pathname))
-  await page.getByRole('button', { name: 'Reload', exact: true }).click()
+  await button(page, 'Reload').click()
   await refetch
   // Refetching, not loading: the rows stay while the request is out.
   await expect(row(page, task.name)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Reload', exact: true })).not.toHaveAttribute('aria-disabled', 'true', { timeout: 10_000 })
+  await expect(button(page, 'Reload')).not.toHaveAttribute('aria-disabled', 'true', { timeout: 10_000 })
 })
 
 test('renames optimistically and the backend keeps the name', async ({ page, request }) => {
@@ -93,18 +82,18 @@ test('renames optimistically and the backend keeps the name', async ({ page, req
   // repaints and republishes its semantics tree, which is what a busy machine
   // makes flaky.
   const write = holdWrite(page)
-  await page.getByRole('button', { name: 'Rename', exact: true }).click()
+  await button(page, 'Rename').click()
   await expect(heroTitle(page)).toContainText(newName)
   await write.release()
 
   // And still there once the write has gone through.
-  await expect(page.getByRole('button', { name: 'Rename', exact: true })).not.toHaveAttribute('aria-disabled', 'true', { timeout: 10_000 })
+  await expect(button(page, 'Rename')).not.toHaveAttribute('aria-disabled', 'true', { timeout: 10_000 })
   await expect(heroTitle(page)).toContainText(newName)
   expect((await getTask(request, task.id))?.name).toBe(newName)
 
   // The overview row reads the same per-task query, so it agrees without a
   // list refetch; and a fresh page load agrees because the backend does.
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(row(page, newName)).toBeVisible()
   await page.reload()
   await expect(row(page, newName)).toBeVisible()
@@ -123,7 +112,7 @@ test('a refused rename rolls back on screen and in the field', async ({ page, re
   // Same as the rename above: the rejected name has to be on screen while the
   // backend still owes an answer, so the write is held until we have seen it.
   const write = holdWrite(page)
-  await page.getByRole('button', { name: 'Rename', exact: true }).click()
+  await button(page, 'Rename').click()
   await expect(heroTitle(page)).toContainText('fail')
   await write.release()
 
@@ -162,7 +151,7 @@ test('renaming to an empty name is refused and the field keeps the old name', as
   await expect(async () => {
     sent = undefined
     await typeInto(page, field, '')
-    await page.getByRole('button', { name: 'Rename', exact: true }).click()
+    await button(page, 'Rename').click()
     await expect.poll(() => sent, { timeout: 3000 }).not.toBeUndefined()
     expect(sent).toBe('')
   }).toPass({ timeout: 30_000 })
@@ -262,7 +251,7 @@ test('the reminder switch flips at once, waits for the scheduler, then settles',
   // Flutter folds a row's texts into the group's accessible name rather than
   // leaving them as text nodes, so the pill is asserted there — the group's
   // own innerText is just the delete button's tooltip.
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(row(page, task.name)).toHaveAttribute('aria-label', /reminder$/)
 })
 
@@ -339,7 +328,7 @@ test('an unreachable backend shows the error panel after one retry, and recovers
   expect(attempts).toBe(2)
 
   await page.unroute('**/api/tasks?*')
-  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await button(page, 'Try again').click()
   await expect(row(page, task.name)).toBeVisible()
   await expect(page.getByText(/\d+ of \d+ synced/)).toBeVisible()
 })
@@ -360,12 +349,12 @@ test('shared data stays consistent through rename, rollback and network recovery
   await expect(field).toHaveValue(task.name)
   await typeInto(page, field, renamed)
   const successfulWrite = holdWrite(page)
-  await page.getByRole('button', { name: 'Rename', exact: true }).click()
+  await button(page, 'Rename').click()
   await expect(heroTitle(page)).toContainText(renamed)
   // The actual backend still has the old value while the UI is optimistic.
   expect((await getTask(request, task.id))?.name).toBe(task.name)
   await successfulWrite.release()
-  await expect(page.getByRole('button', { name: 'Rename', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
+  await expect(button(page, 'Rename')).not.toHaveAttribute('aria-disabled', 'true')
   expect((await getTask(request, task.id))?.name).toBe(renamed)
 
   // After the button click the field still holds the confirmed name; a
@@ -377,7 +366,7 @@ test('shared data stays consistent through rename, rollback and network recovery
   const rejectedWrite = holdWrite(page)
   const rejectedRequest = page.waitForRequest((r) =>
     r.method() === 'PUT' && new URL(r.url()).pathname.endsWith('/name'))
-  await page.getByRole('button', { name: 'Rename', exact: true }).click()
+  await button(page, 'Rename').click()
   expect((await rejectedRequest).postDataJSON()).toEqual({ name: 'fail' })
   await expect(heroTitle(page)).toContainText('fail')
   await rejectedWrite.release()
@@ -386,7 +375,7 @@ test('shared data stays consistent through rename, rollback and network recovery
   await field.click()
   await expect(field).toHaveValue(renamed)
   expect((await getTask(request, task.id))?.name).toBe(renamed)
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await button(page, 'Back').click()
   await expect(row(page, renamed)).toBeVisible()
 
   let attempts = 0
@@ -398,7 +387,7 @@ test('shared data stays consistent through rename, rollback and network recovery
   await expect(page.getByRole('group', { name: /Is the backend running on port 5174\?/ })).toBeVisible()
   expect(attempts).toBe(2)
   await page.unroute('**/api/tasks?*')
-  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await button(page, 'Try again').click()
   await expect(row(page, renamed)).toBeVisible()
   expect((await getTask(request, task.id))?.name).toBe(renamed)
 })

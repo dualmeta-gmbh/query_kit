@@ -1,4 +1,4 @@
-import { expect, fact, factIn, holdRequest, strip, test, type Page, typeInto } from './fixtures'
+import { button, expect, fact, factIn, holdRequest, strip, test, typeInto, type Page } from './fixtures'
 
 // Two cards and up to three strips: taller than the default viewport, and a
 // lazily built list only has what is in view.
@@ -13,7 +13,6 @@ const slow = (page: Page, text: string) => factIn(page, 'slow facts', text)
 
 const searched = (page: Page, text: string) => factIn(page, 'search facts', text)
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 
 /// Every request the browser gave up on, by URL fragment. An aborted XHR is
 /// reported as `requestfailed` with `net::ERR_ABORTED`, which is the browser's

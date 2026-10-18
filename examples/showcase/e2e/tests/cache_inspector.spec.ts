@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, factIn, group, holdRequest, test } from './fixtures'
+import { button, expect, factIn, group, holdRequest, test } from './fixtures'
 
 // Two tables, a growing log and the readers: taller than the default
 // viewport, and `FeatureScaffold`'s lazy list never builds what is below the
@@ -24,7 +24,6 @@ const logGroup = (page: Page) => group(page, 'event log')
 const logLine = (page: Page, text: string, pick: 'first' | 'last' = 'first') =>
   logGroup(page).getByText(text, { exact: true })[pick]()
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 const readers = (page: Page) => page.getByRole('switch', { name: 'Keep readers', exact: true })
 
 /// Asserts the lines are on screen and stacked in this order, top to bottom —
@@ -217,14 +216,14 @@ test.describe('the leak sweep', () => {
     expect(names.length).toBe(29)
 
     for (const name of names) {
-      await page.getByRole('button', { name, exact: true }).click()
-      const back = page.getByRole('button', { name: 'Back', exact: true })
+      await button(page, name).click()
+      const back = button(page, 'Back')
       await expect(back, name).toBeVisible()
       // Long enough for a first load to land on most screens; one still out
       // when the screen goes is the case the sweep is also about.
       await page.waitForTimeout(750)
       await back.click()
-      await expect(page.getByRole('button', { name, exact: true }), name).toBeVisible()
+      await expect(button(page, name), name).toBeVisible()
     }
 
     // Whatever was in flight when its screen went has settled by now.

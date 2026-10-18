@@ -1,12 +1,11 @@
 import type { Page } from '@playwright/test'
 
-import { expect, fact, holdRequest, test, type Scenario } from './fixtures'
+import { button, expect, fact, holdRequest, test, type Scenario } from './fixtures'
 
 // The card, its rows and the strip fit a tall window; a lazily built screen
 // only has what is in view.
 test.use({ viewport: { width: 1280, height: 1000 } })
 
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 const text = (page: Page, value: string) => page.getByText(value, { exact: true })
 
 /// The cursors the backend answered, in order — one entry per page request.

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, fact, factIn, holdRequest, test } from './fixtures'
+import { button, expect, fact, factIn, holdRequest, test } from './fixtures'
 
 // The cards and the strips stack up; the summary line sits between them.
 test.use({ viewport: { width: 1280, height: 2200 } })
@@ -35,7 +35,7 @@ test('reversing reuses every observer and sends nothing', async ({ page, open, s
   await open('/query-collections')
   await expect(fact(page, 'post-3', 'status=success')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Reverse', exact: true }).click()
+  await button(page, 'Reverse').click()
 
   await expect(page.getByText('ids=3,2,1', { exact: true })).toBeVisible()
   await expect(page.getByText('#1 — post 3')).toBeVisible()
@@ -50,7 +50,7 @@ test('growing fetches only the newcomer', async ({ page, open, scenario }) => {
   await open('/query-collections')
   await expect(fact(page, 'post-3', 'status=success')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add post', exact: true }).click()
+  await button(page, 'Add post').click()
 
   await expect(page.getByText('ids=1,2,3,4', { exact: true })).toBeVisible()
   await expect(fact(page, 'post-4', 'status=success')).toBeVisible()
@@ -64,7 +64,7 @@ test('shrinking releases the observer that left', async ({ page, open }) => {
   await open('/query-collections')
   await expect(fact(page, 'post-3', 'status=success')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Remove last', exact: true }).click()
+  await button(page, 'Remove last').click()
 
   await expect(page.getByText('ids=1,2', { exact: true })).toBeVisible()
   await expect(fact(page, 'post-3', 'observers=0')).toBeVisible()
@@ -75,7 +75,7 @@ test('a duplicate id shares one cache entry', async ({ page, open, scenario }) =
   await open('/query-collections')
   await expect(fact(page, 'post-1', 'status=success')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Duplicate first', exact: true }).click()
+  await button(page, 'Duplicate first').click()
 
   await expect(page.getByText('ids=1,2,3,1', { exact: true })).toBeVisible()
   // Two observers, one entry. The newcomer found it stale and refetched it
@@ -92,7 +92,7 @@ test('a missing id fails without disturbing its neighbours', async ({ page, open
   await open('/query-collections')
   await expect(fact(page, 'post-1', 'status=success')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add missing id', exact: true }).click()
+  await button(page, 'Add missing id').click()
 
   await expect(page.getByText('ids=1,2,3,999', { exact: true })).toBeVisible()
   await expect(fact(page, 'post-999', 'status=error')).toBeVisible()
@@ -126,13 +126,13 @@ test('a QueriesController reads the same collection, with a second observer on e
 
   // `setQueries` follows the ids: both readers add the newcomer in one build,
   // and the entry is fetched once for the two of them.
-  await page.getByRole('button', { name: 'Add post', exact: true }).click()
+  await button(page, 'Add post').click()
   await expect(summary(page, 'ready=4/4')).toBeVisible()
   await expect(fact(page, 'post-4', 'observers=2')).toBeVisible()
   await expect(fact(page, 'post-4', 'fetches=1')).toBeVisible()
   expect(await scenario.count('GET', /^\/api\/posts\/4$/)).toBe(1)
 
-  await page.getByRole('button', { name: 'Add missing id', exact: true }).click()
+  await button(page, 'Add missing id').click()
   await expect(summary(page, 'ready=4/5')).toBeVisible()
   await expect(summary(page, 'failed=1')).toBeVisible()
 

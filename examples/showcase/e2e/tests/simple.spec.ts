@@ -1,4 +1,4 @@
-import { expect, fact, holdRequest, test } from './fixtures'
+import { button, expect, fact, holdRequest, test } from './fixtures'
 
 test('the post arrives after one request and the entry settles', async ({ page, open, scenario }) => {
   await open('/simple')
@@ -16,13 +16,13 @@ test('a refetch keeps the post on screen while it is refreshing', async ({ page,
   await expect(fact(page, 'post', 'fetchStatus=idle')).toBeVisible()
 
   const hold = holdRequest(page, '**/api/posts/1*')
-  await page.getByRole('button', { name: 'Refetch', exact: true }).click()
+  await button(page, 'Refetch').click()
 
   // The backend has provably not answered: the request is held in the browser.
   await expect(page.getByText('refreshing', { exact: true })).toBeVisible()
   await expect(page.getByText('Local development: setup guide')).toBeVisible()
   await expect(fact(page, 'post', 'fetchStatus=fetching')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Refetch', exact: true })).toHaveAttribute('aria-disabled', 'true')
+  await expect(button(page, 'Refetch')).toHaveAttribute('aria-disabled', 'true')
   await hold.release()
 
   await expect(page.getByText('refreshing', { exact: true })).toBeHidden()
@@ -45,7 +45,7 @@ test('a refused refetch keeps the stale post next to the error', async ({ page, 
   await expect(fact(page, 'post', 'fetchStatus=idle')).toBeVisible()
 
   await scenario.config({ latency: 0, failNext: [{ method: 'GET', path: '/api/posts/1', count: 4, status: 500 }] })
-  await page.getByRole('button', { name: 'Refetch', exact: true }).click()
+  await button(page, 'Refetch').click()
 
   await expect(page.getByText('Refetch failed: Scripted failure 500')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText('Local development: setup guide')).toBeVisible()
