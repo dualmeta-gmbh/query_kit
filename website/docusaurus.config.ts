@@ -127,8 +127,41 @@ const config: Config = {
           showLastUpdateTime: false,
         },
         blog: false,
+        // The search plugin's results page lives at `/search`: it has no
+        // content of its own, and it says `noindex`, so it stays out of the
+        // sitemap too.
+        sitemap: { ignorePatterns: ['/search'] },
         theme: { customCss: './src/css/custom.css' },
       } satisfies Preset.Options,
+    ],
+  ],
+
+  // Search is built here and served from the same static files as the pages:
+  // `npm run build` writes a lunr index into `build/`, and the browser loads
+  // it on first use. No account, no crawler, no API key in the repository, and
+  // no outside service at runtime (#74); Algolia DocSearch would need all
+  // four. Only the doc pages are indexed: the home page repeats the overview,
+  // and the API reference is pub.dev's dartdoc, which has a search of its own.
+  themes: [
+    [
+      '@easyops-cn/docusaurus-search-local',
+      {
+        // A content hash in the index's file name (`true` would put it in a
+        // query string), so a deploy never serves a reader the old index from
+        // cache beside new pages.
+        hashed: 'filename',
+        docsRouteBasePath: '/docs',
+        indexDocs: true,
+        indexBlog: false,
+        indexPages: false,
+        language: ['en'],
+        // Off: it appends `?_highlight=` to every result, a second URL for
+        // each page that a crawler could find and the sitemap does not list.
+        highlightSearchTermsOnTargetPage: false,
+        explicitSearchResultPath: true,
+        searchResultLimits: 8,
+        searchResultContextMaxLength: 60,
+      },
     ],
   ],
 
