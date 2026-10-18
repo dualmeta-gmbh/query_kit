@@ -1,10 +1,12 @@
 # Plan: native typed query definitions
 
-Status: proposed implementation plan, revised after two review rounds
-(Fable, then GPT-6-Astra and Opus 5.5 independently, all 2026-10-18; the
-[review record](#review-record) at the end says what each finding became).
-Round 2 found that three decisions of round 1 rested on wrong claims about
-the current code; they are rewritten below. No feature code or type-safety spike has been implemented or
+Status: proposed implementation plan, revised after three review rounds
+(Fable, then GPT-6-Astra and Opus 5.5 independently twice, all 2026-10-18;
+the [review record](#review-record) at the end says what each finding
+became). Round 2 found that three decisions of round 1 rested on wrong claims
+about the current code; round 3, scoped to round 2's diff, found no P1 and
+closed the gaps round 2's fixes left. Further plan reviews were judged to
+give diminishing returns; the remaining questions are Phase 0's. No feature code or type-safety spike has been implemented or
 validated by this document.
 
 Date: 2026-10-18. Repository baseline: `a5afe7d` (`main`).
@@ -182,16 +184,31 @@ invalidation without lying about a data type.
   mapping and its typed fetch function. Calling it binds an input and returns
   `QueryRef<TCacheData>`.
 - `QueryDefinition<TCacheData>` covers an operation without varying inputs.
-- `QueryRef<TCacheData>` binds a definition and input, carries executable
-  options, and exposes operations whose data type comes from that reference.
-  It does not retain a client, mount observers, fetch or register timers merely
-  because it was constructed.
+- The references form one small hierarchy, because the two options types do
+  not share a subtype (`QueryObserverOptions` and
+  `InfiniteQueryObserverOptions` are separate `final` classes that meet only
+  at `QueryOptions<InfiniteData<P, Q>>`):
+  - a sealed `QueryEntryRef<T>` holds the typed key, `read`, `state`,
+    `write`, `update` and the exact lifecycle operations, and no `options()`;
+  - `QueryRef<T>` is the plain reference and owns `options()` (a
+    `QueryObserverOptions<T>`) and `fetch`;
+  - `InfiniteQueryRef<TPageData, TPageParam>` implements
+    `QueryEntryRef<InfiniteData<TPageData, TPageParam>>` and owns its own
+    `options()` (an `InfiniteQueryObserverOptions<TPageData, TPageParam>`)
+    and `fetch` over `client.infiniteQuery`.
+  A reference binds a definition and input and exposes operations whose data
+  type comes from it. It does not retain a client, mount observers, fetch or
+  register timers merely because it was constructed.
 - `TypedQueryKey<TCacheData>` wraps the existing raw `QueryKey` and retains the
   cache type for key-only reads and state access. Creation goes through
   definitions and references, not a public arbitrary `fromRaw<T>` cast. Its
   `==` is the raw key plus `TCacheData`; its `rawKey` is what filters take.
-- `QueryDefinition<TCacheData>` is itself a `QueryRef<TCacheData>`: a
-  zero-input definition needs no call and no invented argument.
+- `QueryDefinition<TCacheData>` is itself a `QueryRef<TCacheData>`, and
+  `InfiniteQueryDefinition<TPageData, TPageParam>` is itself an
+  `InfiniteQueryRef`: a zero-input definition needs no call and no invented
+  argument. Every infinite query in the shipped examples is zero-input (the
+  hooks example's projects, the showcase's load-more and max-pages screens),
+  so the infinite side needs the zero-input form as much as the plain one.
 - The name `QueryRef` sits beside the public `QueryObserverRef`; both are
   references to a query from a different side, and the docs say which is
   which. Renaming is Phase 0's call if the fixtures read badly.
@@ -301,9 +318,13 @@ style's unconditional `setOptions`.
 re-evaluates an `Enabled.when` over outside state. A criterion "no
 `setOptions` reaches the observer for a recreated reference" could only be
 met by gating `setOptions` on equality, which brings #84 back. The actual
-cost of unequal options is one `notifyObserverOptionsUpdated` per rebuild,
-which nothing in core, binding or hooks subscribes to, and which the site's
-recommended options-function pattern pays today. And (a) cannot be delivered:
+cost of unequal options is one public `QueryObserverOptionsUpdated` cache
+event per rebuild. `IsFetchingController` and the hooks' `useIsFetching`
+hear every cache event and recount `client.isFetching` (a cache scan) for it,
+without rebuilding, and the site's reference snippet filters the event out
+because it fires on every reader's build. The site's recommended
+options-function pattern pays exactly this today; a definition neither adds
+nor removes it. And (a) cannot be delivered:
 closures are `==` only to themselves, a closure held by a reference does not
 survive `detail('d1')` being called again in the next build, a per-family
 memo keyed by input grows by one entry per input ever bound, and a memo
@@ -312,7 +333,8 @@ first one's fetcher, keeping a stale repository alive.
 
 Consequences:
 
-- `QueryRef.==` is namespace, name, kind, `TCacheData` and the raw key;
+- Every reference's `==` (`QueryRef`, `InfiniteQueryRef`, the definitions
+  that are references) is namespace, name, kind, the cache type and the raw key;
   `TypedQueryKey.==` is the raw key and `TCacheData`. A hook or a user may
   key on a reference. The fetcher is not part of it, so two definitions of
   one operation with different fetchers produce equal references, and the
@@ -321,9 +343,17 @@ Consequences:
   as an options function does today; nothing memoises them.
 - A changed fetcher or a changed definition default is an options change and
   reaches the observer; nothing suppresses it.
-- Acceptance: a rebuild that hands in an equal reference starts no fetch and
-  restarts no timer, measured against the same rebuild with inline raw
-  options. Not "no `setOptions`".
+- Acceptance is parity with raw options, because the observer never sees
+  the reference and compares resolved values: a rebuild with an equal
+  reference starts no fetch and restarts no timer when the resolved policies
+  are unchanged, as the same rebuild with inline raw options does, and a
+  changed `Enabled.when`, stale time or interval does trigger work, as it
+  should. Not "no `setOptions`". What D4 itself decides is tested too: after
+  a rebuild with a new definition instance, the next fetch uses the new
+  fetcher.
+- Until that rebuild or the entry's collection the query keeps the fetcher it
+  was last handed, so an invalidation in between runs the old one, as with
+  raw options.
 
 Open-4 of round 1 is closed by this decision.
 
@@ -341,19 +371,41 @@ definition has one. A sealed base type receiving a concrete variant,
 must create an entry of the declared type, or the next typed read throws.
 
 - Every typed read uses the exact declared type.
-- Every typed write and update is exact too, and here the typed path does
-  not delegate to the lenient raw one: the existing entry (`peek`) must be
-  absent or of exactly `TCacheData`, else `QueryDataTypeError` before any
-  write. Without this a `ref.write` would land in a wider raw entry
-  (`Device` into `Device?`) and the reference's own next `read` would throw.
-  Reproduced in round 2. The raw `setQueryData` keeps its leniency.
-- The written value and an updater's result are checked through `Object?`
-  (D2), so a widened receiver fails at `-O4` as well.
-- An infinite write normalises its value to the declared type arguments
-  (`InfiniteData<TPageData, TPageParam>` built from the pages and params), so
-  an extracted `InfiniteData<int, int>` written to a `num` family cannot leave
-  a narrower value in a wider entry, where the next `copyWith` would throw.
-  Reproduced in round 2 against the raw path.
+- **Every typed write and update has one shape, single and bulk alike
+  (D7):** check, then write.
+  1. The existing entry must be absent or of exactly `TCacheData`, else
+     `QueryDataTypeError` before any write. The public
+     `queryCache.get<TCacheData>` is exactly that check; `peek` is not
+     needed. Without it a `ref.write` would land in a wider raw entry
+     (`Device` into `Device?`) and the reference's own next `read` would
+     throw (round 2).
+  2. The value, and every updater's result, is checked through `Object?`
+     (D2), so a widened receiver fails at dart2js `-O4` as well (round 3:
+     handing an unchecked updater to the raw path stored `42` in a
+     `Query<Device>` at `-O4`).
+  3. An infinite value is normalised (below).
+  4. An entry the write creates is built with the reference's own options,
+     so the definition's `gcTime` and `structuralSharing` apply from the
+     first write; the raw `setQueryData` builds a bare entry. An existing
+     entry is written through the same `Query.setData(manual: true)` the raw
+     path uses, so sharing and timestamps behave identically.
+  The raw `setQueryData` and `updateQueriesData` keep their leniency.
+- `write` and `update` take the raw path's `updatedAt`, which a rollback
+  needs.
+- **Infinite normalisation** rebuilds an `InfiniteData` whose runtime type is
+  narrower than `InfiniteData<TPageData, TPageParam>` from its pages and
+  params, as `List<TPageData>.unmodifiable` and `List<TPageParam>.unmodifiable`
+  (the constructor does not copy), and skips the rebuild when the runtime
+  type is already exact. It loses nothing: `InfiniteData` is `final` and
+  holds only the two lists, and since structural sharing returns the incoming
+  value when runtime types differ, normalising restores page sharing rather
+  than defeating it. It applies to everything the definition writes or
+  produces: `write`, every updater result, single and bulk, and the
+  definition's own `structuralSharing` and `initialData`, which it wraps so
+  that the value finally committed is normalised (round 3: a custom sharing
+  callback returning the narrower value otherwise undid it). A narrower
+  value supplied through a per-use `copyWith` is outside the guarantee and
+  documented.
 - `ref.read(client)` returns `TCacheData?` for compatibility and cannot
   distinguish absence from a cached null. `ref.state(client)` exposes the
   existing `QueryState` with `hasData` for that distinction.
@@ -385,20 +437,38 @@ subscriptions, and ADR-0001's two shapes already anchor the output type.
   changes the typed key or cached value. No second optional output-type
   parameter.
 - Overrides and definition defaults have one mechanism, and it is the
-  existing one: the typed `copyWith` of the returned options. A definition
-  takes an optional `configure` callback,
-  `QueryObserverOptions<T> Function(QueryObserverOptions<T> base, TInput
-  input)`, applied inside `options()`, which is where an input-dependent
-  stale time or a per-input placeholder goes; a consumer overrides per use
-  with `ref.options().copyWith(...)`. No new field list anywhere, so the
-  "forty lines in nine places" count does not grow. Both callbacks can
-  replace the key or the fetcher; doing so is a documented exit from the
-  safe path, not a prevented one.
+  existing one: the typed `copyWith` of the returned options. Each definition
+  takes an optional `configure` callback typed for its kind and applied
+  inside `options()`, which is where an input-dependent stale time or a
+  per-input placeholder goes:
+  - plain family: `QueryObserverOptions<T> Function(QueryObserverOptions<T>
+    base, TInput input)`;
+  - plain definition: the same without `input`;
+  - infinite family and definition: the same over
+    `InfiniteQueryObserverOptions<TPageData, TPageParam>`.
+  A consumer overrides per use with `ref.options().copyWith(...)`. After
+  `configure` the definition re-pins its key and fetcher with one more
+  `copyWith`, so the definition path cannot change identity; a per-use
+  `copyWith` still can, as a documented exit. A per-use `copyWith` cannot
+  unset a definition default (null means "keep"), and the guide says so.
+- **The cost, stated:** the plain side adds no field list. The infinite side
+  does: `pageFn`, `initialPageParam` and `getNextPageParam` are required
+  constructor parameters of the infinite options and must exist before
+  `configure` receives a base, and they are often input-dependent (the
+  max-pages screen starts from a cursor). So an infinite definition takes
+  `pageFn`, `initialPageParam`, `getNextPageParam` and
+  `getPreviousPageParam` as `(input, …)` functions of its own. That is a
+  tenth place in CLAUDE.md's nine, for infinite-only fields; it is accepted
+  because those four are the definition's identity-adjacent behaviour, not
+  tunables, and a test fails if one is not passed through.
 - Options that need the client (the task manager seeds a detail's
   `initialData` from the list caches and dates it from their state) stay
-  with the consumer, who has a client: `ref.options().copyWith(initialData:
-  ...)` from `context.client`. A definition holds no client (D1), and
-  `InitialData.compute` receives none. The migration example shows this.
+  with the consumer, who has a client: `QueryClientProvider.of(context)` or
+  `useQueryClient()`, then `ref.options().copyWith(initialData: ...,
+  initialDataUpdatedAt: ...)`. A definition holds no client (D1), and
+  `InitialData.compute` receives none. The task manager therefore keeps a
+  small `taskQuery(client, id)` wrapper shared by its two consumers; the
+  migration example says so.
 - Merge precedence: client defaults, matching key defaults in their existing
   order, definition options, per-use overrides. Null means unset. A
   definition's fetcher takes precedence over a generic default fetch function.
@@ -421,8 +491,14 @@ operations.
 
 **Answer:** (b).
 
-**Why:** (a) is the registry D3 declined, under another name. (b) is what
-`getQueriesData` does today; `updateQueriesData` is lenient (an entry of
+**Why:** (a) is the registry D3 declined, under another name. The write
+side follows D5's one shape: preflight every matched entry with the exact
+check, then hand the raw bulk update an updater wrapped with D2's `Object?`
+check on its result and the infinite normalisation. The wrapping matters:
+once every entry is exactly `TCacheData`, the raw `_holds` passes without
+looking at the value, so at dart2js `-O4` an unwrapped updater returning a
+`String` through a widened family wrote nothing and raised nothing (round 3).
+(b) is what `getQueriesData` does today; `updateQueriesData` is lenient (an entry of
 another type with no data, or a wider type, passes), so the typed family
 adds the exact preflight for writes rather than inheriting it. Round 1 said
 the raw bulk API already did this; round 2 reproduced that it does not. (c)
@@ -455,11 +531,12 @@ page.
 **Why:** the logical input identifies the entry; page parameters live inside
 `InfiniteData`, as they do upstream and in the existing observer.
 
-An infinite reference's `options()` returns
-`InfiniteQueryObserverOptions<TPageData, TPageParam>`, which is what the
-infinite consumers take; it is not an ordinary `QueryObserverOptions`. The
-page function receives the typed input plus the existing typed page
-context. Initial/next/previous page parameters, max pages, refetch direction,
+An infinite reference is an `InfiniteQueryRef<TPageData, TPageParam>`
+(D1), whose `options()` returns `InfiniteQueryObserverOptions<TPageData,
+TPageParam>`, which is what the infinite consumers take. A zero-input
+`InfiniteQueryDefinition<TPageData, TPageParam>` exists beside the family;
+its page functions take no input. The page function receives the typed
+input plus the existing typed page context. Initial/next/previous page parameters, max pages, refetch direction,
 retry, cancellation and observer paging actions are the existing ones.
 Selected infinite options change the observer output only. Wrong page data,
 wrong page parameters and wrongly typed `InfiniteData` writes are negative
@@ -477,8 +554,8 @@ record combination (`combine`, `combineWith`). A list of references of two
 data types handed to `QueriesObserver` or `useQueries` compiles, as a list of
 raw options does, and infers `Object`, creating `Object` entries that every
 exact typed read then rejects; that is outside the guarantee, the docs say so
-(the hook's already do), and the fixtures include it as a documented
-negative. Namespace and family filters also feed `IsFetchingController`,
+(the hook's already do), and a compiling boundary fixture with a runtime
+assertion pins it, apart from the analyzer-negative fixtures. Namespace and family filters also feed `IsFetchingController`,
 `QueryListener` and the hooks' counts.
 
 Mutation definitions are outside this feature. Existing mutation callbacks
@@ -503,9 +580,19 @@ anchored by the fetcher's return. Explicit type arguments, a declared field
 type or a typed closure parameter each anchor `TInput`; a `TInput` of
 `Object?` then mostly fails downstream when the input meets a typed
 repository parameter, but `keyOf` alone compiles. So: the examples write the
-arguments, the guide says why, and the constructors carry the binding's
-existing debug backstop (`<Object?>[] is! List<T>`, which refuses `dynamic`
-and `Object?` alike) for both type parameters. Round 1 cited
+arguments, the guide says why, and every definition constructor
+(`QueryFamily`, `QueryDefinition`, `InfiniteQueryFamily`,
+`InfiniteQueryDefinition`) carries the binding's existing debug backstop,
+`<Object?>[] is! List<T>`, which refuses `dynamic`, `Object?` and `void`
+alike.
+- On the output types (`TCacheData`, `TPageData`, `TPageParam`) it is
+  ADR-0001's backstop and has no false refusal.
+- On `TInput` it is new, and it refuses two legitimate declarations: `void`,
+  which the zero-input definitions make unnecessary, and a deliberately
+  top-typed nullable input. Accepted: the forgotten type argument it catches
+  is the common case, the deliberate `Object?` input is rare, and its escape
+  is `Object` or a sealed or nullable concrete type (`Object` and `String?`
+  pass). The guide names the escape. Round 1 cited
 [the inference research](../research/dynamic-inference-guards.md) here; that
 research is about an optional output slot and does not establish this case.
 
@@ -515,14 +602,23 @@ A new or changed showcase screen for the infinite flow follows the showcase's
 five-artefact catalogue rule (`examples/showcase/README.md`, "The
 catalogue"), and `catalogue_test.dart` must hold.
 
-The feature is additive and lives in the core: core `1.1.0`. The binding and
-the hooks gain no API (D9), so they ship patch releases only if their
-README or shipped example uses definitions, and then with raised floors:
-binding `query_kit: ^1.1.0`, hooks `query_kit_flutter:` at that binding. In
-0.x a minor is the breaking bump (`docs/releasing.md`), so hooks is `0.1.1`,
-not `0.2.0`; the hooks example's `query_kit_hooks: ^0.1.0` admits it. Publish
-in dependency order, and resolve each shipped example without its workspace
-override before tagging, as the archive will.
+All three packages ship, because Phase 3 migrates a hook consumer and
+Phase 4 updates every README, and the hooks README is fence-tested. Round 2's
+"only if" was met by the plan itself.
+
+| Package | Version | Why |
+|---|---|---|
+| core | `1.1.0` | additive API |
+| binding | `1.2.0`, `query_kit: ^1.1.0` | it re-exports the whole core, so raising the floor makes the new API reachable through the binding's import: a feature, hence a minor under "Semantic versioning holds" |
+| hooks | `0.1.1`, `query_kit_flutter: ^1.2.0` | it re-exports the binding; in 0.x a minor is the breaking bump (`docs/releasing.md`), so an addition is a patch |
+
+The shipped examples name the first release that has what they use (a
+constraint names the oldest version that works, `docs/releasing.md`): the
+binding's example `query_kit_flutter: ^1.2.0`, the hooks example
+`query_kit_hooks: ^0.1.1`. Each is resolved without its workspace override
+and at its lowest allowed dependency set (`pub downgrade`) before tagging,
+because resolving the latest versions would not notice a floor that is too
+low. Publish in dependency order: core, binding, hooks.
 
 ### Open questions for Phase 0
 
@@ -538,11 +634,12 @@ which already fit `[namespace, name, ...input]` and need no adapter.
   for a definition without type arguments (D10).
 - **Open-2, negative fixtures:** that each listed misuse fails at the intended
   location with the intended diagnostic, including the unsafe generic setter
-  of D2 as the control that shows why the receiver-anchored shape is needed,
-  and the mixed-type list of D9 as a documented negative.
-- **Open-7, `-O4`:** one fixture compiled with `dart compile js -O4` that
-  shows the explicit check of D2 firing where the covariance check is
-  omitted.
+  of D2 as the control that shows why the receiver-anchored shape is needed.
+  The mixed-type list of D9 compiles and is a separate boundary fixture with
+  a runtime assertion, not an analyzer negative.
+- **Open-7, `-O4`:** fixtures compiled with `dart compile js -O4` and run that
+  show D2's explicit check firing where the covariance check is omitted, for
+  a single `write`, a single `update` and a family bulk update (D7).
 
 ## Implementation map
 
@@ -670,7 +767,7 @@ type arguments on a definition, where definitions are introduced.
 **Exit:** migration examples and reference docs agree with the implemented API,
 all validation gates below are green for the final feature commit, and a release
 note accurately distinguishes compile-time guarantees from runtime checks.
-The bumps are the minors of D11. Tags, package publishing and website
+The bumps are D11's table. Tags, package publishing and website
 deployment are separate explicitly authorised actions.
 
 ## Acceptance and validation matrix
@@ -684,11 +781,15 @@ plan.
   demonstrate the expected inferred type. Test inline and extracted definitions,
   callbacks, collection inference and the minimum supported SDK.
 - **Runtime types:** first write/seed uses the declared type, including nullable
-  and sealed values. Conflicting raw entries, deliberately widened references,
-  generic defaults and `dynamic` misuse fail with `QueryDataTypeError` in
-  release builds as well as debug, including dart2js `-O4`, through the
-  explicit checks of D2 and D5. No silent second cache entry created by a
-  type token.
+  and sealed values. Conflicting raw entries fail with `QueryDataTypeError`
+  before any write. Deliberately widened references, single and bulk, throw
+  before any write: Dart's `TypeError` where Dart checks covariance (the VM,
+  JIT and AOT, and dart2js at its default level, all at the call before the
+  method body), `QueryDataTypeError` where dart2js `-O3`/`-O4` omits that
+  check and D2's explicit check fires. dart2wasm at `-O3`/`-O4` is an unsound
+  opt-in that traps uncatchably on the same misuse; Flutter's wasm default is
+  `-O2`. That is a documented limit. No silent second cache entry created by
+  a type token.
 - **Identity:** same input/recreated definition shares data and in-flight work;
   different IDs/filters/tenants do not. Structural maps, value models, record
   limitations and mutable inputs have documented tested outcomes. Equal inputs
@@ -704,8 +805,9 @@ plan.
   behave as the underlying client does. Infinite retries and pagination preserve
   the page/data relationship and cache type.
 - **Lifecycle:** no client ownership inside reusable definitions, no eager
-  fetches, leaked timers, stale repository retention, duplicate observers or
-  post-disposal notifications. No memo of references or closures anywhere
+  fetches, leaked timers, duplicate observers or post-disposal
+  notifications; a replaced repository is retained only until the next
+  `setOptions` or the entry's collection, as with raw options (D4). No memo of references or closures anywhere
   (D4). Exercise two
   clients using the same definitions independently.
 - **Integration:** core VM and Chrome suites, Flutter and hook VM/Chrome suites,
@@ -854,10 +956,40 @@ both found the same thing the row names both.
 | F8 | A family calling a sibling cannot be written in an initializer list (`implicit_this_reference_in_initializer`) | yes, by the language | The example uses `late final` |
 | F9 | Open-5 and Open-6 were decidable now | yes | D1 (a definition is a reference); Open-6 closed by the task manager's keys |
 | F11 | D3 cited a risk-list sentence from the first draft; `DefaultedQueryOptions.==` compares `queryFn` with `==`, not identity; hot reload re-runs no top-level initialiser; `QueryRef` beside `QueryObserverRef`; `TypedQueryKey` equality unspecified; `IsFetchingController`, `QueryListener` and the hooks' counts unnamed | yes | All worded in D1, D3, D9 and "Current behaviour" |
-| F1 (detail) | A `QueryObserverOptionsUpdated` cache event | not by that name; the effect is `QueryCache.notifyObserverOptionsUpdated` | Named as such in D4 |
+| F1 (detail) | A `QueryObserverOptionsUpdated` cache event | yes; this row first said "not by that name", which round 3 showed wrong (`query_cache.dart`, the public event class) | Named in D4, with its two subscribers |
 
 Both reviewers confirmed D1's wrapper over the final `QueryKey`, D2's core
 argument (the generic setter widens, the receiver-anchored calls reject),
 D5's absence/null distinction, D6's reuse of `withSelect` and the defaults
 order, D11's catalogue rule, and that `QueryObserverOptionsBase` extends
 `QueryOptions`.
+
+### Round 3 (GPT-6-Astra via Codex CLI, and Opus 5.5, independently, over `df889db`, scoped to round 2's diff)
+
+Neither reviewer found a P1. Astra probed on Dart 3.6.2, 3.11.1 and 3.13.5
+including dart2js `-O4`; Opus on 3.11.1 with dart2js at default and `-O4`
+and dart2wasm at `-O2` to `-O4`. The decider checked each claim against the
+source before changing the plan.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| A-1 | Infinite normalisation before `setData` is undone by a custom `structuralSharing` returning the narrower value, and by narrow `initialData` | yes, `Query.setData` stores the sharing callback's result | D5: the definition wraps its own sharing and initial data; a per-use `copyWith` is outside |
+| A-2 / O-P3-8 | D10's backstop on `TInput` refuses a deliberate `Object?` input and `void` | yes, probe: `void` and `Object?` refused, `Object` and `String?` pass | D10: kept, with the trade-off and the escape stated; `void` made unnecessary by zero-input definitions |
+| A-3 / O-P3-2 | D11's example floors and the "only if" condition were wrong; Phase 4 still said "minors" | yes, the pubspecs and `releasing.md` | D11 rewritten as a table: all three ship, binding a minor because it re-exports the core, examples at the first supporting releases, `pub downgrade` before tagging |
+| A-4 / O-P2-2 | The runtime acceptance row demanded `QueryDataTypeError` where the VM throws `TypeError` first; dart2wasm `-O3`/`-O4` traps | yes, D2's own text; the wasm trap taken from Opus's probe | Row rewritten |
+| A-5 | The mixed list of D9 compiles, so it is not an analyzer negative | yes | Open-2 and D9: a boundary fixture with a runtime assertion |
+| A-6 / O-P3-1 | D4 said nothing subscribes to the options event; `IsFetchingController` and `useIsFetching` recount on every event; the event class exists | yes | D4 wording, acceptance as parity with raw options; round 2's F1-detail row corrected |
+| O-P2-1 | D7 delegating to the raw bulk update leaves updater results unchecked at `-O4`, because `_holds` passes on an exact entry type | yes, `_holds` | D5 and D7 share one shape with the updater wrapped; Open-7 covers single and bulk |
+| O-P2-3 | D8 contradicted D1/D4/D6: an infinite reference cannot be a `QueryRef` overriding `options()` | yes, both options classes are `final` | D1: sealed `QueryEntryRef<T>`, `QueryRef<T>`, `InfiniteQueryRef<P, Q>` |
+| O-P2-4 | No zero-input infinite definition, though every shipped infinite query is zero-input | yes, the three examples | `InfiniteQueryDefinition<P, Q>` in D1 and D8; D10 covers both infinite constructors |
+| O-P3-3 | `configure` only fit a plain family; the infinite required fields are a tenth place; key and fetcher could be re-pinned; per-use `copyWith` cannot unset | yes, `infinite_query.dart` constructor | D6: `configure` per kind, re-pin, the cost stated and accepted |
+| O-P3-4 | `peek` unnecessary; write and update lacked `updatedAt`; an entry created by a typed write used bare options | yes | D5's numbered shape |
+| O-P3-5 | Normalisation details: unmodifiable copies, skip when exact, every updater result | yes, `InfiniteData` constructor and `==` | D5 |
+| O-P3-6 | `context.client` is not public | yes, it is on the internal scope element | D6: `QueryClientProvider.of(context)` / `useQueryClient()`; the task manager keeps a wrapper |
+| O-P3-7 | D4's parity test cannot fail because of D4; what D4 decides is untested; the lifecycle row contradicted D4 | yes | D4 adds the new-fetcher test; the lifecycle row qualified |
+
+Both reviewers confirmed as answered: A1/F1, A2/F2 (no options equality, no
+memo), A3/F3 and F4 for ordinary calls, A5, A6, A9/F5 in D2's text (the
+explicit check survives `-O4` for values, updater results and nullable
+`T`), A10/F6, F8, F9, F11. With round 3 the plan review stops: the open
+questions are Open-1, Open-2 and Open-7, and Phase 0 answers them.
