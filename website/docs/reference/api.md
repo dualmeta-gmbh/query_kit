@@ -75,3 +75,8 @@ and interface: `useQuery`, `QueryClient`, `QueryCache`, `QueryObserverOptions`,
 instead, and the options and the results have a page each, because the four
 call styles share them.
 :::
+
+## See also
+
+- [Examples](../examples/index.md), every feature as a live screen, and the [cookbook](../cookbook/index.md), recipes for whole tasks.
+- [Installation](../installation.md) and the [quick start](../quick-start.md) for the first steps with these types.

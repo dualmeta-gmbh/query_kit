@@ -7,7 +7,8 @@ description: Which package to add, what it depends on, the Dart and Flutter floo
 # Installation
 
 query_kit comes as two packages and an optional add-on, and you add the one
-that matches what you are building:
+that matches what you are building (the [overview](overview.md) says what each
+is for):
 
 | Package | For | Depends on |
 |---|---|---|
@@ -134,7 +135,10 @@ linter:
 ## Next
 
 The [quick start](quick-start.md) — a provider, a first query, and a write
-that refreshes it.
+that refreshes it. Once an app has more than one screen, the cookbook's
+[where the client lives](cookbook/dependency-injection.md) shows how to provide
+and reach the client, and the [API reference](reference/api.md) lists what the
+packages export.
 
 :::note[In React Query]
 The split mirrors `@tanstack/query-core` and `@tanstack/react-query`, except

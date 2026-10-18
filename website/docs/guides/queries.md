@@ -107,7 +107,7 @@ Four things are happening without code of their own:
   list at once and refetches behind it — the [important
   defaults](../important-defaults.md) at work.
 
-The showcase's *basic* screen is that last point, live. Tap a post, go back —
+The showcase's [*basic* screen](../examples/basic.mdx) is that last point, live. Tap a post, go back —
 its row now says `cached` — and open it again: the title is there at once,
 with a `refreshing` pill while the refetch runs. The screen sets a `gcTime` of
 ten seconds, so wait that long on the list and the entry is gone:
@@ -209,3 +209,8 @@ states that have it, and `isLoadingError`/`isRefetchError` move onto
 `QueryError`. See [differences from
 TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Examples: the [simple example](../examples/simple.mdx) is the smallest working query, and the [retry example](../examples/retry.mdx) shows `failureCount` and `failureReason` as they change.
+- Cookbook: [Wiring dio or package:http](../cookbook/wiring-dio-and-http.md) for the API client a query function calls.

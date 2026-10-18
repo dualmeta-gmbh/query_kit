@@ -48,7 +48,7 @@ final unsubscribe = observer.subscribe((result) {
 
 The result is the same sealed `QueryResult` a Flutter widget switches over;
 the binding's readers are this observer with a widget's lifetime around it.
-The *Simple* example is that Flutter version of one query: press the refetch
+The [*Simple* example](../examples/simple.mdx) is that Flutter version of one query: press the refetch
 button and watch the post stay on screen while the *refreshing* pill shows
 and the strip's `fetches` goes up. The post and the pill are fields of the
 result above; the count comes from the cache's events.
@@ -108,3 +108,8 @@ feel at the call site:
 The full name map is [coming from React
 Query](../coming-from-react-query.md), and the behaviour that differs is in
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
+
+## See also
+
+- [Installation](../installation.md) for the package and its floors, and [testing](testing.md) for the section on tests without widgets.
+- Reference: [`QueryClient`](../reference/query-client.md) and [caches and observers](../reference/caches-and-observers.md).

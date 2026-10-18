@@ -158,7 +158,7 @@ a new list, a `copyWith` of the model, a new map. The same goes for the value
 a query function returns: hand the cache something nobody else will mutate
 afterwards.
 
-The `playground` screen does this for real. Open a todo in its editor and
+The [`playground` screen](../examples/playground.mdx) does this for real. Open a todo in its editor and
 rename it: the `PATCH`'s answer is written into the todo's own entry with
 `setQueryData`, so its strip shows no new fetch, and only the list is
 invalidated and refetched.
@@ -186,3 +186,8 @@ write *creates* the entry, as when seeding a key before its query exists:
 separate method here, `updateQueryData`, and TanStack Query's
 `setQueriesData` is `updateQueriesData`. The immutability rule is the same.
 :::
+
+## See also
+
+- Cookbook: [Forms and server validation](../cookbook/forms-and-server-validation.md) writes a save's answer into the cache, and [normalised data or one key per entity](../cookbook/normalised-vs-per-entity-keys.md) shows where else it has to go.
+- Reference: [`QueryClient`](../reference/query-client.md) for `setQueryData`, `updateQueryData` and the rest.

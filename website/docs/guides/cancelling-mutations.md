@@ -161,7 +161,7 @@ With the `http` package, send an `AbortableRequest` whose `abortTrigger`
 completes from `signal.onCancel`. A repository that ignores the signal still
 works: its request runs on unobserved, and whatever it returns is discarded.
 
-The `mutation-cancel` screen holds each rename on the server for three
+The [`mutation-cancel` screen](../examples/mutation-cancel.mdx) holds each rename on the server for three
 seconds. Type a new title, press *Rename*, then *Cancel* before the three
 seconds are up: the result reads `error=cancelled`, the optimistic title
 rolls back to the old one, and the refetch shows what the server kept.
@@ -174,3 +174,8 @@ its `mutationFn` receives no signal. `mutationFnWithContext` and `cancel()`
 are additions of this library, built so that a cancel runs the error path you
 already wrote.
 :::
+
+## See also
+
+- Guides: [Mutations](mutations.md), [optimistic updates](optimistic-updates.md) for the rollback a cancel runs, [mutation scopes](mutation-scopes.md) for the queue behind a running write, and [query cancellation](query-cancellation.md) for the same idea on reads.
+- Cookbook: [Disconnecting a device](../cookbook/device-and-iot-disconnect.md), and [wiring dio or package:http](../cookbook/wiring-dio-and-http.md) for handing the cancel to the transport.

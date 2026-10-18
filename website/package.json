@@ -5,9 +5,10 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
-    "build": "node scripts/check-live-demos.mjs && docusaurus build",
+    "build": "node scripts/check-live-demos.mjs && docusaurus build && node scripts/check-internal-links.mjs",
     "demos": "bash ../tool/build_demos.sh",
     "check-live-demos": "node scripts/check-live-demos.mjs",
+    "check-links": "node scripts/check-internal-links.mjs",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",

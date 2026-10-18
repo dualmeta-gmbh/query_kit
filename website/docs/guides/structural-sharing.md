@@ -180,7 +180,7 @@ when you mean off.
 
 ## Seeing it
 
-The `select-and-sharing` screen reads one todo list five times and counts
+The [`select-and-sharing` screen](../examples/select-and-sharing.mdx) reads one todo list five times and counts
 each reader's builds. Press *Refetch*: the list comes back equal, the cached
 instances are kept, and no reader counts a data change. Tick *Structural
 sharing off* and press *Refetch* again: the list in the cache is a new
@@ -199,3 +199,8 @@ option: `false` there is `noStructuralSharing()` here, and a function is a
 function. JavaScript compares plain objects by their fields; Dart has no plain
 objects, so a model takes part through its `==` or `StructurallyShareable`.
 :::
+
+## See also
+
+- Cookbook: [Models with freezed and JSON](../cookbook/freezed-and-json-models.md) for a class that wraps a list, and [normalised data or one key per entity](../cookbook/normalised-vs-per-entity-keys.md).
+- Examples: the [combine example](../examples/combine.mdx) shows a combined result keeping its unchanged parts.

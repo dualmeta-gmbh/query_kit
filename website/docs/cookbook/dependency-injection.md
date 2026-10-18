@@ -244,3 +244,9 @@ run outside render. React's advice to create the client outside the
 component, or once in state, is `QueryClientProvider.create` here. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Reading queries in widgets](../guides/reading-queries-in-widgets.md) for what a widget does with the client, and [without Flutter](../guides/pure-dart.md) for a client with no provider at all.
+- Examples: the [one-file tour](../examples/one-file-tour.mdx) has a provider, a query and a mutation in a single file.
+- Reference: [`QueryClient`](../reference/query-client.md) and [widgets and controllers](../reference/widgets-and-controllers.md).

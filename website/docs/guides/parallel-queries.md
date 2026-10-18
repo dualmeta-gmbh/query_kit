@@ -113,7 +113,7 @@ still load, and one failing does not touch the other. When the screen wants
 the two as one value — loading while either loads, an error if either failed
 — [combine them](combining-queries.md).
 
-The showcase's *parallel queries* screen reads three posts side by side.
+The showcase's [*parallel queries* screen](../examples/parallel-queries.mdx) reads three posts side by side.
 Opening it shows `fetching=3` before any answer arrives. Switch *Slow post 3*
 on and press *Refetch all*: the other two settle while post 3 still fetches,
 and the count drops to `fetching=1`. *Refetch post 2* moves only that post's
@@ -167,7 +167,7 @@ and combine the results. The other call styles have the same collection:
 `QueriesController(client, queries)` is it as a `ValueListenable`, and
 `QueriesObserver` is it without Flutter.
 
-The showcase's *query collections* screen is a list of posts built from a
+The showcase's [*query collections* screen](../examples/query-collections.mdx) is a list of posts built from a
 list of ids. *Reverse* reorders them without a single request; *Duplicate
 first* adds a second reader of the same entry (`observers=2`, still one
 fetch); *Add missing id* adds a post the server does not have, which fails
@@ -228,3 +228,8 @@ heterogeneous tuple is a record of separate reads, combined with
 `(a, b).combine(…)`. `useIsFetching` is `IsFetchingController`. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Normalised data or one key per entity](../cookbook/normalised-vs-per-entity-keys.md) compares a list of reads with one read of a map.
+- Guides: [Request waterfalls](request-waterfalls.md), for what parallel reads save you from.

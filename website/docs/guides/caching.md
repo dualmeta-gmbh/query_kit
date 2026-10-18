@@ -154,7 +154,7 @@ A client owns its garbage-collection timers, which is why a widget test has to
 
 ## Seeing it
 
-The `stale-and-gc` screen has one entry and a knob for every `StaleTime` and
+The [`stale-and-gc` screen](../examples/stale-and-gc.mdx) has one entry and a knob for every `StaleTime` and
 `GcTime` value. Pick *GC time* 5 s and press *Detach reader* (the icon with that
 tooltip): the entry has no observers, and five seconds later it is gone;
 *Attach reader* starts again from nothing. With *Stale time* set to
@@ -163,7 +163,7 @@ request — still does.
 
 <LiveDemo feature="stale-and-gc" />
 
-The `cache-inspector` screen lists every entry of the cache, with its status
+The [`cache-inspector` screen](../examples/cache-inspector.mdx) lists every entry of the cache, with its status
 and its observer count. Press *Load posts* and *Load todos*,
 then untick *Keep readers*: the observer counts drop to zero, and five
 seconds later the rows disappear as their entries are collected.
@@ -178,3 +178,8 @@ values are sealed types here instead of numbers: `staleTime: Infinity` is
 `StaleTime.infinite`, `'static'` is `StaleTime.static`, a function is
 `StaleTime.dynamic`, and `gcTime: Infinity` is `GcTime.never`.
 :::
+
+## See also
+
+- Cookbook: [List to detail, seeded](../cookbook/list-detail-seeding.md) reuses cached list data on a detail screen, and [offline first, and surviving a restart](../cookbook/offline-first-and-persistence.md) keeps the cache across launches.
+- Reference: [`QueryClient`](../reference/query-client.md) and [caches and observers](../reference/caches-and-observers.md).

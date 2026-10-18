@@ -101,3 +101,7 @@ They list every upstream test that was ported, adapted or left out and why,
 every bug a review found, and the table of deliberate divergences that
 [differences from TanStack Query](../reference/differences-from-tanstack.md)
 unpacks. [How fidelity is proven](fidelity.md) explains how to read them.
+
+## See also
+
+- [How the examples are built](examples.md), and the [feature matrix](../reference/feature-matrix.md) for what is in and out.

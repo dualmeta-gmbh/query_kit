@@ -133,7 +133,7 @@ QueryObserverOptions<List<Product>> quietProductListQuery(ProductApi api) =>
     productListQuery(api).copyWith(meta: ErrorReporting.silent);
 ```
 
-Try it: "Fetch a missing post" in the demo asks for a post that does not
+Try it: "Fetch a missing post" in the demo (the [global callbacks example](../examples/global-callbacks.mdx)) asks for a post that does not
 exist, with a `meta` that asks for a toast; the cache's handler reads it and
 shows the `SnackBar`. The log panel lists every cache callback as it runs.
 

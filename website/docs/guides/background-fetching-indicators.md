@@ -261,7 +261,7 @@ The filters are fixed for the controller's life; another set is another
 controller. Without a widget, `client.isFetching(filters: …)` is the same
 count, read once.
 
-Try it: open the screen below, turn on *Slow post 3* and press
+Try it: open the [parallel queries screen](../examples/parallel-queries.mdx) below, turn on *Slow post 3* and press
 *Refetch all*. The `fetching=` count next to the button drops as the fast posts
 land and stays at one while post 3 is still on its way, and each post's own
 row says `refreshing` while its data stays on screen.
@@ -281,3 +281,8 @@ See [mutation state](mutation-state.md).
 is the same; it is a `ValueListenable` because a Flutter widget subscribes
 through one. See [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Pull to refresh](../cookbook/pull-to-refresh.md), a `RefreshIndicator` that lasts as long as the refetch and keeps the list on failure.
+- Reference: [`IsFetchingController` and the other controllers](../reference/widgets-and-controllers.md).

@@ -8,7 +8,8 @@ description: TanStack Query in a Flutter app in four steps — a provider at the
 
 Four pieces: a client at the root of the app, a function that describes the
 query, a widget that reads it, and a write that tells the cache what it made
-stale. Ten minutes, and every later page builds on them.
+stale. Ten minutes, and every later page builds on them. If you have not seen
+what the library is for yet, the [overview](overview.md) comes first.
 
 ## 0. Install
 
@@ -194,11 +195,13 @@ as the real one.
 
 <LiveDemo feature="simple" height={560} />
 
-`packages/query_kit_flutter/example/` is a one-file tour of the same ground —
+`packages/query_kit_flutter/example/` is a [one-file tour](examples/one-file-tour.mdx) of the same ground —
 a provider, a query read two ways and a mutation that invalidates it, with
 no server. `flutter run` in that directory.
 
-For every feature as its own screen, see [the examples](examples/index.md).
+For every feature as its own screen, see [the examples](examples/index.md); for
+whole tasks, the [cookbook](cookbook/index.md); for one concept at a time, the
+[guides](guides/index.md).
 
 ## Next steps
 
@@ -215,3 +218,5 @@ For every feature as its own screen, see [the examples](examples/index.md).
   [optimistic updates](guides/optimistic-updates.md).
 - [Testing](guides/testing.md) — the teardown every widget test with a
   client needs at its end.
+- [Where the client lives](cookbook/dependency-injection.md) — one client, provided at the root and
+  reached from anywhere, once the app has more than one screen.
