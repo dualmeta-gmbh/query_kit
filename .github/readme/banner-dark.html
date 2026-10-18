@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- README banner, dark theme. 1280x480, rendered at 2x with a transparent
+     outside so the rounded corners sit on GitHub's own background:
+     Chrome --headless=new --force-device-scale-factor=2 --window-size=1280,480
+       --default-background-color=00000000 --virtual-time-budget=5000
+       --screenshot=banner-dark.png banner-dark.html -->
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=block" rel="stylesheet">
+<style>
+  html,body{margin:0;background:transparent}
+  .card{position:relative;width:1280px;height:480px;box-sizing:border-box;overflow:hidden;
+    border-radius:28px;border:1px solid #1d2028;background:#0a0b0f;
+    font-family:'Geist',system-ui,sans-serif;color:#ececf1}
+  .grid{position:absolute;left:700px;top:0;right:0;bottom:0;
+    background-image:linear-gradient(#1a1d24 1px,transparent 1px),linear-gradient(90deg,#1a1d24 1px,transparent 1px);
+    background-size:64px 64px;background-position:16px 16px;
+    -webkit-mask-image:radial-gradient(ellipse at 52% 50%,#000 25%,transparent 70%)}
+  .glow{position:absolute;left:760px;top:40px;width:420px;height:420px;border-radius:50%;
+    background:radial-gradient(circle,rgba(75,155,234,.22),transparent 65%)}
+  .left{position:absolute;left:80px;top:72px;width:620px}
+  .brand{display:flex;align-items:center;gap:14px}
+  .brand .name{font-size:32px;font-weight:700;letter-spacing:-.8px}
+  h1{margin:40px 0 0;font-size:66px;line-height:1.04;font-weight:700;letter-spacing:-2.4px}
+  h1 .blue{color:#56b8ff}
+  .sub{margin-top:22px;font-size:23px;line-height:1.4;color:#9aa1ad}
+  /* The logo's three cached entries, enlarged and labelled: newest in front. */
+  .entries{position:absolute;left:800px;top:64px;width:400px;height:352px}
+  .e{position:absolute;width:320px;height:128px;border-radius:40px;box-shadow:0 18px 40px rgba(0,0,0,.45);
+    font-family:'Geist Mono',monospace;font-size:19px;box-sizing:border-box;padding:0 30px;
+    display:flex;justify-content:space-between;align-items:baseline;padding-top:40px}
+  .e span{display:block}
+  .e .s{font-size:15px;letter-spacing:.6px;text-transform:uppercase;opacity:.8}
+  .e1{left:0;top:0;background:#a8cdf4;color:#0b3c70}
+  .e2{left:32px;top:112px;background:#4b9bea;color:#fff}
+  .e3{left:64px;top:224px;background:#0b6bcb;color:#fff;padding-top:52px}
+</style></head>
+<body><div class="card">
+  <div class="grid"></div><div class="glow"></div>
+  <div class="left">
+    <div class="brand">
+      <svg width="40" height="40" viewBox="2 2 28 28">
+        <rect x="4" y="4.5" width="20" height="8" rx="2.5" fill="#a8cdf4"/>
+        <rect x="6" y="11.5" width="20" height="8" rx="2.5" fill="#4b9bea"/>
+        <rect x="8" y="18.5" width="20" height="8" rx="2.5" fill="#0b6bcb"/>
+      </svg>
+      <div class="name">query_kit</div>
+    </div>
+    <h1>TanStack Query<br><span class="blue">for Dart and Flutter.</span></h1>
+    <div class="sub">Server data, cached and kept fresh. Upstream's own<br>test suite, ported case by case.</div>
+  </div>
+  <div class="entries">
+    <div class="e e1"><span>['user']</span><span class="s">stale</span></div>
+    <div class="e e2"><span>['todos', 2]</span><span class="s">fetching</span></div>
+    <div class="e e3"><span>['todo', 42]</span><span class="s">fresh</span></div>
+  </div>
+</div></body></html>
