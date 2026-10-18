@@ -7342,3 +7342,6 @@ changed in this round; the work is wording, the site, and tests.
   without a parent rebuild) still show the stale value for the second
   reader; this is the documented rule that Flutter does not re-run a cached
   child, and they are not pinned.
+  Counts after this round: binding **546** (427 + 108 matrix + 11), hooks
+  **335**, doc_snippets **48**; analyzer, the formatter scope, the jargon
+  check and the site build pass.
