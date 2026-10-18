@@ -1,7 +1,7 @@
 ---
 title: "Guides: TanStack Query concepts in Flutter"
 sidebar_label: Guides
-description: "Every guide to query_kit in one list, grouped by what you are doing: reading queries, refetching and the network, paging and early data, mutations, the cache and performance, and tools and architecture."
+description: "Every query_kit guide in one list, grouped by task: reading queries, refetching and the network, paging, mutations, the cache and tools."
 ---
 
 # Guides

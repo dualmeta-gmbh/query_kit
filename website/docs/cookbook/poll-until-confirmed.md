@@ -264,4 +264,4 @@ Query](../reference/differences-from-tanstack.md).
 
 ## See also
 
-- Guides: [Polling](../guides/polling.md) for `RefetchInterval` in general, and [mutations](../guides/mutations.md) for the write that comes first.
+- Guides: [Mutations](../guides/mutations.md), for the write that comes first.

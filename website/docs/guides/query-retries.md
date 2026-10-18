@@ -147,7 +147,7 @@ When the retries run out, the result is a `QueryError`. On a first load its
 `isLoadingError` is true; on a refresh, `isRefetchError` is, and
 `staleData` still holds what the screen was showing.
 
-Try it: in the screen below (the [retry example](../examples/retry.mdx) shows its source), pick *Retry* `2 times`, set *Fail the next* to
+Try it: in the [retry screen](../examples/retry.mdx) below, pick *Retry* `2 times`, set *Fail the next* to
 `2`, press *Arm* and then refetch. `failureCount=` climbs to 1 and 2 while
 `failureReason=` names the refusal, and the third attempt succeeds. With
 `10` failures armed, the same policy ends in an error after three requests.

@@ -255,7 +255,7 @@ with one page instead, reset the query:
 drops the pages it held and fetches the first one again. `maxPages` bounds
 the same cost ahead of time.
 
-Try it: scroll to the bottom of the list below (the [load more example](../examples/load-more.mdx) shows its source), or press *Load more*, and
+Try it: scroll to the bottom of the [load more example](../examples/load-more.mdx)'s list below, or press *Load more*, and
 `pages=` grows by one each time until *Nothing more to load* shows. Press
 *Go to about* and then *Back to list*: the rows are back at once, from the
 cache.

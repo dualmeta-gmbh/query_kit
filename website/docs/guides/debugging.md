@@ -197,5 +197,4 @@ fix.
 
 ## See also
 
-- Cookbook: [A global error snackbar](../cookbook/global-error-snackbar.md), one place where failed fetches and saves become something the user sees.
 - Guides: [Testing](testing.md), for asserting on what you saw here.

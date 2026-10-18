@@ -40,7 +40,7 @@ poll is an ordinary refetch: the data stays on screen, `isRefetching` is
 true while it runs, and [structural sharing](structural-sharing.md) keeps the
 rows that did not change.
 
-Try it: in the screen below (the [auto refetching example](../examples/auto-refetching.mdx) shows its source), pick `500 ms` and watch the strip's `fetches=`
+Try it: in the [auto refetching screen](../examples/auto-refetching.mdx) below, pick `500 ms` and watch the strip's `fetches=`
 grow; *Add tick* shows up by the next poll at the latest. Pick `dynamic` and
 the poll stops by itself once the list has three ticks — *Clear ticks* starts
 it again.

@@ -238,5 +238,5 @@ Query](../reference/differences-from-tanstack.md).
 
 ## See also
 
-- Guides: [Structural sharing](../guides/structural-sharing.md) and [what rebuilds, and when](../guides/render-optimizations.md), the two guides behind the equality this recipe sets up.
+- Guides: [What rebuilds, and when](../guides/render-optimizations.md), which relies on the equality this recipe sets up.
 - Cookbook: [Wiring dio or package:http](wiring-dio-and-http.md), where the JSON arrives before it becomes these models.

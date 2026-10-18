@@ -291,5 +291,5 @@ Query](../reference/differences-from-tanstack.md).
   mutations](cancelling-mutations.md) and [mutation state](mutation-state.md).
 - Offline, a mutation is paused rather than failed; see [network
   mode](network-mode.md).
-- [Forms and server validation](../cookbook/forms-and-server-validation.md) — a mutation-driven form with the server's field errors next to the fields.
-- The [Task manager example](../examples/task-manager.mdx) uses mutations for optimistic edits and a reminder that is confirmed later.
+- Cookbook: [Forms and server validation](../cookbook/forms-and-server-validation.md), a mutation-driven form with the server's field errors next to the fields.
+- Example: the [Task manager](../examples/task-manager.mdx) uses mutations for optimistic edits and a reminder that is confirmed later.

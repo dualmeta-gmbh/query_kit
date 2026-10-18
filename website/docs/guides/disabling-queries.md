@@ -152,4 +152,4 @@ Query](../reference/differences-from-tanstack.md).
 ## See also
 
 - Cookbook: [Search as you type](../cookbook/search-as-you-type.md) starts nothing until there is something to search for.
-- Guides: [Dependent queries](dependent-queries.md) for the waiting case, and [query keys](query-keys.md) for what the disabled query is keyed by.
+- Guides: [Query keys](query-keys.md), for what the disabled query is keyed by.

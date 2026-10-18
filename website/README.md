@@ -78,8 +78,8 @@ of building it in CI.
 
 A link that exists is not enough for a crawler to find a page, so
 `scripts/check-internal-links.mjs` runs after the build and fails when a doc
-page has fewer than two inbound links from the body of other pages (the navbar,
-sidebar and footer do not count), or when the sitemap and the built pages
+page has fewer than two inbound links from the body of other pages (links in the
+home page's `<main>` count; the navbar, sidebar and footer do not), or when the sitemap and the built pages
 disagree. A new page therefore needs a sentence or a "See also" line in the
 guide, example or recipe a reader would come from. `npm run check-links` runs
 it alone against an existing `build/`.

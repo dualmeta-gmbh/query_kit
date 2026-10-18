@@ -104,5 +104,4 @@ unpacks. [How fidelity is proven](fidelity.md) explains how to read them.
 
 ## See also
 
-- [How the examples are built](examples.md) and [credits, and what this is not](credits.md).
-- [Testing](../guides/testing.md) and the [feature matrix](../reference/feature-matrix.md), the user-facing side of the decisions recorded there.
+- [How the examples are built](examples.md), and the [feature matrix](../reference/feature-matrix.md) for what is in and out.

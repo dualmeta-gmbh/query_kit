@@ -127,7 +127,7 @@ as with a `PageStorageKey`, build it only once the rows are there. An
 infinite query starts again from its first page. There is no persistence of
 the cache in 1.0.
 
-Try it: in the screen below (the [load more example](../examples/load-more.mdx) shows its source), press *Load more* a couple of times, then press
+Try it: in the [load more screen](../examples/load-more.mdx) below, press *Load more* a couple of times, then press
 *Go to about*. The list is unmounted — its query has no reader — and *Back
 to list* rebuilds it with every page on the first frame and no new request.
 This demo's list has no `PageStorageKey`, so it comes back at the top: the

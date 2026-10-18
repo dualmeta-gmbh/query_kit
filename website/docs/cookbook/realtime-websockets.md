@@ -280,5 +280,5 @@ Query](../reference/differences-from-tanstack.md).
 
 ## See also
 
-- Guides: [Query invalidation](../guides/query-invalidation.md), [updates from mutation responses](../guides/updates-from-mutation-responses.md) for `updateQueryData`, and [polling](../guides/polling.md) for the alternative that needs no socket.
+- Guides: [Query invalidation](../guides/query-invalidation.md) and [updates from mutation responses](../guides/updates-from-mutation-responses.md) for `updateQueryData`.
 - Cookbook: [Lifecycle and connectivity wiring](lifecycle-and-connectivity-wiring.md) for the reconnect that triggers the resync.

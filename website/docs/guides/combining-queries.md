@@ -216,5 +216,6 @@ Query](../reference/differences-from-tanstack.md).
 
 ## See also
 
-- Guides: [Parallel queries](parallel-queries.md) for independent reads, and the [query collections example](../examples/query-collections.mdx) for a list of ids turned into a list of reads.
+- Guides: [Parallel queries](parallel-queries.md), for independent reads.
+- Examples: the [query collections example](../examples/query-collections.mdx) turns a list of ids into a list of reads.
 - Reference: [`CombinedResult`](../reference/results.md).

@@ -6,7 +6,8 @@
 // they say nothing about a page; the links a human wrote into the body of
 // other pages do. This counts those: for every doc page of the build, how
 // many other pages link to it from inside their content (the article of a doc
-// page, the `<main>` of the home page), and fails below MIN_INBOUND.
+// page, the `<main>` of the home page, which counts as a source), and fails
+// below MIN_INBOUND.
 //
 // The second check is the sitemap's. Every URL in it must be a page of the
 // build, and every doc page that has content must be in it. The page at
@@ -59,10 +60,10 @@ const mainContent = /<main[^>]*>([\s\S]*?)<\/main>/
 
 const inbound = new Map()
 const docRoutes = []
-for (const [path, file] of pages) {
-  const html = readFileSync(file, 'utf8')
-  const doc = html.match(docContent)
-  if (doc && path.startsWith('/docs/')) {
+// Every page under /docs/ is a doc page; `/docs` itself is the redirect stub.
+const builtDocPages = [...pages.keys()].filter((path) => path.startsWith('/docs/'))
+for (const path of builtDocPages) {
+  if (docContent.test(readFileSync(pages.get(path), 'utf8'))) {
     docRoutes.push(path)
     inbound.set(path, new Set())
   }
@@ -79,6 +80,17 @@ for (const [path, file] of pages) {
 }
 
 const problems = []
+
+// A theme change that renames the content container would make every page
+// "unrecognised" and the counts below meaningless; fail rather than pass empty.
+if (docRoutes.length !== builtDocPages.length) {
+  const unrecognised = builtDocPages.filter((path) => !inbound.has(path))
+  problems.push(
+    `${unrecognised.length} of ${builtDocPages.length} built doc pages have no \`theme-doc-markdown\` container ` +
+      `(${unrecognised.slice(0, 3).join(', ')}${unrecognised.length > 3 ? ', ...' : ''}); ` +
+      'the theme markup changed, so update docContent in this script',
+  )
+}
 
 const counts = docRoutes.map((r) => inbound.get(r).size).sort((a, b) => a - b)
 const median = counts.length === 0 ? 0 : counts[Math.floor(counts.length / 2)]
@@ -119,8 +131,10 @@ console.log(
 )
 if (problems.length > 0) {
   console.error(`check-internal-links: ${problems.length} problem(s):\n  ${problems.join('\n  ')}`)
-  console.error(
-    'Link the page from the guide, example or recipe a reader would come from it by, in a sentence or a "See also" list.',
-  )
+  if (low.some((path) => !ALLOWED_LOW_INBOUND.has(path))) {
+    console.error(
+      'Link the page from the guide, example or recipe a reader would come from it by, in a sentence or a "See also" list.',
+    )
+  }
   process.exit(1)
 }

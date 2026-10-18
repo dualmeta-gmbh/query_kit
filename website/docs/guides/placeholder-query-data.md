@@ -111,7 +111,7 @@ in the `context.query` and `QueryMixin` styles, give the read an `id:`. The
 `keepPrevious` is `PlaceholderData.compute((previousData, _) =>
 previousData)` with a name — and `const`.
 
-Try it: in the screen below (the [initial and placeholder example](../examples/initial-and-placeholder.mdx) shows its source), card **B** shows the stand-in title with
+Try it: in the [initial and placeholder screen](../examples/initial-and-placeholder.mdx) below, card **B** shows the stand-in title with
 `isPlaceholderData=true` and `cache=empty` while post 4 loads, then the real
 title with `false` — the cache never held the placeholder. In card **C**,
 switch between the posts: the previous post stays on screen, flagged, until

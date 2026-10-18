@@ -174,4 +174,4 @@ ran once per reader.
 ## See also
 
 - Cookbook: [A global error snackbar](../cookbook/global-error-snackbar.md) turns these callbacks into one toast with a per-query way out.
-- Guides: [Side effects](side-effects.md) for the per-widget alternatives, and [debugging](debugging.md) for logging every cache event.
+- Guides: [Debugging](debugging.md), for logging every cache event.

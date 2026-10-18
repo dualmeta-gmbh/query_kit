@@ -138,7 +138,7 @@ it is not refetched — which is why its age matters:
 | the list's `dataUpdatedAt`, 40 s ago | one minute | shown, no request; stale 20 s later, with the list |
 | bundled, weeks ago | one day | shown, refetched at once |
 
-Try it: in the screen below (the [initial and placeholder example](../examples/initial-and-placeholder.mdx) shows its source), open a post from card **A** within thirty
+Try it: in the [initial and placeholder screen](../examples/initial-and-placeholder.mdx) below, open a post from card **A** within thirty
 seconds of the list loading. Its title shows at once from the list, and the
 strip's `fetches=` stays `0` — the seed is as old as the list, younger than
 the thirty-second `staleTime`. Turn on *Treat initial data as

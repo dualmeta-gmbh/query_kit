@@ -249,5 +249,5 @@ Query](../reference/differences-from-tanstack.md).
 
 ## See also
 
-- Guides: [Query cancellation](../guides/query-cancellation.md) and [cancelling mutations](../guides/cancelling-mutations.md), the two halves of stopping work, and [network mode](../guides/network-mode.md) for requests that wait.
+- Guides: [Query cancellation](../guides/query-cancellation.md), the read side of stopping work.
 - Examples: the [mutation cancel example](../examples/mutation-cancel.mdx) cancels a slow write.

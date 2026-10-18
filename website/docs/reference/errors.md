@@ -229,4 +229,4 @@ The full list is in
 ## See also
 
 - Cookbook: [A global error snackbar](../cookbook/global-error-snackbar.md) for showing a failure to the user, and [forms and server validation](../cookbook/forms-and-server-validation.md) for a refusal that belongs next to a field.
-- Guides: [Debugging](../guides/debugging.md) and [query retries](../guides/query-retries.md).
+- Guides: [Query retries](../guides/query-retries.md).

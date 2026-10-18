@@ -317,5 +317,5 @@ Query](../reference/differences-from-tanstack.md).
 
 ## See also
 
-- Guides: [Does this replace state management?](../guides/does-this-replace-state-management.md) for the argument, [four ways to read a query](../guides/reading-queries-in-widgets.md) for the other call styles, and [hooks](../guides/hooks.md) for `flutter_hooks`.
+- Guides: [Hooks](../guides/hooks.md), for apps written with `flutter_hooks`.
 - Reference: [Widgets and controllers](../reference/widgets-and-controllers.md) for `QueryController`.

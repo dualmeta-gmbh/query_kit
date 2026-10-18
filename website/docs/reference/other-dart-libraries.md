@@ -218,5 +218,5 @@ React Query](../coming-from-react-query.md).
 
 ## See also
 
-- [Overview](../overview.md) and the [quick start](../quick-start.md), if you are choosing by trying one.
+- The [quick start](../quick-start.md), if you are choosing by trying one.
 - [Does this replace state management?](../guides/does-this-replace-state-management.md) and the [guides index](../guides/index.md).

@@ -335,5 +335,5 @@ Query](../reference/differences-from-tanstack.md).
 
 ## See also
 
-- Guides: [Network mode](../guides/network-mode.md) and [connectivity](../guides/connectivity.md) for how the client decides it is offline, and [caching](../guides/caching.md) for `gcTime`.
+- Guides: [Caching](../guides/caching.md), for `gcTime`.
 - Cookbook: [Lifecycle and connectivity wiring](lifecycle-and-connectivity-wiring.md) for the connectivity side of the same app.

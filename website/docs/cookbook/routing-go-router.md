@@ -263,5 +263,5 @@ Query](../reference/differences-from-tanstack.md).
 
 ## See also
 
-- Guides: [Prefetching](../guides/prefetching.md), [initial query data](../guides/initial-query-data.md) and [request waterfalls](../guides/request-waterfalls.md).
+- Guides: [Request waterfalls](../guides/request-waterfalls.md), for what a prefetch on the tap saves.
 - Cookbook: [List to detail, seeded](list-detail-seeding.md) for what the detail screen does with a seed.
