@@ -26,6 +26,27 @@ guides, a cookbook and live examples.
 > [this repository's issues](https://github.com/dualmeta-gmbh/query_kit/issues),
 > not to TanStack.
 
+## Why this package
+
+![Four ways to read a query, one cache: context.query, QueryBuilder, QueryMixin with watchQuery, and QueryController all read the same cache entry, and every reader shares one request](https://raw.githubusercontent.com/dualmeta-gmbh/query_kit/main/.github/readme/four-styles-light.png)
+
+- **Checked against TanStack Query's own tests**: 414 of the 536 upstream
+  core cases are ported and run against the core, and every case left out is
+  listed with its reason.
+  [How fidelity is measured](https://query-kit.dualmeta.io/docs/project/fidelity).
+- **Four equal ways to read a query**, with the same options and the same
+  behaviour. The opt-in [`query_kit_hooks`](https://pub.dev/packages/query_kit_hooks)
+  adds `useQuery` for apps on `flutter_hooks`.
+- **Results the compiler checks.** A result is a sealed type, so a `switch`
+  over pending, error and success is exhaustive. A failed refetch keeps the
+  data already on screen.
+- **Built to be tested.** A client is an object, not a global, and time goes
+  through `package:clock`.
+
+Not there yet: a built-in persister and devtools.
+[Other Dart libraries](https://query-kit.dualmeta.io/docs/reference/other-dart-libraries)
+describes the alternatives.
+
 ## Install
 
 ```bash

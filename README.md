@@ -31,6 +31,37 @@ ported case by case.
 > before it has been reproduced. Judge it on that basis; the evidence is in
 > this repository.
 
+## Why query_kit
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/readme/four-styles-dark.png">
+  <img src=".github/readme/four-styles-light.png" alt="Four ways to read a query, one cache: context.query, QueryBuilder, QueryMixin with watchQuery, and QueryController all read the same cache entry, and every reader shares one request" width="100%">
+</picture>
+
+- **Checked against TanStack Query's own tests.** Upstream's test suite is
+  ported case by case and run against this code: 414 of the 536 core cases
+  and 269 of the 305 hook cases, with every case left out listed with its
+  reason. [How fidelity is measured](https://query-kit.dualmeta.io/docs/project/fidelity).
+- **Four equal ways to read a query.** `context.query(...)`, a builder
+  widget, a `State` mixin, or a controller that is a plain `ValueListenable`.
+  All four take the same options, and none of them is the default. Apps on
+  `flutter_hooks` can add `useQuery` with the hooks add-on.
+- **No dependency beyond Flutter.** The binding needs Flutter and the core;
+  the core needs `clock` and `meta`. Connectivity comes from whichever
+  package you already use.
+- **Results the compiler checks.** A query result is a sealed type, so a
+  `switch` over pending, error and success is exhaustive and there is no
+  `data!`. A failed refetch keeps the data already on screen.
+- **A pure-Dart core.** A server or a command-line tool uses the same cache
+  without Flutter, and the core's suite also runs compiled to JavaScript.
+- **Built to be tested.** A client is an object, not a global, and time goes
+  through `package:clock`, so a test controls staleness and garbage
+  collection completely.
+
+What it does not have yet: a built-in persister and devtools.
+[Other Dart libraries](https://query-kit.dualmeta.io/docs/reference/other-dart-libraries)
+describes the alternatives and where each may fit better.
+
 ## Packages
 
 | Package | What it is |
