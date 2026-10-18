@@ -190,27 +190,61 @@ serve` has it all.
   feature matrix — is derived from those files rather than reinvented, so the
   two do not drift into disagreeing.
 
+## Search
+
+The navbar's search box is [`@easyops-cn/docusaurus-search-local`](https://github.com/easyops-cn/docusaurus-search-local)
+([#74](https://github.com/dualmeta-gmbh/query_kit/issues/74)): `npm run build`
+writes a [lunr](https://lunrjs.com) index of the doc pages into
+`build/search-index-<hash>.json`, and the browser fetches it the first time
+the box is used. The index exists only after a build: under `npm start` the
+box renders but answers "The search index is only available when you run
+docusaurus build!", so try search with `npm run build && npm run serve`. The
+hash in the name covers the plugin's version and the raw `docs/` Markdown only,
+so an edit elsewhere (a Dart source a page imports, the sidebar, the options)
+keeps the name, and a reader's cache may serve the previous index until Pages'
+ten-minute `max-age` runs out. There is no account, crawler, API key or outside service, so
+it works from any static host and offline once loaded. Algolia DocSearch would
+need all four; the Orama and `docusaurus-lunr-search` plugins were the other
+candidates, and the first is less used and the second has not been released
+since January 2025.
+
+Only `docs/` is indexed (`indexPages` is off: the home page repeats the
+overview, and the 404 would be a result). The API reference is pub.dev's
+dartdoc, with its own search. The results page, `/search`, is `noindex`
+(`src/theme/SearchPage` says it with `name="robots"`; the plugin's own tag uses
+`property`, which crawlers do not read) and `sitemap.ignorePatterns` keeps it
+out of the sitemap. The plugin's `open-ask-ai` peer is optional and not
+installed. `e2e/tests/site-search.spec.ts` types into the box.
+
+The index is about 5.5 MB for 119 pages (1.4 MB gzipped, which is what
+Pages serves), fetched on first use rather than with a page.
+
 ## `npm audit`
 
-`npm audit` reports 26 advisories (8 moderate, 18 high) on a clean `npm ci` at
-Docusaurus 3.10.2, and that is the state this repository accepts for now —
-decided in [C30](https://github.com/dualmeta-gmbh/query_kit/issues/44) and
-re-checked on 2026-09-12. What was checked:
+`npm audit` reports 59 advisories (21 moderate, 20 high, 18 critical) on a
+clean `npm ci` at Docusaurus 3.10.2, measured on 2026-10-18 with and without
+`--omit=dev`: the same 59 either way, because Docusaurus is a regular
+dependency of the site's `package.json`. It was 26 (8 moderate, 18 high) on
+2026-09-12, and the advisory database grew, not the dependency tree. Adding the
+search plugin changed nothing: 59 before and 59 after, none of them in its
+tree. The state is accepted for now, decided in
+[C30](https://github.com/dualmeta-gmbh/query_kit/issues/44). What was checked:
 
 - Every one of them is transitive and belongs to the **build** toolchain —
-  `image-size` through `@docusaurus/mdx-loader`, `webpack-dev-server` →
-  `sockjs` → `uuid`, `css-minimizer-webpack-plugin` → `serialize-javascript`.
-  None of it is shipped: `npm run build` emits static HTML, CSS and JS, and
-  nothing in `build/` is any of these packages. The dev server is a localhost
-  tool.
-- `npm audit fix` changes nothing (`up to date`): every fixed version is
-  outside the range Docusaurus 3.10.2 pins. The remedy is a Docusaurus major
-  bump, which is a site-wide migration and a deliberate step of its own — not
-  something to slip into a release commit.
+  Docusaurus's own packages through `@docusaurus/mdx-loader` and
+  `@docusaurus/utils`, `webpack-dev-server`, `serialize-javascript`,
+  `image-size`, `shell-quote`, `proxy-addr`. None of it is shipped: `npm run
+  build` emits static HTML, CSS and JS, and nothing in `build/` is any of
+  these packages. The dev server is a localhost tool.
+- `npm audit fix` is no longer a no-op: a dry run changes 20-odd packages
+  within their ranges and leaves 48 (17 moderate, 15 high, 16 critical). It is
+  not applied here, because a lockfile rewrite of that size is a change of its
+  own, not part of a search ticket. The rest needs Docusaurus's pinned
+  versions to move, which is a major bump and a deliberate step of its own.
 
-The site is deployed now (2026-09-23), and none of this reaches it: what
-Pages serves is `build/`, which contains none of these packages. Treat a
-Docusaurus major as the ticket that closes it. An advisory that reaches the *built*
+The site is deployed (2026-09-23), and none of this reaches it: what Pages
+serves is `build/`, which contains none of these packages. Treat a Docusaurus
+major as the ticket that closes it. An advisory that reaches the *built*
 output, or one in a package the published Dart packages depend on, is a
 different matter and blocks.
 
