@@ -180,30 +180,30 @@ elif [ "$platform" = macos ] || [ "$platform" = linux ]; then
 elif [ "$platform" = ios ]; then
   # One run per file, and a file whose app never came up ("loading … (failed)",
   # "Failed to load": the simulator did not start it, or its Dart Development
-  # Service did not) once more, on a simulator booted afresh: on a hosted
-  # runner the first app after boot twice met "The log reader failed
-  # unexpectedly", and the same simulator failed the same way again. No case
-  # of that file ran, so the second run is its first; a case that ran and
-  # failed is not run again.
+  # Service did not) once more, after the others. On a hosted runner the first
+  # app after boot met "The log reader failed unexpectedly" three times in
+  # three tries, on the same simulator and on one booted afresh, while every
+  # file after it came up. No case of that file ran, so the second run is its
+  # first; a case that ran and failed is not run again.
   if [ "$#" -eq 0 ]; then set -- integration_test/*_test.dart; fi
   failed=()
+  again=()
   for target in "$@"; do
     echo "run.sh: $target"
     out="$(mktemp)"
     if "$flutter" test "$target" -d "$device" 2>&1 | tee "$out"; then
-      rm -f "$out"
-      continue
-    fi
-    if grep -qE 'loading .*\(failed\)$|Failed to load "' "$out"; then
-      echo "run.sh: $target: the app did not come up; once more, on a rebooted simulator"
-      xcrun simctl shutdown "$device" 2>/dev/null || true
-      xcrun simctl boot "$device"
-      xcrun simctl bootstatus "$device" -b >/dev/null
-      "$flutter" test "$target" -d "$device" || failed+=("$target")
+      :
+    elif grep -qE 'loading .*\(failed\)$|Failed to load "' "$out"; then
+      echo "run.sh: $target: the app did not come up; once more after the others"
+      again+=("$target")
     else
       failed+=("$target")
     fi
     rm -f "$out"
+  done
+  for target in "${again[@]+"${again[@]}"}"; do
+    echo "run.sh: $target, once more"
+    "$flutter" test "$target" -d "$device" || failed+=("$target")
   done
   if [ "${#failed[@]}" -gt 0 ]; then
     echo "run.sh: failed ($platform): ${failed[*]}" >&2
