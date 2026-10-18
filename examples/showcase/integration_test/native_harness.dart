@@ -120,11 +120,15 @@ Future<Object?> _call(String method, Uri uri, [Object? body]) async {
   return response.data;
 }
 
-/// The host refused a trip because the session is at the login window.
+/// The host refused a trip because the session is at the login window:
+/// either the case did not skip, or the session got there after
+/// [probeDevice] asked, and the files after this one skip.
 Never _refused(DioException error) => throw StateError(
     'The host cannot send the app away: its macOS session is at the login '
     'window and no app can come to the front. A case that leaves the app '
-    'should have skipped (`skip: leaveSkip`, after `await probeDevice()`).');
+    'skips (`skip: leaveSkip`, after `await probeDevice()`); if it did, the '
+    'session went to the login window after the probe, and this run does '
+    'not count for the trip-away cases (#109).');
 
 /// When the app was in the background, as [Device.background] reports it.
 typedef Absence = ({DateTime left, DateTime back});

@@ -5,9 +5,9 @@
 // 10.0.2.2, an iOS simulator shares it).
 //
 //   GET  /platform                       → { platform, device, appId, loginWindow, ci }  `loginWindow`:
-//                                          macOS only, true when the session is at the login
-//                                          window (seen on every look for 5 s), so no app can come to the front; `ci`:
-//                                          running under GitHub Actions
+//                                          macOS only, true when the app could not be brought to
+//                                          the front and the login window is there on every look
+//                                          for 5 s; `ci`: running under GitHub Actions
 //   POST /background?ms=                 → { left, back }  background the app, wait, bring it
 //                                          back; `left` once it was sent away, `back` as its return
 //                                          was asked for: ISO times, as the backend logs them
@@ -146,23 +146,46 @@ async function who() {
 
 // A macOS session that sits at the login window (a CI runner whose screen is
 // locked, say) has no app in front and lets none come: the cases that leave
-// the app cannot be run there, and the tests skip them. The front app changes
-// in the first minute of a session, so one look is not enough: it is the
-// login window only if every look, 500 ms apart for up to 5 s, says so (any
-// other app in front ends it at once). Asked when the suite starts, with the
-// app up, and settled for the run (#109).
+// the app cannot be run there, and the tests skip them. Asked when a test
+// file starts, with the app up, by trying what those cases need: bringing it
+// to the front. Only if that fails and the login window is in front on every
+// look, 500 ms apart for 5 s, is the answer yes. A sample of the front app
+// alone said no on a runner that was at the login window throughout, and the
+// answer holds for the run: every trip away then failed instead of skipping
+// (#109). A session that goes to the login window later is found by the trip
+// that fails there (`refuseAtLoginWindow`).
+const loginWindowBundle = 'com.apple.loginwindow'
+const loginWindowRefusal = { loginWindow: true, message: 'the macOS session is at the login window; no app can come to the front' }
 let loginWindowAnswer: Promise<boolean> | undefined
 function atLoginWindow() {
   if (platform !== 'macos') return Promise.resolve(false)
-  loginWindowAnswer ??= (async () => {
-    for (let looked = 0; looked <= 5000; looked += 500) {
-      if ((await frontmost().catch(() => '')) !== 'com.apple.loginwindow') return false
-      if (looked < 5000) await sleep(500)
-    }
-    console.log('device_control: the macOS session is at the login window; no app can come to the front')
-    return true
-  })()
+  loginWindowAnswer ??= bringToFront().then(
+    () => false,
+    () => onlyLoginWindow(),
+  )
   return loginWindowAnswer
+}
+
+// Whether every look for 5 s finds the login window in front; any other app
+// in front ends it at once.
+async function onlyLoginWindow() {
+  for (let looked = 0; looked <= 5000; looked += 500) {
+    if ((await frontmost().catch(() => '')) !== loginWindowBundle) return false
+    if (looked < 5000) await sleep(500)
+  }
+  console.log('device_control: the macOS session is at the login window; no app can come to the front')
+  return true
+}
+
+// A trip away that failed because the session went to the login window after
+// the question was settled: refused as the question would now answer it, and
+// the answer changed for the files still to come.
+async function refuseAtLoginWindow(error: unknown): Promise<never> {
+  if (platform === 'macos' && (await onlyLoginWindow())) {
+    loginWindowAnswer = Promise.resolve(true)
+    throw new Conflict(loginWindowRefusal)
+  }
+  throw error
 }
 
 // --- the app's lifecycle ----------------------------------------------------
@@ -293,10 +316,10 @@ const routes: Record<string, (url: URL, parts: string[]) => Promise<unknown>> = 
   'GET platform': async () => ({ platform, device, appId, loginWindow: await atLoginWindow(), ci: process.env.GITHUB_ACTIONS === 'true' }),
   'POST background': async (url) => {
     deviceOnly('background')
-    if (await atLoginWindow()) throw new Conflict({ loginWindow: true, message: 'the macOS session is at the login window; no app can come to the front' })
+    if (await atLoginWindow()) throw new Conflict(loginWindowRefusal)
     const ms = Number(url.searchParams.get('ms') ?? 2000)
     const after = url.searchParams.get('after')
-    if (after === null) return background(ms)
+    if (after === null) return background(ms).catch(refuseAtLoginWindow)
     setTimeout(() => background(ms).catch((error) => console.error('background failed', error)), Number(after))
     return { ok: true }
   },
