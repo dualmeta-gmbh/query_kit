@@ -131,19 +131,39 @@ Future<void> main() async {
 
       final absence = await Device.background(away);
 
-      final stopped = states.firstWhere((entry) => entry.$2 == stop).$1;
-      // The window ends where the app is focused again: when its return was
-      // asked for, or earlier if the platform brought it back by itself — an
-      // emulator under load showed it again (`inactive`, focused on a phone)
-      // two seconds into a ten-second trip, and the interval rightly ran.
+      // A loaded simulator reports the trip late, after the host is done
+      // with it: wait for the app's own word that it stopped and is back.
       final focusedAgain = isDesktop
           ? {AppLifecycleState.resumed}
           : {AppLifecycleState.inactive, AppLifecycleState.resumed};
+      bool cameBack() {
+        final at = states.indexWhere((entry) => entry.$2 == stop);
+        return at >= 0 &&
+            states.skip(at + 1).any((entry) => focusedAgain.contains(entry.$2));
+      }
+
+      for (var waited = 0; !cameBack() && waited < 10000; waited += 250) {
+        await settleFor(tester, const Duration(milliseconds: 250));
+      }
+      final stopped = states
+          .where((entry) => entry.$2 == stop)
+          .map((entry) => entry.$1)
+          .firstOrNull;
+      if (stopped == null) fail('the app never stopped; lifecycle: $states');
+      // The window ends where the app is focused again, by its own lifecycle
+      // and on its own clock, not where the host asked for its return: an
+      // emulator under load showed it again (`inactive`, focused on a phone)
+      // two seconds into a ten-second trip, and the interval rightly ran; a
+      // simulator on three cores reported `paused` 1.4 s after the return
+      // was asked for, and the host's moment then came before the stop.
       final returned = states
           .where((entry) =>
               entry.$1.isAfter(stopped) && focusedAgain.contains(entry.$2))
           .map((entry) => entry.$1)
-          .fold(absence.back, (end, at) => at.isBefore(end) ? at : end);
+          .firstOrNull;
+      if (returned == null) {
+        fail('the app was not focused again; lifecycle: $states');
+      }
       // A poll begun before the stop may still be answered after it; none
       // may begin while the app is away.
       final during = polls

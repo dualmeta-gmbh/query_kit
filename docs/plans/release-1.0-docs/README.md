@@ -7,7 +7,9 @@ everywhere, final name `query_kit`. Worked in orchestrator mode on branch
 `release/1.0-docs`; nothing is pushed, published or deployed by the agents.
 
 Start every session by reading this file and comparing the log with
-`git log --oneline release/1.0-docs`.
+`git log --oneline release/1.0-docs`. (The pass is complete and the branch is
+deleted; its head is the tag `query_kit-v1.0.0`, so read its history with
+`git log --oneline query_kit-v1.0.0`.)
 
 ## Status
 
