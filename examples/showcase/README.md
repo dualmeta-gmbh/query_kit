@@ -326,9 +326,13 @@ which a desktop counts as unfocused, so the lifecycle cases wait for that
 there (`isDesktop`), and a case that leaves the app skips only where nothing
 can send it away (`canLeave`: the web, and Linux, whose virtual display has
 no window manager, and a Mac whose session sits at the login window, which
-`probeDevice` asks `device_control` for). On macOS
+`probeDevice` asks `device_control` for: the host tries to bring the app to
+the front, and only when that fails with `loginwindow` in front for five
+seconds is the answer yes). On macOS
 `background` first puts the app in front (`open -b`, then AppleScript, each
-logged to the device control's log, and a case fails when neither does),
+logged to the device control's log, and a case fails when neither does;
+a session that has gone to the login window since the probe refuses the
+trip with a 409 instead, and the files after it skip),
 brings Finder to the front and the app back the same way; keep the window
 uncovered while it runs, since a
 covered one is given frames slowly. Blacksmith's macOS runner is at the login
