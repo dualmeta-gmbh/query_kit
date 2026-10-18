@@ -19,6 +19,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Guides & concepts',
       collapsed: false,
+      link: { type: 'doc', id: 'guides/index' },
       items: [
         {
           type: 'category',
@@ -225,12 +226,18 @@ const sidebars: SidebarsConfig = {
         'reference/feature-matrix',
         'reference/troubleshooting',
         'reference/differences-from-tanstack',
+        'reference/other-dart-libraries',
       ],
     },
     {
       type: 'category',
       label: 'Project',
-      items: ['project/credits', 'project/fidelity', 'project/examples'],
+      items: [
+        'project/credits',
+        'project/fidelity',
+        'project/design-notes',
+        'project/examples',
+      ],
     },
   ],
 }

@@ -92,7 +92,8 @@ strategy, this sentence — was decided by an agent.
 - **Example applications** that use the library for real, and a first
   integration into a production app.
 
-What each of these found is on [how fidelity is proven](fidelity.md).
+What each of these found is on [how fidelity is proven](fidelity.md). The
+[design notes](design-notes.md) say where the reasoning behind the design is written down.
 
 None of that makes the code correct. It does mean the claims on this site are
 the kind you can check, and every one of them names the file that would prove

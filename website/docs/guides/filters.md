@@ -162,7 +162,7 @@ void Function() logKitchen(QueryClient client) =>
 
 `MutationFilters` has the same `matches(mutation)`.
 
-The `invalidation-and-filters` screen runs these fields against a small
+The [`invalidation-and-filters` screen](../examples/invalidation-and-filters.mdx) runs these fields against a small
 cache. Tick *Fail post 2 next*, press *Refetch post 2*, then *Predicate:
 errored*: only the failed post is invalidated. *Refetch stale only* refetches
 the posts and leaves the todos alone, which are fresh for thirty seconds.
@@ -175,3 +175,8 @@ The same fields, with two spellings changed: `type: 'active'` is
 argument rather than the first positional one. `matches` is TanStack Query's
 exported `matchQuery` and `matchMutation`.
 :::
+
+## See also
+
+- Guides: [Query invalidation](query-invalidation.md) and [query keys](query-keys.md), where filters are used most.
+- Reference: [`QueryClient`](../reference/query-client.md) lists every method that takes `filters:`.

@@ -468,6 +468,23 @@ void disconnect(QueryClient client, QueryKey deviceKey) {
 }
 // <<<
 
+// >>> reference/troubleshooting.md#feeds-itself
+void Function() rebuildOnCacheChanges(
+  QueryClient client,
+  void Function() rebuild,
+) =>
+    client.queryCache.subscribe((event) {
+      // These are about readers: the first fires when a build hands a
+      // reader changed options, the second for every result it delivers.
+      // Rebuilding on them makes the screen feed itself.
+      if (event is QueryObserverOptionsUpdated ||
+          event is QueryObserverResultsUpdated) {
+        return;
+      }
+      rebuild();
+    });
+// <<<
+
 // ---------------------------------------------------------------------------
 // guides/render-optimizations.md
 // ---------------------------------------------------------------------------

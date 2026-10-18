@@ -7,6 +7,7 @@
 #   e2e-native/run.sh android [test file …]   an Android emulator (AVD, default the first one listed)
 #   e2e-native/run.sh macos   [test file …]   this Mac, as a desktop app: its window is sent away by
 #                                             bringing Finder to the front
+#                                             (skipped when the session is at the login window)
 #   e2e-native/run.sh linux   [test file …]   a Linux desktop app, under xvfb-run when there is no
 #                                             DISPLAY; nothing sends it away, so the tests that
 #                                             leave the app skip themselves

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.1
+
+- Fixed #108: a widget that read a query through an outer `context` or `QueryMixin` could keep
+  showing old data after a nested builder wrote the cache and reread it
+  through that same outer `context` or `QueryMixin`. The reread consumed the
+  outer reader's pending notification, so the outer widget never rebuilt. It now
+  rebuilds. This covers direct reads in a `LayoutBuilder` callback, builds
+  forced by a parent, and nested children mounted first or replaced later, for
+  queries, infinite queries and mutations.
+- To be safe, a widget may now rebuild once more than before in those cases,
+  when everything on screen has already updated.
+- **Remaining limit:** the outer widget follows only if the nested reread has no
+  `buildWhen`. A nested reread with any `buildWhen`, even one that always
+  returns true, can still leave the outer widget showing old data. Read through
+  the nested builder's own context, or give it a widget of its own. Writing the
+  cache from `build` on every build rebuilds the outer widget on every frame:
+  write from a callback instead.
+- Nothing else changes: reads end as before, and `RebuildRule` is unchanged.
+
 ## 1.1.0
 
 - A new library, `package:query_kit_flutter/adapter.dart`, exports

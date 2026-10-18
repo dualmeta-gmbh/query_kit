@@ -298,7 +298,7 @@ final project = context.watch<QueryController<Project, Project>>().value;
 
 ## See it run
 
-The four call styles demo reads one cache entry through `context.query`,
+The [four call styles example](../examples/four-call-styles.mdx) reads one cache entry through `context.query`,
 `QueryBuilder`, `QueryMixin` and `QueryController`. The controller is the
 adapter this whole page builds on. Press *Refetch* at the top, which goes
 through card 4's controller: one request goes out, and all five readers show
@@ -314,3 +314,8 @@ exposed as a Flutter `ValueListenable` so that any state package can listen
 to it. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Hooks](../guides/hooks.md), for apps written with `flutter_hooks`.
+- Reference: [Widgets and controllers](../reference/widgets-and-controllers.md) for `QueryController`.

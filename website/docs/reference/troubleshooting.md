@@ -8,6 +8,9 @@ description: Symptom first — what you see, why it happens, and what to do inst
 Symptom first. Most of these are TanStack Query behaviour that query_kit keeps
 on purpose, so the mechanism is worth knowing even once the fix is in.
 
+The last three entries are about testing an app's screens, in widget tests and
+in browser-driven tests.
+
 ## My polling never resumes after I paused it in a callback
 
 **Symptom.** A `RefetchInterval.dynamic` (or an `Enabled.when`) reads state
@@ -326,6 +329,31 @@ keeps its key.
 `build`; it can then be kept in a field, or be `const`, and its reads live
 and go with it.
 
+## After a cache write in a nested builder the outer widget shows old data
+
+**Symptom.** A nested builder — a `ValueListenableBuilder`, a `StatefulBuilder`
+or a `LayoutBuilder` — writes the cache while it builds (a `setQueryData`, a
+`mutate`) and then reads the same query through the *outer* `context` (or the
+mixin's `watchQuery`). The nested part shows the new data; the outer widget,
+which read it in its own `build`, goes on showing the old.
+
+**Mechanism.** The nested read happens before the write's notification
+reaches the outer widget, and it moves the baseline the outer widget compares
+the notification against. When the nested read has no `buildWhen`, the binding
+remembers that the outer widget has not shown the change, and it rebuilds once
+more. The outer widget's own `buildWhen` makes no difference. When the nested
+read has a `buildWhen` — even one that always returns true — that memory is
+not kept: the predicate has to be handed the value it saw last, and handing it
+an older one would break its contract. The outer widget stays on the old data
+until the next real change.
+
+**Fix.** Give the nested part its own reader: read through the `context` the
+nested builder is handed, or move it into a widget of its own that reads in its
+`build`. Its baseline is then its own. And write the cache from a callback, an
+`onPressed` or a `Future`'s completion, not from `build`: a write on every
+build, even of identical data, is a change the outer widget has not shown, so
+it rebuilds on every frame.
+
 ## "QueryClientProvider could not listen to its onlineStatus"
 
 **Symptom.** `OnlineStatus.stream(changes, …)` with a single-subscription
@@ -355,3 +383,111 @@ still compares with its own `==`.
 
 **Fix.** Put the list in the key directly, or use a value class with deep
 `==` and `hashCode`.
+
+## A screen that rebuilds itself forever
+
+**Symptom.** A widget shows something about the cache, such as an inspector,
+a log or a counter, and rebuilds on `queryCache.subscribe`. Once it is on
+screen it keeps building without anyone touching it, and a log it feeds grows
+by itself.
+
+**Mechanism.** Every build of a reader hands its observer its options again.
+An inline `queryFn` closure is never equal to the last one, so each build
+emits `QueryObserverOptionsUpdated`, and a widget that rebuilds on that event
+has caused the next one. `QueryObserverResultsUpdated` is also about readers:
+it is emitted once for every result an observer delivers, and rebuilding on
+it follows the reader rather than the cache. The mutation cache does the
+same with `MutationObserverOptionsUpdated`.
+
+**Fix.** Rebuild only on events that say the cache changed, and leave the two
+reader events out of a cache-wide view:
+
+```dart snippet="reference/troubleshooting.md#feeds-itself"
+void Function() rebuildOnCacheChanges(
+  QueryClient client,
+  void Function() rebuild,
+) =>
+    client.queryCache.subscribe((event) {
+      // These are about readers: the first fires when a build hands a
+      // reader changed options, the second for every result it delivers.
+      // Rebuilding on them makes the screen feed itself.
+      if (event is QueryObserverOptionsUpdated ||
+          event is QueryObserverResultsUpdated) {
+        return;
+      }
+      rebuild();
+    });
+```
+
+An event can also arrive while a frame is being built, when `setState` is not
+allowed; the inspector in [debugging](../guides/debugging.md#a-small-inspector)
+schedules its rebuild for after the frame. Learned in the showcase, whose
+cache listener filters this way; see [its
+README](https://github.com/dualmeta-gmbh/query_kit/blob/main/examples/showcase/README.md#writing-a-screen-what-the-catalogue-learned).
+
+## A widget below a long list is never built
+
+**Symptom.** In a widget test, `find.text(…)` finds nothing for a widget that
+is plainly part of the screen; in a browser-driven test the element is not in
+the page. The widget is a status line, a debug strip or a footer placed after
+a long list.
+
+**Mechanism.** A `ListView`, and any screen built on one, builds only the
+children near the viewport. Whatever sits past a long list is not built until
+something scrolls to it, and a finder or a browser test cannot see what does
+not exist. The showcase lays every screen out in a lazy `ListView`, which is
+how it learned this with its cache-entry strips.
+
+**Fix.** Put what a test has to read near the top of the screen. Bound tall
+content, such as a list, in a scroller of its own. If the screen is simply
+taller than the test window, make the window larger for that test with
+`tester.view.physicalSize` (and `addTearDown(tester.view.reset)`), or set the
+viewport of the browser test. Keep that size in the test that needs it: it is
+a fact about that screen.
+
+## A SnackBar matches twice in a web end-to-end test
+
+**Symptom.** A Playwright test against a Flutter web build asserts on a
+SnackBar's text with `getByText`, and fails with a strict-mode error that the
+locator matched two elements. Run again, it matches one and passes.
+
+**Mechanism.** A SnackBar is a live region. Flutter web announces it twice:
+as its node in the semantics tree, and for a few hundred milliseconds as a
+copy in `<flt-announcement-host>`, outside the tree. Whether a bare locator
+sees one or two depends on when it runs.
+
+**Fix.** Scope the locator to the semantics host, so only the tree's copy can
+match, and use that for any live-region text:
+
+```ts
+const snackBar = (page: Page, text: string) =>
+  page.locator('flt-semantics-host').getByText(text, { exact: true })
+```
+
+This is the helper the showcase's end-to-end suite uses for every SnackBar.
+
+## Two readouts with the same text cannot be told apart
+
+**Symptom.** A test reads a fact such as `status=success` from a screen that
+shows several readers or cards. `find.text('status=success')` finds more than
+one widget, `findsOneWidget` fails, and in a browser test the locator is
+ambiguous. Which card each one belongs to is lost.
+
+**Mechanism.** Each card prints the same fact, and the text alone does not
+say whose it is. On Flutter web the semantics tree adds a second problem:
+neighbouring texts and controls can fold into the one node of their parent,
+so a browser test finds the row but not the item inside it.
+
+**Fix.** Give each card's facts a named group of their own and read inside
+it. In a widget test that is `find.descendant(of: find.byKey(ValueKey(name)),
+matching: find.text(…))`; the showcase writes it once as `factIn(name, text)`.
+The group is a `Semantics` with `container: true` and `explicitChildNodes:
+true`, which keeps its children as nodes of their own and gives a browser test
+a role and a name to find the group by. The showcase keeps that in one widget,
+`SemanticsGroup`, and writes it nowhere else. A card's title must not repeat
+the label of a control inside it either.
+
+## See also
+
+- Guides: [Query keys](../guides/query-keys.md), [polling](../guides/polling.md), [optimistic updates](../guides/optimistic-updates.md), [reading queries in widgets](../guides/reading-queries-in-widgets.md) and [testing](../guides/testing.md), the pages the symptoms above come back to.
+- The [guides index](../guides/index.md) lists the rest.

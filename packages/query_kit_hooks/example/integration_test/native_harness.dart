@@ -31,9 +31,22 @@ final String host = const String.fromEnvironment('E2E_HOST').isNotEmpty
         : 'localhost');
 
 /// Whether the host can send the app away ([Device.background]): not in a
-/// browser, and not on Linux, whose virtual display has no window manager to
-/// put another window in front.
-final bool canLeave = !kIsWeb && defaultTargetPlatform != TargetPlatform.linux;
+/// browser, not on Linux, whose virtual display has no window manager to put
+/// another window in front, and not on a Mac whose session sits at the login
+/// window, where no app can come to the front (#109). Settled by
+/// `await probeDevice()`, which a file with cases that leave calls first in
+/// `main`; reading it before is a bug, and asserts.
+bool get canLeave {
+  assert(_canLeave != null, 'call `await probeDevice()` in main first');
+  return _canLeave!;
+}
+
+bool? _canLeave;
+String? _leaveBlock;
+
+/// What `skip:` takes for a case that leaves the app: `false`, or the reason
+/// it cannot run, which [nativeTest] puts in the case's name.
+Object get leaveSkip => canLeave ? false : _leaveBlock!;
 
 const int backendPort = 5178;
 const int controlPort = 5179;
@@ -44,6 +57,36 @@ const int proxyPort = 5180;
 void initNativeBinding() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
+}
+
+/// Settles [canLeave]: asks the host whether the app can be sent away. A
+/// macOS session at the login window (a locked CI runner) has nothing in
+/// front and lets no app come there, so a trip away would test nothing; the
+/// cases that leave then skip, and this says why, on a CI run as a warning
+/// annotation. Call after [initNativeBinding], before the cases are declared.
+Future<void> probeDevice() async {
+  if (kIsWeb) {
+    _canLeave = false;
+    _leaveBlock = 'a browser has no other app to leave to';
+    return;
+  }
+  if (defaultTargetPlatform == TargetPlatform.linux) {
+    _canLeave = false;
+    _leaveBlock = 'the Linux run has no window manager';
+    return;
+  }
+  final info = await _call('GET', Uri.http('$host:$controlPort', '/platform'))
+      as Map<String, Object?>;
+  _canLeave = info['loginWindow'] != true;
+  if (_canLeave!) return;
+  _leaveBlock = 'macOS session at the login window; no app can come to the '
+      'front';
+  // ignore: avoid_print
+  print('SKIPPED: $_leaveBlock; the cases that send the app away do not run.');
+  if (info['ci'] == true) {
+    // ignore: avoid_print
+    print('::warning title=macOS trip-away cases skipped::$_leaveBlock');
+  }
 }
 
 /// The test's own line to the host, separate from the app's.
@@ -61,6 +104,16 @@ Future<Object?> _call(String method, Uri uri, [Object? body]) async {
   return response.data;
 }
 
+/// The host refused a trip because the session is at the login window:
+/// either the case did not skip, or the session got there after
+/// [probeDevice] asked, and the files after this one skip.
+Never _refused(DioException error) => throw StateError(
+    'The host cannot send the app away: its macOS session is at the login '
+    'window and no app can come to the front. A case that leaves the app '
+    'skips (`skip: leaveSkip`, after `await probeDevice()`); if it did, the '
+    'session went to the login window after the probe, and this run does '
+    'not count for the trip-away cases (#109).');
+
 /// The host's device control.
 class Device {
   const Device._();
@@ -71,10 +124,17 @@ class Device {
   /// Sends the app to the background for [duration] and brings it back, as
   /// the operating system does it: the app sees its platform's own
   /// lifecycle transitions.
-  static Future<void> background(Duration duration) => _call(
+  static Future<void> background(Duration duration) async {
+    try {
+      await _call(
         'POST',
         _uri('/background', {'ms': '${duration.inMilliseconds}'}),
       );
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 409) _refused(error);
+      rethrow;
+    }
+  }
 
   /// What the network does: `up`, `refuse` or `blackhole`, for the backend
   /// as the app reaches it, through the proxy.
@@ -262,9 +322,10 @@ Future<void> settleFor(WidgetTester tester, Duration duration) async {
 void nativeTest(
   String description,
   Future<void> Function(WidgetTester tester, NativeHarness h) body, {
-  bool? skip,
+  Object? skip,
 }) {
-  testWidgets(description, skip: skip, (tester) async {
+  testWidgets(skip is String ? '$description (skipped: $skip)' : description,
+      skip: skip is String || skip == true, (tester) async {
     final h = NativeHarness(description);
     await h.reset();
     await Device.network('up');

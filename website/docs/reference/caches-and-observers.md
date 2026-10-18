@@ -557,3 +557,8 @@ Only callbacks submitted through `schedule` or `batchCalls` are deferred.
 Direct observer subscriptions and cache listeners still run synchronously
 for each change. A callback that throws inside a flushed batch is reported
 to the zone and does not discard the rest of the batch.
+
+## See also
+
+- Cookbook: [Realtime updates over a WebSocket](../cookbook/realtime-websockets.md) subscribes to and writes the cache, and [offline first, and surviving a restart](../cookbook/offline-first-and-persistence.md) builds a cache from saved state.
+- Examples: the [cache inspector](../examples/cache-inspector.mdx) is built on `queryCache.subscribe`.

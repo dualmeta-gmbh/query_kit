@@ -205,7 +205,7 @@ An infinite query's function is `pageFn`, handed an `InfinitePageContext`
 that also carries the `pageParam` and the `direction`; see [infinite
 queries](infinite-queries.md).
 
-The showcase's *cancellation* screen shows what handing the signal on buys.
+The showcase's [*cancellation* screen](../examples/cancellation.mdx) shows what handing the signal on buys.
 Press *Start slow fetch*, then *Cancel*: the query goes back to where it was
 and `cancels` counts one `onCancel`. Switch *Ignore the signal* on and do it
 again — the query is still cancelled, but `cancels` stays put: the request ran
@@ -238,3 +238,8 @@ has no cancellation primitive every HTTP client shares; `onCancel` is the
 bridge. `fetch`'s "does not reject on 4xx" trap is `package:http`'s here. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Wiring dio or package:http](../cookbook/wiring-dio-and-http.md) for one API client with cancellation, timeouts and readable errors, and [auth and token refresh](../cookbook/auth-and-token-refresh.md) for a token refreshed once for every request that hit it.
+- Examples: the [default query function example](../examples/default-query-function.mdx) runs queries with no `queryFn` of their own.

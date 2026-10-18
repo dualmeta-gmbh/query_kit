@@ -19,8 +19,9 @@ const Duration away = Duration(seconds: 3);
 Future<void> pick(WidgetTester tester, String knob, String label) =>
     tapOn(tester, factIn(knob, label));
 
-void main() {
+Future<void> main() async {
   initNativeBinding();
+  await probeDevice();
 
   group('focus-refetch', () {
     Future<void> openFresh(WidgetTester tester, NativeHarness h) async {
@@ -42,7 +43,7 @@ void main() {
       await settleFor(tester, const Duration(seconds: 1));
       await waitForFact(tester, 'debug focus-b', 'fetches=1');
       expect(await h.requests('GET', '/api/time'), 3);
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
 
     nativeTest('never: a real return refetches nothing, stale data included',
         (tester, h) async {
@@ -58,7 +59,7 @@ void main() {
       await waitForFact(tester, 'debug focus-a', 'fetches=1');
       await waitForFact(tester, 'debug focus-b', 'fetches=1');
       expect(await h.requests('GET', '/api/time'), 2);
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
 
     nativeTest(
         'entry C, threshold long: a real absence under the hour refetches '
@@ -72,7 +73,7 @@ void main() {
       await waitForFact(tester, 'reader-c', 'shouldRefetchOnFocus=false');
       await settleFor(tester, const Duration(seconds: 1));
       await waitForFact(tester, 'reader-c', 'fetches=1');
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
 
     nativeTest('entry C, threshold none: the same absence does refetch',
         (tester, h) async {
@@ -83,7 +84,7 @@ void main() {
 
       await waitForFact(tester, 'reader-c', 'shouldRefetchOnFocus=true');
       await waitForFact(tester, 'reader-c', 'fetches=2');
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
   });
 
   group('auto-refetching', () {
@@ -160,7 +161,7 @@ void main() {
       expect(await h.requests('GET', ticks, after: absence.back),
           greaterThanOrEqualTo(2));
       expect(polls.where((at) => at.isAfter(returned)), isNotEmpty);
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
 
     nativeTest('refetchIntervalInBackground: what the platform allows',
         (tester, h) async {
@@ -182,6 +183,6 @@ void main() {
       // before it suspends it, and a desktop app behind another window is
       // not suspended at all.
       expect(during, greaterThanOrEqualTo(2));
-    }, skip: !canLeave);
+    }, skip: leaveSkip);
   });
 }

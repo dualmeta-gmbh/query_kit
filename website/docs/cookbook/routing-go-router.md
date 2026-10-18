@@ -247,7 +247,7 @@ whose `context` it goes through.
 
 ## See it run
 
-In the prefetching demo, press a row's prefetch button and then open that
+In the [prefetching example](../examples/prefetching.mdx), press a row's prefetch button and then open that
 post. It shows at once and costs no request. A post you open without
 prefetching costs one.
 
@@ -260,3 +260,8 @@ handler, and `client.query(options)` covers `fetchQuery`, `prefetchQuery`
 and `ensureQueryData` in one method. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Request waterfalls](../guides/request-waterfalls.md), for what a prefetch on the tap saves.
+- Cookbook: [List to detail, seeded](list-detail-seeding.md) for what the detail screen does with a seed.

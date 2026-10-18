@@ -7,24 +7,26 @@ test.use({ viewport: { width: 1280, height: 1100 } })
 
 const TODOS = /^\/api\/todos$/
 
-/// `holdRequest` for the write only: `page.route` cannot filter by method,
-/// so the handler lets everything but the POST through — the GET that
-/// `onSettled` triggers has to land while the hold is still installed, and
-/// so has the CORS preflight that precedes the POST itself.
-function holdPost(page: Page) {
+/// `holdRequest` for one method only: `page.route` cannot filter by method,
+/// so the handler lets everything else through — the GET that `onSettled`
+/// triggers has to land while a POST hold is still installed, and so has the
+/// CORS preflight that precedes the request itself. A request the page
+/// aborted while it was held has nothing left to let go, so its `continue`
+/// is allowed to fail.
+function holdMethod(page: Page, method: 'GET' | 'POST') {
   let letGo: () => void = () => {}
   const held = new Promise<void>((resolve) => {
     letGo = resolve
   })
   let seen = 0
   const routed = page.route('**/api/todos*', async (route) => {
-    if (route.request().method() !== 'POST') {
+    if (route.request().method() !== method) {
       await route.continue()
       return
     }
     seen += 1
     await held
-    await route.continue()
+    await route.continue().catch(() => {})
   })
   return {
     get seen() {
@@ -36,6 +38,8 @@ function holdPost(page: Page) {
     },
   }
 }
+
+const holdPost = (page: Page) => holdMethod(page, 'POST')
 
 /// Types `text` into the field and presses `Add`.
 async function add(page: Page, text: string) {
@@ -178,4 +182,71 @@ test('via cache, a refused write is rolled back and the list refetched', async (
   expect(await scenario.count('GET', TODOS)).toBe(3)
   const todos = (await (await scenario.api('get', '/todos')).json()) as Array<{ id: number }>
   expect(todos.map((todo) => todo.id)).toEqual([1, 2, 3])
+})
+
+test("via cache, onMutate's cancelQueries ends a refetch that is in flight before the row is written", async ({
+  page,
+  open,
+  scenario,
+}) => {
+  await scenario.config({ latency: 0 })
+  await open('/optimistic-updates')
+  await expect(fact(page, 'todos', 'fetchStatus=idle')).toBeVisible()
+  await viaCache(page)
+  const reads = await scenario.count('GET', TODOS)
+
+  // A refetch the backend has not answered: held in the browser. (Both holds
+  // route `**/api/todos*`; Playwright runs the later-registered route first, so
+  // the POST hold below shadows this one for the GET `onSettled` triggers —
+  // each hold passes through what is not its own method.)
+  const holdGet = holdMethod(page, 'GET')
+  await page.getByRole('button', { name: 'Refetch', exact: true }).click()
+  await expect.poll(() => holdGet.seen).toBe(1)
+  await expect(fact(page, 'todos', 'fetchStatus=fetching')).toBeVisible()
+
+  const holdWrite = holdPost(page)
+  await add(page, 'Order new batteries')
+
+  // With the POST held too, the only thing that can have ended the refetch is
+  // the write's own `cancelQueries`: the entry is idle while its request is
+  // still unanswered, and the optimistic row is already in the cache. Its
+  // late answer would have put the backend's three rows back over it.
+  await expect.poll(() => holdWrite.seen).toBe(1)
+  await expect(fact(page, 'todos', 'fetchStatus=idle')).toBeVisible()
+  await expect(page.getByText('Order new batteries', { exact: true })).toBeVisible()
+  await expect(page.getByText('todos=4', { exact: true })).toBeVisible()
+  await holdGet.release()
+  await holdWrite.release()
+
+  await expect(page.getByText('#4', { exact: true })).toBeVisible()
+  await expect(page.getByText('saving', { exact: true })).toBeHidden()
+  await expect(page.getByText('todos=4', { exact: true })).toBeVisible()
+  await expect(page.getByText('pending=false', { exact: true })).toBeVisible()
+  expect(await scenario.count('POST', TODOS)).toBe(1)
+  // The cancelled refetch never reached the backend; the settle's did.
+  expect(await scenario.count('GET', TODOS)).toBe(reads + 1)
+})
+
+test('a blank entry sends nothing, and an accepted one empties the field', async ({ page, open, scenario }) => {
+  await open('/optimistic-updates')
+  await expect(fact(page, 'todos', 'fetchStatus=idle')).toBeVisible()
+  const field = page.getByRole('textbox')
+
+  await typeInto(page, field, '   ')
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+
+  // Nothing started: no row, no pending write, and the button is still free.
+  await expect(page.getByText('saving', { exact: true })).toBeHidden()
+  await expect(page.getByText('pending=false', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
+
+  // The same field, now with a text: the first and only write.
+  await typeInto(page, field, 'Order new batteries')
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect(page.getByText('#4', { exact: true })).toBeVisible()
+  await expect(field).toHaveValue('')
+  expect(await scenario.count('POST', TODOS)).toBe(1)
+  const todos = (await (await scenario.api('get', '/todos')).json()) as Array<{ text: string }>
+  expect(todos.map((todo) => todo.text)).toEqual(expect.arrayContaining(['Order new batteries']))
+  expect(todos).toHaveLength(4)
 })

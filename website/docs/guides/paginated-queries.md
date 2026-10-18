@@ -253,7 +253,7 @@ widget's state. Three details make it work:
   default `staleTime` of zero it would be shown at once — and refetched
   straight away. See [prefetching](prefetching.md).
 
-Try it: in the screen below, press *Next page* a few times. Each page is
+Try it: in the [pagination screen](../examples/pagination.mdx) below, press *Next page* a few times. Each page is
 there at once, because the one after the page on screen was prefetched as
 soon as that page landed; press twice in quick succession, before the
 prefetch answers, and the rows stay on screen with `isPlaceholderData=true`
@@ -286,3 +286,7 @@ position; here a `context.query` or `watchQuery` read needs an `id:` to be
 the same read on a new key. See
 [differences from TanStack Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [An infinite list view](../cookbook/infinite-list-view.md) for the endless variant, and [search as you type](../cookbook/search-as-you-type.md), which keeps the last results on screen while the next load runs.

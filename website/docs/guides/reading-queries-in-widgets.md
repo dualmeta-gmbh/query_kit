@@ -9,8 +9,8 @@ description: context.query, QueryBuilder, QueryMixin and QueryController — fou
 ways** to read a query, and **the documentation names no default**.
 
 They are layered, not competing — each is a thin shell over the one below —
-and they interoperate inside one screen. The showcase's *four call styles*
-screen puts them all on one key. Under its first card, *One entry, five
+and they interoperate inside one screen. The showcase's [*four call styles*
+screen](../examples/four-call-styles.mdx) puts them all on one key. Under its first card, *One entry, five
 readers*, the strip reads `observers=5` and `fetches=1`: press *Refetch* and
 every reader moves
 together on one request. Further down, *6. QueryListener, a side effect* counts
@@ -181,7 +181,10 @@ it does.
   builder it does not re-run — its widget kept in a field — reads nothing
   then, so its keys are released after that frame while it still shows
   them, until it runs again and reads. Give such a part a widget of its
-  own.
+  own. A nested builder that writes the cache while it builds and rereads
+  through the outer `context` with a `buildWhen` can leave the outer widget
+  on old data: see
+  [After a cache write in a nested builder the outer widget shows old data](../reference/troubleshooting.md#after-a-cache-write-in-a-nested-builder-the-outer-widget-shows-old-data).
 - **A `LayoutBuilder`'s or `OrientationBuilder`'s own `context`.** A read
   through it starts over when its builder provably runs: new constraints (the
   wide layout's key goes after a resize), a notification from one of its own
@@ -273,3 +276,9 @@ Flutter has no hooks in the framework. `context.query` and `watchQuery`
 read flat in `build`, the way a hook call does. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Examples: the [filtering rebuilds example](../examples/build-when.mdx) counts what each read rebuilds, and the [one-file tour](../examples/one-file-tour.mdx) reads one query two ways in a single file.
+- Cookbook: [Next to Riverpod, Bloc or Provider](../cookbook/riverpod-bloc-provider.md) and [where the client lives](../cookbook/dependency-injection.md).
+- Reference: [Widgets and controllers](../reference/widgets-and-controllers.md).

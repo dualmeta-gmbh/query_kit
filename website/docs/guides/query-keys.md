@@ -110,7 +110,7 @@ await client.invalidateQueries(
 );
 ```
 
-The showcase's *invalidation and filters* screen holds a posts list, post
+The showcase's [*invalidation and filters* screen](../examples/invalidation-and-filters.mdx) holds a posts list, post
 details on screen, and a post 3 that nobody observes. Press *Invalidate posts
 prefix* and everything on screen under `[posts]` refetches while post 3 only turns
 `isStale=true`; *Invalidate posts exactly* reaches the list alone, and
@@ -152,3 +152,7 @@ type compared part by part, with no hashing function to configure, and a
 `partialMatchKey` does. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [Normalised data or one key per entity](../cookbook/normalised-vs-per-entity-keys.md), [routing with go_router](../cookbook/routing-go-router.md) for keys built from path parameters, and [sign out and multiple accounts](../cookbook/sign-out-and-multi-account.md) for keys that start with a user.

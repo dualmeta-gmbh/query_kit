@@ -4,7 +4,10 @@
 // plain HTTP on loopback (an Android emulator reaches the host's loopback as
 // 10.0.2.2, an iOS simulator shares it).
 //
-//   GET  /platform                       → { platform, device, appId }
+//   GET  /platform                       → { platform, device, appId, loginWindow, ci }  `loginWindow`:
+//                                          macOS only, true when the app could not be brought to
+//                                          the front and the login window is there on every look
+//                                          for 5 s; `ci`: running under GitHub Actions
 //   POST /background?ms=                 → { left, back }  background the app, wait, bring it
 //                                          back; `left` once it was sent away, `back` as its return
 //                                          was asked for: ISO times, as the backend logs them
@@ -74,8 +77,116 @@ const deviceOnly = (what: string) => {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const adb = (...args: string[]) => run('adb', ['-s', device!, ...args])
 const simctl = (...args: string[]) => run('xcrun', ['simctl', ...args])
-// Launch Services, not AppleScript: `open` needs no automation permission.
-const launch = (...args: string[]) => run('open', args)
+
+// --- macOS: which window is in front ------------------------------------------
+//
+// A desktop app only goes `inactive` when it had the focus to lose, and
+// flutter_tools' own attempt to bring a freshly built app forward fails on
+// the runner ("Failed to foreground app; open returned 1", #109): the window
+// stays behind, Finder coming forward changes nothing, and the trip away
+// tests nothing. So the app is made frontmost, and proven so, before it
+// leaves; every step and its exit status goes to this process's log.
+
+// One command, its outcome logged. `true` when it exited 0.
+async function attempt(label: string, command: string, args: string[]) {
+  try {
+    const { stdout } = await run(command, args)
+    console.log(`device_control: ${label}: ok ${stdout.trim()}`)
+    return true
+  } catch (error) {
+    const { code, stderr } = error as { code?: unknown; stderr?: string }
+    console.log(`device_control: ${label}: exit ${String(code)} ${(stderr ?? '').trim()}`)
+    return false
+  }
+}
+
+// The bundle id of the window in front, as Launch Services has it.
+async function frontmost() {
+  const { stdout: front } = await run('lsappinfo', ['front'])
+  const { stdout } = await run('lsappinfo', ['info', '-only', 'bundleid', front.trim()])
+  return /"([^"]*)"\s*$/.exec(stdout.trim())?.[1] ?? stdout.trim()
+}
+
+// Polls for `bundleId` to be in front, for up to `ms`.
+async function waitFront(bundleId: string, ms: number) {
+  for (let waited = 0; ; waited += 250) {
+    try {
+      if ((await frontmost()) === bundleId) return true
+    } catch (error) {
+      console.log(`device_control: lsappinfo: ${String(error)}`)
+    }
+    if (waited >= ms) return false
+    await sleep(250)
+  }
+}
+
+// Puts the app under test in front: by id, then by AppleScript, which may ask
+// for an automation permission. Each is logged with its exit status. Throws
+// when the app is not in front after both, with what is: a case that leaves
+// the app proves nothing if the app was never there to leave (#109).
+async function bringToFront() {
+  if (await waitFront(appId, 0)) return
+  const steps: [string, string, string[]][] = [
+    ['open -b', 'open', ['-b', appId]],
+    ['osascript activate', 'osascript', ['-e', `tell application id "${appId}" to activate`]],
+  ]
+  for (const [label, command, args] of steps) {
+    await attempt(label, command, args)
+    if (await waitFront(appId, 4000)) return
+  }
+  await who()
+  throw new Error(`could not bring ${appId} to the front; ${await frontmost().catch(() => '?')} is there`)
+}
+
+// What Launch Services and the session look like, for the log.
+async function who() {
+  await attempt('front is', 'sh', ['-c', 'lsappinfo info -only name,bundleid "$(lsappinfo front)"'])
+  await attempt('console', 'stat', ['-f', '%Su', '/dev/console'])
+}
+
+// A macOS session that sits at the login window (a CI runner whose screen is
+// locked, say) has no app in front and lets none come: the cases that leave
+// the app cannot be run there, and the tests skip them. Asked when a test
+// file starts, with the app up, by trying what those cases need: bringing it
+// to the front. Only if that fails and the login window is in front on every
+// look, 500 ms apart for 5 s, is the answer yes. A sample of the front app
+// alone said no on a runner that was at the login window throughout, and the
+// answer holds for the run: every trip away then failed instead of skipping
+// (#109). A session that goes to the login window later is found by the trip
+// that fails there (`refuseAtLoginWindow`).
+const loginWindowBundle = 'com.apple.loginwindow'
+const loginWindowRefusal = { loginWindow: true, message: 'the macOS session is at the login window; no app can come to the front' }
+let loginWindowAnswer: Promise<boolean> | undefined
+function atLoginWindow() {
+  if (platform !== 'macos') return Promise.resolve(false)
+  loginWindowAnswer ??= bringToFront().then(
+    () => false,
+    () => onlyLoginWindow(),
+  )
+  return loginWindowAnswer
+}
+
+// Whether every look for 5 s finds the login window in front; any other app
+// in front ends it at once.
+async function onlyLoginWindow() {
+  for (let looked = 0; looked <= 5000; looked += 500) {
+    if ((await frontmost().catch(() => '')) !== loginWindowBundle) return false
+    if (looked < 5000) await sleep(500)
+  }
+  console.log('device_control: the macOS session is at the login window; no app can come to the front')
+  return true
+}
+
+// A trip away that failed because the session went to the login window after
+// the question was settled: refused as the question would now answer it, and
+// the answer changed for the files still to come.
+async function refuseAtLoginWindow(error: unknown): Promise<never> {
+  if (platform === 'macos' && (await onlyLoginWindow())) {
+    loginWindowAnswer = Promise.resolve(true)
+    throw new Conflict(loginWindowRefusal)
+  }
+  throw error
+}
 
 // --- the app's lifecycle ----------------------------------------------------
 
@@ -94,12 +205,20 @@ async function background(ms: number) {
     await simctl('launch', device!, appId)
   } else if (platform === 'macos') {
     // Another app to the front: the window loses focus, which on a desktop
-    // is what `inactive` means. `open -b` on a running app activates it.
-    await launch('-a', 'Finder')
+    // is what `inactive` means — if it had the focus. So the app is first
+    // put in front, and proven to be (#109).
+    await bringToFront()
+    // Finder is in front once it is asked for, if it can be.
+    if (!(await attempt('open -a Finder', 'open', ['-a', 'Finder']))) {
+      await attempt('Finder activate', 'osascript', ['-e', 'tell application "Finder" to activate'])
+    }
     left = new Date().toISOString()
+    console.log(`device_control: away; in front: ${await frontmost().catch(() => '?')}`)
     await sleep(ms)
     back = new Date().toISOString()
-    await launch('-b', appId)
+    // `open -b` on a running app activates it; `bringToFront` falls back
+    // when it does not, and proves the window is there.
+    await bringToFront()
   } else {
     await adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     left = new Date().toISOString()
@@ -184,13 +303,23 @@ createTcpServer((client) => {
 
 // --- the control endpoint ---------------------------------------------------
 
+// A refusal the caller can tell from a failure: 409 with this body.
+class Conflict extends Error {
+  body: object
+  constructor(body: object) {
+    super(JSON.stringify(body))
+    this.body = body
+  }
+}
+
 const routes: Record<string, (url: URL, parts: string[]) => Promise<unknown>> = {
-  'GET platform': async () => ({ platform, device, appId }),
+  'GET platform': async () => ({ platform, device, appId, loginWindow: await atLoginWindow(), ci: process.env.GITHUB_ACTIONS === 'true' }),
   'POST background': async (url) => {
     deviceOnly('background')
+    if (await atLoginWindow()) throw new Conflict(loginWindowRefusal)
     const ms = Number(url.searchParams.get('ms') ?? 2000)
     const after = url.searchParams.get('after')
-    if (after === null) return background(ms)
+    if (after === null) return background(ms).catch(refuseAtLoginWindow)
     setTimeout(() => background(ms).catch((error) => console.error('background failed', error)), Number(after))
     return { ok: true }
   },
@@ -249,8 +378,9 @@ createHttpServer(async (request, response) => {
   try {
     response.end(JSON.stringify(await handler(url, parts)))
   } catch (error) {
-    response.statusCode = 500
-    response.end(JSON.stringify({ message: String(error) }))
+    console.log(`device_control: ${request.method} ${url.pathname} failed: ${String(error)}`)
+    response.statusCode = error instanceof Conflict ? 409 : 500
+    response.end(JSON.stringify(error instanceof Conflict ? error.body : { message: String(error) }))
   }
 }).listen(controlPort, '127.0.0.1', () => {
   console.log(`device_control: ${platform} ${device}, control :${controlPort}, proxy :${proxyPort} → :${backendPort}`)

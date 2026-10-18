@@ -651,3 +651,8 @@ A change to this library is a major version of the binding.
 Widget tests need a teardown step, because a `QueryClient` outlives the tree
 and owns `gcTime` timers. It is a documented snippet rather than an export;
 see [testing](../guides/testing.md).
+
+## See also
+
+- Cookbook: [Where the client lives](../cookbook/dependency-injection.md), [next to Riverpod, Bloc or Provider](../cookbook/riverpod-bloc-provider.md) and [routing with go_router](../cookbook/routing-go-router.md).
+- Examples: the [four call styles example](../examples/four-call-styles.mdx) reads one entry through each, and the [filtering rebuilds example](../examples/build-when.mdx) counts what `buildWhen` saves.

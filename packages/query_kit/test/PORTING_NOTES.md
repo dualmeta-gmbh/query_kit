@@ -4565,6 +4565,75 @@ The check runs inside the existing `doc snippet tests` step in **both**
 regions in five twin files.
 
 
+### Phase 9: the task manager's E2E gaps ([#80](https://github.com/dualmeta-gmbh/query_kit/issues/80))
+
+Creating a task through the UI was never tested: "New task" was only the boot
+marker, so `createTaskMutation` and `POST /api/tasks` were exercised through the
+API-side setup helper alone. Also unreached: the project filter, the empty
+state, the list skeleton, the `not synced` and `confirming` pills, turning a
+reminder off, a refused reminder write, an empty rename, the facts card.
+
+Measured on 2026-10-18, Chromium, on Flutter 3.38.8 (CI's) and 3.41.4: task manager Playwright
+**10 → 26** (`tasks.spec.ts` 13, `creating.spec.ts` 5, `filtering.spec.ts` 4,
+`reminder.spec.ts` 4), widget tests **17 → 19** (the README and this file said 16 before: stale), contract unchanged at 15 (+14
+server-leg cases, all green against the running server). No `lib/` change.
+
+- **Backend stays single-world** — [ADR-0006](../../../docs/adr/0006-the-task-managers-backend-stays-single-world.md)
+  (the ticket's "ADR-0003"; that number was taken). `APP_PORT` joined
+  `playwright.config.ts`, as in the showcase.
+- **Shared helpers** moved from `tasks.spec.ts` to `e2e/tests/helpers.ts`
+  (`open`, `row`, `holdWrite`, `holdRequests`, and the new `refuseRequests`,
+  `pickProject`, `listSettled`).
+- **The sweep would have deleted a seed.** `sweepTestTasks` recognised its own
+  tasks by ` [0-9a-z]{7,}$`, and the seed's "Archive last quarter" ends in
+  seven. Tightened to ten (a `uniqueName` suffix is longer) and taught the fixed
+  name "New task". Found because the `not synced` spec needs that seed.
+- **Not as the ticket wrote it.**
+  - *Refused reminder write "says so"*: the detail screen has a notice for a
+    refused rename and none for a refused reminder, so the spec asserts the
+    rollback (switch back off, unlocked, backend untouched) and says in a
+    comment that nothing is shown. No app change.
+  - *A project with nothing in it*: all four projects have a seeded task, and
+    emptying one would take the seed from every later test, so the backend's
+    answer for `Errands` is an empty list fulfilled in the browser.
+  - *Facts card*: the card is one node in the semantics tree (labels and
+    values in reading order), addressable as text, so it needed no `Semantics`
+    group and `detail.dart` is unchanged. The expectation is read from the
+    backend.
+  - *List skeleton*: the skeleton has no semantics, so the spec holds the list
+    GET and asserts the screen with every alternative absent (no rows, no
+    header count, no empty state, no error panel, the reload button locked
+    because it is fetching).
+  - *Create button locked*: what a locked control looks like in the
+    semantics tree depends on the Flutter version — on 3.38.8 a `button` with
+    `aria-disabled`, on 3.41.4 a node of another role (a merged node holding a
+    `CircularProgressIndicator` becomes a loading spinner and loses the button
+    role). The first version asserted the 3.41 shape (`toHaveCount(0)`) and
+    was red on CI's 3.38.8. The one thing both agree on is `flt-tappable`, set
+    exactly while a press does something, so a lock is asserted as its absence
+    (`control` in `helpers.ts`), beside a positive control — the attribute on
+    the same node before the press and after the write — since an absence
+    alone is vacuous on a node that never had it. The spec also presses the
+    pixel where the button was.
+- **A version-dependent locator in the existing reminder test, fixed.** On
+  Flutter 3.41.4 a locked `Switch` is a bare labelled node, not `role=switch`,
+  so `getByRole('switch', { name: /Waiting for the scheduler/ })` failed there.
+  It and the new specs find that window by the node's label
+  (`waitingForScheduler`, `reminderControl`) and read "locked" as in the
+  previous point. Verified on 3.38.8 and 3.41.4.
+- **The empty-rename test asserts the wire.** It flaked on a loaded machine
+  (the press read the old name: an idempotent rename, but not the case). A
+  frame-wait would only have made that rarer, so the test now routes the
+  write: one that does not carry `""` is aborted in the browser (the backend is
+  never asked) and the typing and press are repeated under `toPass`; the one
+  that does is let through and its status (400) is asserted.
+- **Widget tests** `a detail opened before any list response shows its
+  skeleton` and `a detail whose only fetch failed shows the error panel with
+  the backend's message` mount `TaskDetail` directly. Two things they taught: a
+  fake backend's latency is a timer that `pumpAndSettle` does not wait for, and
+  the first `pump()` is too early for dio to have logged its request.
+
+
 ## Core operation ownership before first release (2026-09-12)
 
 The review of `15dd9a0`, revalidated against `d7ef2d3`, found gaps between
@@ -7006,7 +7075,8 @@ findings, both reproduced:
   own `context` it is green either way. Not fixed here: it is the binding's
   additive-read rule, released in 1.0.x and under parallel change for 1.0.4.
   Filed for the binding as #108 with the reproduction, which is red as well
-  at `669c911`, before `beside`, and on `e2e-coverage` (binding 1.0.4).
+  at `669c911`, before `beside`, and on `e2e-coverage` (binding 1.0.4). Worked
+  below, "S-1 — an additive reread".
 - **S-2 (P3, the orchestrator's notes only): "a flag that moves and moves
   back between two builds does not rebuild" was too strong.** It holds when
   both moves arrive before a delivery. Once the first delivery has
@@ -7083,3 +7153,264 @@ what changed in the binding, each finding reproduced first.
   HB-4.
 
 **Counts after the fixes:** binding **320**.
+
+### S-1 — an additive reread consumed a pending notification (#108)
+
+**Current decision, PR #116 implementation after review round 2.** Narrow the
+fix to unfiltered keyless reads, restore `ReadSet`'s release-generation
+mechanism from `a5afe7d`, and remove the owner/additive baseline classifier.
+This is a partial fix for #108: a shared-context reread with `buildWhen`
+retains the pre-PR boundary described below. The original two-baseline fix
+and its round-1 child-identity heuristics are superseded, not evidence of a
+complete fix. The history and the unchanged tests remain below.
+
+**Reproduction before changes.** At `3c12308`, the seven original round-1
+probes pass; all twelve round-2 defect probes fail. The round-2 file also
+contains five lifetime probes (two GlobalKey moves, two mount/deactivate
+sequences before a sweep, and the release-mode sliver path); those pass.
+The complete local reproduction is therefore **12 pass / 12 fail**, before
+any implementation edit. The failures split into six R2-1 stale-owner cases
+and six R2-2 predicates asked about retired values. These probes are now
+permanent cases in `review_regressions_test.dart`, rather than separate
+probe files, with all original assertions retained. The three companion
+hooks probes are in `review_reproductions_test.dart` in the hooks package.
+
+**What Flutter actually guarantees.** Read the installed SDK's
+`widgets/framework.dart` (`ComponentElement.performRebuild`,
+`StatelessElement.update`, `StatefulElement.update`) and
+`widgets/layout_builder.dart` (`_LayoutBuilderElement._rebuildWithConstraints`)
+at Flutter **3.41.4**, framework `ff37bef603`, Dart **3.11.1**:
+
+- A dirty component stays dirty throughout `build()` and clears `_dirty`
+  after `build()` returns, **before** `updateChild` runs.
+- A parent update uses `rebuild(force: true)` without setting `_dirty`.
+  Therefore dirty is a precise positive signal, not a universal classifier
+  for all reads of a component's build. `debugDoingBuild` is debug-only.
+- A layout builder runs its callback during layout; its private rebuild
+  bookkeeping is not a public own-build signal for every read.
+- Descendants can mount/build **inside** `updateChild`. The owner's
+  `_child = updateChild(...)` assignment has not happened then. An initial
+  mount still exposes no child; a replacement may still expose the old one.
+  Unchanged child identity cannot prove a callback is still in its own build.
+- A zero-read owner build gives `ReadSet` no call at all. It can also return
+  an identical cached or const child. A later read cannot prove whether the
+  owner's earlier baseline is still displayed. This is an observational
+  limit, not something a third child snapshot could fix.
+
+**Chosen mechanism: remember an unfiltered change, not an owner's role.**
+`ReadEntry` has its ordinary latest-read `RebuildRule` and one boolean,
+`_unnotified`. `ReadSet` opts its entries into this behavior; the builder
+widgets leave it off. Before a successful unfiltered reread replaces the
+latest baseline, ask that baseline whether the controller has changed
+(`shouldRebuild(null)`). If both reads are unfiltered and this read carries
+no generation-opening proof, remember a change in the flag. A read with an
+existing generation-opening proof acknowledges the pending change instead:
+it clears the flag and refreshes the latest baseline. These are the old
+dirty/new-widget/constraints/self-notification signals from `a5afe7d`, with
+no children sampled and no attempt to infer the role of a second read. At the next controller notification, rebuild if either the normal
+rule or the flag asks, and consume the flag before invoking the usual
+rebuild callback. No rebuild is requested from inside the reread.
+
+A single bit covers every displaced value, including a->b->a before the
+notification: an intermediate part may still display b even when the first
+and latest snapshots both say a. There is no list of historical results,
+no element-child snapshot, and no need to decide that a proofless second
+or descendant read was the owner's. Unfiltered initial/replacement mounts,
+parent-forced builds, cached descendants that do rerun, multiple direct
+reads and LayoutBuilder callbacks use exactly the same mechanism. It may
+request **one conservative extra rebuild** when an intervening build already
+updated everything on screen. Once consumed it cannot repeatedly rebuild
+for that old change. Equality gating for ordinary notifications remains.
+The proof acknowledgement matters: the first flag-only candidate caused
+an extra own rebuild after query removal in two existing doc-snippet tests
+(`a disconnected device is not fetched again` and `removing first: the next
+poll tick fetches the device again`). Both failed before acknowledgement
+was added. The existing tests and their assertions were kept unchanged.
+
+**Predicates and paging flags.** A read with `buildWhen` clears the flag and
+records only its latest successful read. A previous filtered read does not
+create a flag when followed by an unfiltered read. Thus a predicate sees
+exactly the `(previous, next)` pair it saw at `a5afe7d`; no retired owner
+value is evaluated, and no retired infinite paging flags can take the
+unconditional `beside` path. Real changes to flags beside the latest read
+still rebuild regardless of the predicate, as before. `RebuildRule`, the
+public adapter API, and the hook implementation are unchanged.
+
+**Remaining boundary, explicitly accepted.** #108 remains when a descendant
+writes during build and then reads the same identity through an outer
+context/`watchQuery` **with a predicate on that reread**, including an
+always-true predicate. The owner's own predicate does not matter (measured
+in round 3 below). This covers component and layout owners, first or later direct reads,
+initial/replacement/ordinary descendant builds, and plain/select queries,
+infinite results/paging flags and mutations wherever this write/reread
+sequence can occur. Mixed predicate/unfiltered call sites sharing one
+identity also have no preservation guarantee across a predicate read. The
+nested part has advanced the latest baseline before the notification, so
+the owner's earlier display may remain stale. Reading through the nested
+builder's own context (or its own widget) is the supported correction and
+is tested beside each context/mixin/layout boundary case. Writes outside
+build retain the ordinary behavior. This introduces no filtered behavior
+change against `a5afe7d`; it does not claim to solve that earlier defect.
+
+Existing lifetime boundaries also remain: a cached/const descendant that
+Flutter does **not** rerun need not update when the outer owner rebuilds;
+an owner's next read-bearing generation can release its keys while it
+still displays them. A zero-read build opens no release generation. A
+LayoutBuilder dependency-only rebuild has no release proof, and a list's
+own item-builder context is still refused in debug (additive in release).
+These are the pre-existing documented release rules, not new #108 fixes.
+
+**Alternatives considered.**
+
+1. **Separate owner and additive baselines (the first fix).** With arbitrary
+   `buildWhen`, every baseline must still be on screen: otherwise either a
+   retired value reaches the predicate or obsolete paging flags bypass it.
+   Zero-read builds cannot be observed, so unconditional retention is wrong.
+2. **Keep every live baseline.** Sound if their lifetimes are known, but
+   keyless outer-context reads do not identify the displaying element or
+   report its retirement. More snapshots do not provide that information;
+   historical values must not be treated as live filtered displays. Without
+   predicates the pending-change bit has the same conservative benefit,
+   constant memory, and handles intermediate values without snapshots.
+3. **A precise own-build signal.** Dirty components provide one positive
+   signal, but parent-forced updates and layout callbacks do not expose a
+   release-mode signal for every direct read. It also cannot report a
+   later zero-read build. A debug-only solution would differ in production.
+   Replacing users' elements or changing the public read API is outside
+   this compatible fix; no stack-trace or child-identity heuristic is used.
+4. **Rebuild immediately from the reread.** Flutter rejects marking an
+   ancestor during its descendant's build in debug. Deferring an independent
+   rebuild also needs a predicate decision and adds another scheduling path.
+   Keep the normal controller-notification path instead.
+5. **Documentation only.** Unnecessary for the unfiltered case: the pending
+   change can be preserved safely without knowing ownership. Document the
+   filtered limit honestly instead of changing the predicate contract.
+
+**Memory and lifetime.** There is one latest result baseline plus one bit
+per entry, not a growing set of results or any child/widget graph snapshot.
+Generation sweeps dispose omitted entries as at `a5afe7d`; release/unmount
+clears the pending flag and predicate. `ReadSet.releaseAll` also clears its
+reader/widget/constraints references and debug callback records, including
+on a client switch. No snapshot holds a widget/element graph after release.
+
+**Permanent verification.** No existing test was rewritten, removed, skipped
+or weakened. The 390 existing binding cases (the 80 reader shapes and all
+13 round-1 regressions included) stay intact. Add all seven original
+round-1 probes, all twelve round-2 defect probes and their five lifetime
+companions, plus seven notification-contract cases and six boundary/corrected
+context cases. Three companion hook probes join the existing hooks suite.
+Final gate on Flutter 3.41.4 / Dart 3.11.1: binding **427** (390 + 37),
+hooks **335** (332 + 3), showcase **324** / 25 existing server-dependent
+skips, task_manager **34** / 14 existing server-dependent skips,
+doc_snippets **48**, hooks example **61** / 10 existing server-dependent
+skips, core VM **1175**. All pass. `dart analyze --fatal-infos packages
+examples tool` is clean. The exact CLAUDE formatter scope passes:
+
+```bash
+dart format --set-exit-if-changed packages examples/task_manager/lib examples/task_manager/test examples/showcase/lib examples/showcase/test examples/showcase/integration_test examples/showcase/test_driver examples/doc_snippets/lib examples/doc_snippets/test tool
+```
+
+It reports 287 files, zero changes. No native app, simulator, Playwright or
+browser suite ran; no merge, deployment or release was performed.
+
+#### Historical first implementation (`a2ccda8`, superseded)
+
+The original issue reproduced `inner:b`, `outer:a` after a cache write in a
+nested build followed by a shared-context reread. It also reproduced with
+`watchQuery` and infinite paging flags; using the nested builder's own
+context or writing outside build passed. The first fix kept `_rule` for an
+own read and `_additiveRule` for an additive read, notifying when either
+moved. Seven tests brought the binding from **370 to 377**, hooks **332**.
+Its initial description called a leftover owner baseline only "one excess
+owner rebuild". That was wrong: arbitrary predicates and `beside` flags
+make the leftover baseline observable behavior, as R1-1 proved.
+
+#### Historical review round 1 (`3c12308`, superseded)
+
+**R1-1 (P1):** an owner stopped reading a key but `_ownRecorded` stayed
+true. Plain and mixin predicates received retired a while the nested part
+showed b; infinite paging flags forced a rebuild with zero predicate calls.
+These cases passed at `a5afe7d`. The attempted fix stamped own baselines
+with a period and retired an entry when changed child-widget snapshots
+suggested its owner had rebuilt. It did not cover cached children, and,
+as R2-2 proved, even observed evidence was forgotten for deferred keys.
+
+**R1-2 (P1):** a second direct LayoutBuilder read, or a second direct read
+in a parent-forced component update, consumed no own-build proof after the
+first and was misclassified additive. This also failed before the PR. The
+attempted fix called unchanged children in the same period `sameRun`. The
+old claim that every descendant read comes after `updateChild` finished
+was false: Flutter can build it before assigning `_child` (R2-1).
+
+Thirteen unchanged regressions brought the binding from **377 to 390**,
+hooks **332**. They describe valid observable requirements; none needs to
+be rewritten for the pending-change implementation. Their comments about
+baseline ownership explain the mechanism being reviewed then, not a claim
+that the current fix classifies ownership.
+
+#### Review round 2 and resolution
+
+- **R2-1 (P1), six probes:** `sameRun` misclassified descendant reads during
+  initial and Column->Row replacement mounts and parent-handed cached-child
+  builds, for both Builder and LayoutBuilder. A nested b overwrote the
+  owner's a, restoring #108. **Resolved:** remove `sameRun` and all child
+  snapshots; the unfiltered reread sets a pending-change bit, so descendant
+  mount timing and direct-read order cannot consume the notification.
+- **R2-2 (P1), six probes:** retirement affected only the entry being read;
+  the next sweep refreshed `_restChildren` and lost rebuild evidence for
+  another key reread later. Fresh, cached and const child shapes all failed
+  for context and mixin readers. **Resolved:** no historical owner baseline
+  is retained for a filtered read; restore the latest-read rule from
+  `a5afe7d`, so deferred keys cannot consult or bypass with a retired value.
+  This gives up a complete filtered #108 fix, as explicitly bounded above.
+
+#### Review round 3 and resolution (`8353d53`)
+
+A Claude review of the narrowed fix found no P1 and recommended merging after
+four things: a failing documentation gate, a boundary described wider than it
+is, one undocumented cost, and missing site documentation. No library logic
+changed in this round; the work is wording, the site, and tests.
+
+- **Jargon gate (P2).** Three `///` lines carried an issue number in
+  parentheses; `check_docs_jargon.dart` failed `gates`. Reworded plainly.
+- **The boundary, measured.** The review ran a 108-case matrix: 4 owners
+  (`Builder`, `QueryMixin`, `LayoutBuilder`, a stateless widget forced by its
+  parent) x 3 nested kinds (`ValueListenableBuilder`, `StatefulBuilder`, a
+  nested `LayoutBuilder`) x 3 owner predicates (none, always true, selective)
+  x 3 nested predicates. The owner follows in exactly the **36** cases where
+  the nested reread through the shared context has **no** `buildWhen`; the
+  owner's own predicate does not matter. In all **72** cases where the nested
+  reread has any `buildWhen`, even an always-true one, the owner stays on the
+  old data. The earlier wording ("a filtered reread", "with a predicate")
+  suggested the owner's predicate also mattered, and it does not. The notes
+  above, the changelog and the `QueryContext` dartdoc now say exactly this and
+  name the remedy: read through the nested builder's own context, or give it
+  a widget of its own. All 108 cases are now permanent tests.
+- **A cost, documented (P3).** A nested build that writes the cache
+  unconditionally (`setQueryData` on every build, even identical data, which
+  still moves `dataUpdatedAt`) and rereads through the outer context now
+  rebuilds the owner on every frame: 10 owner builds in 10 frames, against 1
+  at `a5afe7d`. This is the intended mechanism, since every write is a change
+  that the owner has not shown, and it needs no fix; writing the cache in a
+  callback instead of in `build` avoids it. It is a troubleshooting entry on
+  the site and a sentence in the dartdoc. It is not pinned by a test, because
+  it is a pitfall, not a contract.
+- **Site (P3).** `reference/troubleshooting.md` gains "After a cache write in
+  a nested builder the outer widget shows old data", and the nested-builder
+  bullet in "Reading queries in widgets" links to it.
+- **Permanent verification.** Eleven further cases beside the matrix, all
+  passing at `8353d53`: build counts of a real flow with ticks, an
+  invalidation, a refetch during a tick and a manual write (identical to
+  `a5afe7d` step by step, for the context and the mixin style); a write from
+  a callback costs the owner one rebuild; a zero-read owner with two inline
+  nested readers (parent forced or not, `LayoutBuilder` owner or not); a
+  `GlobalKey` reparent and an unmount in the frame of the write; a pending
+  change on one key leaves a second key alone; a mutation started in a nested
+  builder reaches the owner. Two cached-child shapes the review also probed
+  (a zero-read owner whose two nested readers are cached widgets, with or
+  without a parent rebuild) still show the stale value for the second
+  reader; this is the documented rule that Flutter does not re-run a cached
+  child, and they are not pinned.
+  Counts after this round: binding **546** (427 + 108 matrix + 11), hooks
+  **335**, doc_snippets **48**; analyzer, the formatter scope, the jargon
+  check and the site build pass.

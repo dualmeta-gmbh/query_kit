@@ -65,7 +65,7 @@ after their last observer is gone, so a filter without a `status` sees
 recent successes and failures too — useful for a "2 changes could not be
 saved" banner, which filters on `MutationStatus.error`.
 
-The `mutation-state` screen puts such a badge above a todo list. Press *Add
+The [`mutation-state` screen](../examples/mutation-state.mdx) puts such a badge above a todo list. Press *Add
 todo* twice quickly: the badge counts `saving=2` while both run and drops to
 zero when they settle. *Add, failing* ends in `failed=1` instead, and
 `badge-builds` only moves when the selection actually changed.
@@ -113,3 +113,8 @@ Three things to know, because an empty list after a filter looks harmless:
 form has no counterpart there: in TypeScript `select` receives the mutation
 untyped and you cast.
 :::
+
+## See also
+
+- Reference: [`MutationStateController`](../reference/widgets-and-controllers.md) and [`MutationState`](../reference/results.md).
+- Cookbook: [Forms and server validation](../cookbook/forms-and-server-validation.md), where a pending save disables the form.

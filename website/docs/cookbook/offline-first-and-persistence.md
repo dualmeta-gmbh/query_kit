@@ -318,7 +318,7 @@ Future<void> main() async {
 
 ## See it run
 
-In the offline demo, switch *Online* off, type a todo and press *Add todo*.
+In the [offline example](../examples/offline.mdx), switch *Online* off, type a todo and press *Add todo*.
 The write pauses and waits, and the list keeps its data. Switch it back on and the write
 goes out, followed by the refetch its success triggers.
 
@@ -332,3 +332,8 @@ here: `setQueryData` with `updatedAt`, `QueryCache.build` with a state,
 snapshot format belongs to your app. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Caching](../guides/caching.md), for `gcTime`.
+- Cookbook: [Lifecycle and connectivity wiring](lifecycle-and-connectivity-wiring.md) for the connectivity side of the same app.

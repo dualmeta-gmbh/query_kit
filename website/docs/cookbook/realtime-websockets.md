@@ -262,7 +262,7 @@ runApp(
 
 ## See it run
 
-The auto-refetching demo shows the alternative this recipe replaces: a query
+The [auto refetching example](../examples/auto-refetching.mdx) shows the alternative this recipe replaces: a query
 polled on an interval. Pick an interval and watch the fetch count grow with
 every poll, whether or not anything changed. *Add tick* shows the other path.
 The write invalidates the list, so it refreshes at once, which is what an
@@ -277,3 +277,8 @@ effect near the root. `updateQueryData` is `setQueryData` with an updater
 function. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Guides: [Query invalidation](../guides/query-invalidation.md) and [updates from mutation responses](../guides/updates-from-mutation-responses.md) for `updateQueryData`.
+- Cookbook: [Lifecycle and connectivity wiring](lifecycle-and-connectivity-wiring.md) for the reconnect that triggers the resync.

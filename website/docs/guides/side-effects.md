@@ -159,7 +159,7 @@ whole app, a log line per failure — attach callbacks to the caches once,
 where the client is built, and let each query's `meta` say whether it wants
 the toast. See [global callbacks](global-callbacks.md).
 
-The showcase's *global callbacks* screen wires both caches to a snackbar and
+The showcase's [*global callbacks* screen](../examples/global-callbacks.mdx) wires both caches to a snackbar and
 a log. Press *Fetch a missing post*: the query's own screen knows nothing
 about it, yet a snackbar appears and the *Callback log* reads `query error
 post-999 (meta: toast)`. On the mutation side, *Create todo* logs the
@@ -188,3 +188,7 @@ answer, shaped like bloc's `BlocListener`. The mutation callbacks and the caches
 global callbacks are the same as upstream's. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
+
+## See also
+
+- Cookbook: [A global error snackbar](../cookbook/global-error-snackbar.md) and [forms and server validation](../cookbook/forms-and-server-validation.md) are the two usual reasons to reach for these.

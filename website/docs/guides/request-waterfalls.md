@@ -174,7 +174,7 @@ downloads run side by side.
 
 ## Seeing it
 
-The `prefetching` screen shows the difference a head start makes. Open a
+The [`prefetching` screen](../examples/prefetching.mdx) shows the difference a head start makes. Open a
 post from the list without prefetching it: the detail waits for its own
 request. Press a row's prefetch button first (tooltip *Prefetch post
 N*), wait for its *prefetched* pill, then open it: the title is there at once
@@ -201,3 +201,8 @@ navigation and deferred imports, and the fixes are the same: hoist the read,
 or prefetch with `queryClient.prefetchQuery` — `client.query(...).ignore()`
 here.
 :::
+
+## See also
+
+- Cookbook: [Routing with go_router](../cookbook/routing-go-router.md) starts the detail's request on the tap, and [list to detail, seeded](../cookbook/list-detail-seeding.md) skips it.
+- Examples: the [dependent queries example](../examples/dependent-queries.mdx) is the waterfall you cannot avoid.

@@ -18,8 +18,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 import 'package:task_manager/main.dart';
 import 'package:task_manager/src/api.dart';
+import 'package:task_manager/src/app_state.dart';
 import 'package:task_manager/src/models.dart';
 import 'package:task_manager/src/queries.dart';
+import 'package:task_manager/src/screens/detail.dart';
+import 'package:task_manager/src/theme.dart';
 
 import 'fake_backend.dart';
 
@@ -379,6 +382,69 @@ void main() {
     await tester.pumpAndSettle();
     expect(requestsFor('GET /tasks'), 2);
     expect(find.text('Try again'), findsOneWidget);
+  });
+
+  // The detail screen opened as the first thing the app loads. No navigation
+  // in the demo does that — it has no per-task URL, and the overview seeds
+  // every entry before a row can be tapped — so the two states it has for
+  // "nothing cached yet" are reached here and not in a browser
+  // (https://github.com/dualmeta-gmbh/query_kit/issues/80).
+  Future<void> startDetail(WidgetTester tester, String id) async {
+    final state = AppState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(
+      QueryClientProvider(
+        client: client,
+        child: AppScope(
+          state: state,
+          child: MaterialApp(home: TaskDetail(id: id, api: api)),
+        ),
+      ),
+    );
+  }
+
+  demoTest('a detail opened before any list response shows its skeleton',
+      (tester) async {
+    backend.detailLatency = const Duration(milliseconds: 300);
+    await startDetail(tester, '1');
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Nothing is cached for the task and its fetch is out: the skeleton, and
+    // none of what the loaded screen has.
+    expect(find.byType(SkeletonBox), findsWidgets);
+    expect(find.text('Rename'), findsNothing);
+    expect(find.text('Draft the changelog'), findsNothing);
+    expect(requestsFor('GET /tasks/1'), 1);
+    expect(client.getQueryData<Task>(TaskKeys.detail('1')), isNull);
+
+    // The latency is a timer, which `pumpAndSettle` does not wait for (no
+    // frame is scheduled): step through it.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.byType(SkeletonBox), findsNothing);
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Draft the changelog'), findsWidgets);
+  });
+
+  demoTest(
+      'a detail whose only fetch failed shows the error panel with the '
+      "backend's message", (tester) async {
+    // The backend has no task 999: the only fetch there is answers 404.
+    await startDetail(tester, '999');
+    // `retry: 1` from the app's defaults: one more attempt after the default
+    // one-second delay, and the skeleton stays up meanwhile.
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byType(SkeletonBox), findsWidgets);
+    expect(find.text('Task not found'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(requestsFor('GET /tasks/999'), 2);
+    expect(find.text('Task not found'), findsOneWidget);
+    expect(find.byIcon(Icons.cloud_off), findsOneWidget);
+    expect(find.byType(SkeletonBox), findsNothing);
+    // No stale data to fall back on, so nothing of the loaded screen.
+    expect(find.text('Rename'), findsNothing);
   });
 
   // Regressions found by review, not checklist rows.

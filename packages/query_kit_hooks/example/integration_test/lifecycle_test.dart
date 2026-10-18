@@ -11,8 +11,9 @@ import 'native_harness.dart';
 
 const Duration away = Duration(seconds: 3);
 
-void main() {
+Future<void> main() async {
   initNativeBinding();
+  await probeDevice();
 
   nativeTest('a real return refetches the todos on screen', (tester, h) async {
     await h.open(tester);
@@ -30,7 +31,7 @@ void main() {
       await settleFor(tester, const Duration(milliseconds: 200));
     }
     await waitForFact(tester, 'open todos', '2 open');
-  }, skip: !canLeave);
+  }, skip: leaveSkip);
 
   nativeTest('a real return within the minute leaves the posts alone',
       (tester, h) async {
@@ -42,5 +43,5 @@ void main() {
 
     await settleFor(tester, const Duration(seconds: 2));
     expect(await h.requests('GET', '/api/posts'), 1);
-  }, skip: !canLeave);
+  }, skip: leaveSkip);
 }
