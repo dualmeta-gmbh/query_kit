@@ -310,10 +310,17 @@ desktop app is never `paused`: with another app in front it is `inactive`,
 which a desktop counts as unfocused, so the lifecycle cases wait for that
 there (`isDesktop`), and a case that leaves the app skips only where nothing
 can send it away (`canLeave`: the web, and Linux, whose virtual display has
-no window manager). On macOS `background` first puts the app in front (`open -b`,
-then its bundle, then AppleScript, each logged to the device control's log), brings Finder to the front and the
-app back the same way (#109: whether that now works on the runner is open); keep the window uncovered while it runs, since a
-covered one is given frames slowly. A desktop app is started once per
+no window manager, and a Mac whose session sits at the login window, which
+`device_control` reads once at start and `probeDevice` asks it for). On macOS
+`background` first puts the app in front (`open -b`, then AppleScript, each
+logged to the device control's log, and a case fails when neither does),
+brings Finder to the front and the app back the same way; keep the window
+uncovered while it runs, since a
+covered one is given frames slowly. Blacksmith's macOS runner is at the login
+window (#109: `loginwindow` is in front, every activation exits 0 and none
+takes), so there the trip-away cases skip, with a printed reason, and the rest
+of the suite runs. The by-hand run before a release, on an unlocked Mac, is
+what covers them. A desktop app is started once per
 `flutter test`, so `run.sh` runs each file on its own there. Text
 goes in through `typeInto`, not `tester.enterText`, which does nothing in a
 profile or release build.

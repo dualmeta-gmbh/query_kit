@@ -11,8 +11,9 @@ import 'native_harness.dart';
 
 const Duration away = Duration(seconds: 3);
 
-void main() {
+Future<void> main() async {
   initNativeBinding();
+  await probeDevice();
 
   nativeTest('a real return refetches the todos on screen', (tester, h) async {
     await h.open(tester);

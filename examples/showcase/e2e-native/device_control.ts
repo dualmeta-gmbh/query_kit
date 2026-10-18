@@ -4,7 +4,9 @@
 // plain HTTP on loopback (an Android emulator reaches the host's loopback as
 // 10.0.2.2, an iOS simulator shares it).
 //
-//   GET  /platform                       → { platform, device, appId }
+//   GET  /platform                       → { platform, device, appId, loginWindow }  `loginWindow`:
+//                                          macOS only, true when the session sat at the login window
+//                                          when this process started, so no app can come to the front
 //   POST /background?ms=                 → { left, back }  background the app, wait, bring it
 //                                          back; `left` once it was sent away, `back` as its return
 //                                          was asked for: ISO times, as the backend logs them
@@ -84,9 +86,6 @@ const simctl = (...args: string[]) => run('xcrun', ['simctl', ...args])
 // tests nothing. So the app is made frontmost, and proven so, before it
 // leaves; every step and its exit status goes to this process's log.
 
-const lsregister =
-  '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
-
 // One command, its outcome logged. `true` when it exited 0.
 async function attempt(label: string, command: string, args: string[]) {
   try {
@@ -120,54 +119,37 @@ async function waitFront(bundleId: string, ms: number) {
   return false
 }
 
-// Puts the app under test in front, trying the next way when one fails to:
-// by id, by the path of the running bundle (registered with Launch Services
-// first, which a bundle just built under `build/` may not be), and last by
-// AppleScript, which may ask for an automation permission. When none of them
-// got it there, the log says what each said and what is in front.
+// Puts the app under test in front: by id, then by AppleScript, which may ask
+// for an automation permission. Each is logged with its exit status. Throws
+// when the app is not in front after both, with what is: a case that leaves
+// the app proves nothing if the app was never there to leave (#109).
 async function bringToFront() {
   if (await waitFront(appId, 0)) return
-  const steps: [string, () => Promise<boolean>][] = [
-    ['open -b', () => attempt('open -b', 'open', ['-b', appId])],
-    [
-      'open <bundle>',
-      async () => {
-        const found = await run('lsappinfo', ['find', `bundleid=${appId}`]).catch(() => null)
-        const asn = found?.stdout.trim()
-        const info = asn ? await run('lsappinfo', ['info', '-only', 'bundlepath', asn]).catch(() => null) : null
-        const path = /"([^"]+\.app)"/.exec(info?.stdout ?? '')?.[1]
-        console.log(`device_control: bundle of ${appId}: ${path ?? 'not found'} (asn ${asn ?? 'none'})`)
-        if (!path) return false
-        await attempt('lsregister -f', lsregister, ['-f', path])
-        return attempt('open <bundle>', 'open', [path])
-      },
-    ],
-    [
-      'osascript activate',
-      () => attempt('osascript activate', 'osascript', ['-e', `tell application id "${appId}" to activate`]),
-    ],
+  const steps: [string, string, string[]][] = [
+    ['open -b', 'open', ['-b', appId]],
+    ['osascript activate', 'osascript', ['-e', `tell application id "${appId}" to activate`]],
   ]
-  for (const [label, step] of steps) {
-    await step()
-    if (await waitFront(appId, 4000)) {
-      console.log(`device_control: ${appId} in front after ${label}`)
-      return
-    }
+  for (const [label, command, args] of steps) {
+    await attempt(label, command, args)
+    if (await waitFront(appId, 4000)) return
   }
-  // Not fatal: the test asserts on what the app reports, and a log that says
-  // what the desktop looked like is worth more than a stopped trip.
-  console.log(`device_control: could not bring ${appId} to the front`)
   await who()
+  throw new Error(`could not bring ${appId} to the front; ${await frontmost().catch(() => '?')} is there`)
 }
 
 // What Launch Services and the session look like, for the log.
 async function who() {
-  await attempt('front', 'lsappinfo', ['front'])
   await attempt('front is', 'sh', ['-c', 'lsappinfo info -only name,bundleid "$(lsappinfo front)"'])
-  await attempt('app is', 'sh', ['-c', `lsappinfo info -all "$(lsappinfo find bundleid=${appId})" | head -40`])
   await attempt('console', 'stat', ['-f', '%Su', '/dev/console'])
-  await attempt('processes', 'sh', ['-c', 'lsappinfo list | grep -E "^ *[0-9]+\\) " | head -20'])
 }
+
+// A macOS session that sits at the login window (a CI runner whose screen is
+// locked, say) has no app in front and lets none come: the cases that leave
+// the app cannot be run there, and the tests skip them. Read once, at start,
+// before the app is up (#109).
+const loginWindow =
+  platform === 'macos' && (await frontmost().catch(() => '')) === 'com.apple.loginwindow'
+if (loginWindow) console.log('device_control: the macOS session is at the login window; no app can come to the front')
 
 // --- the app's lifecycle ----------------------------------------------------
 
@@ -285,9 +267,10 @@ createTcpServer((client) => {
 // --- the control endpoint ---------------------------------------------------
 
 const routes: Record<string, (url: URL, parts: string[]) => Promise<unknown>> = {
-  'GET platform': async () => ({ platform, device, appId }),
+  'GET platform': async () => ({ platform, device, appId, loginWindow }),
   'POST background': async (url) => {
     deviceOnly('background')
+    if (loginWindow) throw new Error('the macOS session is at the login window; no app can come to the front')
     const ms = Number(url.searchParams.get('ms') ?? 2000)
     const after = url.searchParams.get('after')
     if (after === null) return background(ms)

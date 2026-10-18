@@ -19,8 +19,9 @@ const Duration away = Duration(seconds: 3);
 Future<void> pick(WidgetTester tester, String knob, String label) =>
     tapOn(tester, factIn(knob, label));
 
-void main() {
+Future<void> main() async {
   initNativeBinding();
+  await probeDevice();
 
   group('focus-refetch', () {
     Future<void> openFresh(WidgetTester tester, NativeHarness h) async {

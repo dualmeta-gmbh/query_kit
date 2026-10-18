@@ -10,8 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'native_harness.dart';
 
-void main() {
+Future<void> main() async {
   initNativeBinding();
+  await probeDevice();
 
   nativeTest('cancelling the slow fetch hangs up on the backend',
       (tester, h) async {

@@ -43,9 +43,12 @@ final bool isDesktop = !kIsWeb &&
         defaultTargetPlatform == TargetPlatform.windows);
 
 /// Whether the host can send the app away ([Device.background]): not in a
-/// browser, and not on Linux, whose virtual display has no window manager to
-/// put another window in front.
-final bool canLeave = !kIsWeb && defaultTargetPlatform != TargetPlatform.linux;
+/// browser, not on Linux, whose virtual display has no window manager to put
+/// another window in front, and not on a Mac whose session sits at the login
+/// window, where no app can come to the front ([probeDevice], #109). Read
+/// after `await probeDevice()`, which a file with such cases calls first in
+/// `main`.
+bool canLeave = !kIsWeb && defaultTargetPlatform != TargetPlatform.linux;
 
 /// The platform's name, for what a test prints.
 final String platformName = kIsWeb ? 'web' : defaultTargetPlatform.name;
@@ -59,6 +62,23 @@ const int proxyPort = 5177;
 void initNativeBinding() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
+}
+
+/// Asks the host whether the app can be sent away, and lowers [canLeave] when
+/// it cannot: a macOS session at the login window (a locked CI runner) has
+/// nothing in front and lets no app come there, so a trip away would test
+/// nothing. The cases that leave then skip, and this says why. Call after
+/// [initNativeBinding], and before the cases are declared.
+Future<void> probeDevice() async {
+  if (!canLeave) return;
+  final info =
+      await _call('GET', Device._uri('/platform')) as Map<String, Object?>;
+  if (info['loginWindow'] == true) {
+    canLeave = false;
+    // ignore: avoid_print
+    print('SKIPPED: the macOS session is at the login window; no app can '
+        'come to the front, so the cases that send the app away do not run.');
+  }
 }
 
 /// The test's own line to the host, separate from the app's: dio, because it
