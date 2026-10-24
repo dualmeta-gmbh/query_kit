@@ -1,10 +1,10 @@
 ---
 title: "Overview: TanStack Query for Flutter"
 sidebar_label: Overview
-description: query_kit is TanStack Query for Flutter and Dart — what it is, the server-state problem it solves, what reading a query looks like in a widget, and who it is for.
+description: query_kit is TanStack Query for Flutter and Dart. It fetches, caches and refreshes server data, with background refetches, retries, mutations and infinite queries.
 ---
 
-# Overview
+# Overview: TanStack Query for Flutter
 
 query_kit fetches, caches and updates the data your Dart or Flutter app gets
 from a server, and keeps it fresh without you writing the plumbing. It is a

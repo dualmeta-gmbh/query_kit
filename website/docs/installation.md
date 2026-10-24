@@ -1,7 +1,7 @@
 ---
 title: "Installation: TanStack Query for Flutter"
 sidebar_label: Installation
-description: Which package to add, what it depends on, the Dart and Flutter floors, and the analyzer settings that make the types work for you.
+description: Add TanStack Query to a Flutter app with flutter pub add query_kit_flutter, or query_kit for pure Dart. Dependencies, Dart and Flutter floors, analyzer settings.
 ---
 
 # Installation
