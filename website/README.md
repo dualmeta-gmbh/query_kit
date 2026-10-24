@@ -37,6 +37,14 @@ npx playwright install chromium
 npm run generate-og-image
 ```
 
+The Flutter package's pub.dev screenshots are real showcase captures in
+`packages/query_kit_flutter/screenshots/`, declared in its `pubspec.yaml`.
+To refresh them, build the demos and site, start `node e2e/serve.mjs 3100`
+from `website/`, then run `npm run capture-package-screenshots` from
+`website/e2e/`. `SITE_URL` overrides the default `http://localhost:3100`.
+The capture uses the in-memory demo backend and makes no external API writes.
+Review both PNGs before including them in a package release.
+
 ## Live demos
 
 A doc page embeds one of the example apps, running in the browser against its

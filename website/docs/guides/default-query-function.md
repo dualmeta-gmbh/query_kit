@@ -1,9 +1,10 @@
 ---
-title: Default query function
-description: Register a queryFn per key prefix with setQueryDefaults, so options without one derive the request from the key — its types, its mutation twin, and client-wide defaults.
+title: "Default query functions in Dart and Flutter"
+sidebar_label: Default query function
+description: "Share one fetch function across queries in Dart and Flutter. Derive requests from query keys and configure query and mutation defaults by key prefix."
 ---
 
-# Default query function
+# Default query functions in Dart and Flutter \{#default-query-function\}
 
 When every request follows one pattern — a REST path built from the key, say —
 there is no need to write a function per query. Register one for a key

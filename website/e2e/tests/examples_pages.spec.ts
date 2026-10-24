@@ -9,7 +9,10 @@ import { BASE, expect, showcaseFeatures, test } from './fixtures'
 for (const feature of showcaseFeatures) {
   test(`examples/${feature.id} frames its own feature`, async ({ page }) => {
     await page.goto(`${BASE}docs/examples/${feature.id}`)
-    await expect(page.getByRole('heading', { level: 1, name: feature.title, exact: true })).toBeVisible()
+    const heading = page.getByRole('heading', { level: 1 })
+    await expect(heading).toBeVisible()
+    // Search titles may add context; the example still names its demo.
+    await expect(heading).toContainText(feature.title)
 
     const demo = page.locator('figure').filter({ hasText: 'Live demo' })
     await expect(demo).toHaveCount(1)

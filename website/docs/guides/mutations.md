@@ -1,12 +1,13 @@
 ---
-title: Mutations
-description: The four ways to read a mutation, MutationResult, mutate and mutateAsync, per-call callbacks, identity, and mutation defaults.
+title: "API mutations in Flutter with query_kit"
+sidebar_label: Mutations
+description: "Create, update and delete server data in Flutter with query_kit. Handle pending and error states, await writes, and refresh affected queries."
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Mutations
+# API mutations in Flutter with query_kit \{#mutations\}
 
 A mutation is a write. It has the same four call styles as a query —
 `context.mutation(...)`, `watchMutation(...)`, `MutationBuilder`,

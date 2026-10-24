@@ -1,9 +1,10 @@
 ---
-title: Pull to refresh
-description: A RefreshIndicator whose spinner lasts exactly as long as the refetch, keeps the list on screen when the refresh fails, and works on an empty list too.
+title: "Pull to refresh in Flutter with cached data"
+sidebar_label: Pull to refresh
+description: "Connect Flutter RefreshIndicator to query_kit. Keep cached data visible, stop the spinner when refetching finishes, and support empty lists and errors."
 ---
 
-# Pull to refresh
+# Pull to refresh in Flutter with cached data \{#pull-to-refresh\}
 
 The user pulls the list down; the spinner should stay until the new data is
 there — not vanish at once, not hang when the refresh fails — and a refresh

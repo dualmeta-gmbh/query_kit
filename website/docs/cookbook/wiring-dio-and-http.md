@@ -1,9 +1,10 @@
 ---
-title: Wiring dio or package:http
-description: One API client for every query — cancellation handed on to the transport, timeouts, and failures turned into errors a screen can show.
+title: "Use Dio or http with query_kit in Flutter"
+sidebar_label: Wiring dio or package:http
+description: "Connect Dio or package:http to query_kit in Flutter. Share an API client, forward cancellation, set timeouts, and turn HTTP failures into useful errors."
 ---
 
-# Wiring dio or package:http
+# Use Dio or http with query_kit in Flutter \{#wiring-dio-or-packagehttp\}
 
 A query function is any function that returns a `Future`, so the library does
 not care how you talk to your server. The app does: a request the library has

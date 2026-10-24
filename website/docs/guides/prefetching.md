@@ -1,9 +1,10 @@
 ---
-title: Prefetching
-description: client.query fetches imperatively — await it, ignore it to prefetch on tap, hover or in a route redirect, fetch only when nothing is cached, or serve the cache and revalidate behind it.
+title: "Prefetch API data in Dart and Flutter"
+sidebar_label: Prefetching
+description: "Load API data before a screen opens in Dart and Flutter. Prefetch on tap, hover or navigation, reuse cached results, and revalidate stale data."
 ---
 
-# Prefetching
+# Prefetch API data in Dart and Flutter \{#prefetching\}
 
 If you know a screen is about to need data, fetch it before the screen asks.
 By the time a widget reads the key, the data is in the cache — or its fetch is

@@ -1,9 +1,10 @@
 ---
-title: Global callbacks
-description: QueryCache and MutationCache callbacks run for every query or mutation of a client — one error SnackBar for the whole app, a per-query opt-out through meta, and one invalidation rule for every write.
+title: "Global query and mutation callbacks in Flutter"
+sidebar_label: Global callbacks
+description: "Handle query and mutation errors once per operation in Flutter. Add shared logging, error notifications and invalidation rules with cache callbacks."
 ---
 
-# Global callbacks
+# Global query and mutation callbacks in Flutter \{#global-callbacks\}
 
 Some reactions belong to every query or every mutation: a SnackBar when a
 background refresh fails, a log line for every failed write, an error report

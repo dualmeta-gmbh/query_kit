@@ -1,9 +1,10 @@
 ---
-title: Hooks
-description: query_kit_hooks, an optional add-on — useQuery, useMutation and the rest of React Query's hooks on flutter_hooks, what each returns, the rules of hooks, what a throw in build costs, and testing.
+title: "useQuery and useMutation in Flutter"
+sidebar_label: Hooks
+description: "Use React Query-style hooks in Flutter with query_kit_hooks: fetch and cache data, run mutations, load more pages, and test your HookWidgets."
 ---
 
-# Hooks
+# useQuery and useMutation in Flutter \{#hooks\}
 
 `query_kit_hooks` is an optional add-on: `useQuery`, `useMutation`,
 `useInfiniteQuery` and the rest of React Query's hooks, on

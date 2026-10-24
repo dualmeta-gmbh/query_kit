@@ -1,12 +1,13 @@
 ---
-title: Paginated queries
-description: One page at a time with the page number in the key — PlaceholderData.keepPrevious keeps the last page on screen while the next loads, and a prefetch makes Next instant.
+title: "Pagination in Flutter with cached queries"
+sidebar_label: Paginated queries
+description: "Paginate API data in Flutter while keeping the previous page visible. Cache each page by query key and prefetch the next page with query_kit."
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Paginated queries
+# Pagination in Flutter with cached queries \{#paginated-queries\}
 
 An installer's app lists the devices on a site, fifty to a page, with
 *Previous* and *Next* underneath. That is an ordinary query with the page

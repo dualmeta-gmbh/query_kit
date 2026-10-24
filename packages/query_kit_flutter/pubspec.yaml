@@ -3,11 +3,16 @@ description: >-
   TanStack Query for Flutter: cached server data, background refetching,
   retries, mutations and infinite queries, read in four equal styles.
   AI-coded, not affiliated with TanStack.
-version: 1.1.2
+version: 1.1.3
 homepage: https://query-kit.dualmeta.io/
 documentation: https://query-kit.dualmeta.io/docs/overview
 repository: https://github.com/dualmeta-gmbh/query_kit
 issue_tracker: https://github.com/dualmeta-gmbh/query_kit/issues
+screenshots:
+  - description: 'The Flutter optimistic updates demo after adding a todo, with cache and mutation state visible.'
+    path: screenshots/optimistic-updates.png
+  - description: 'The Flutter showcase cache inspector with query states, active readers and cached API data.'
+    path: screenshots/cache-inspector.png
 topics:
   - cache
   - state-management

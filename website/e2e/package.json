@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "capture-package-screenshots": "node scripts/capture-package-screenshots.mjs",
     "generate-og-image": "node scripts/generate-og-image.mjs",
     "test": "playwright test",
     "test:headed": "playwright test --headed",

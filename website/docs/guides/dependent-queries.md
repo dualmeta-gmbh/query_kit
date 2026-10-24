@@ -1,12 +1,13 @@
 ---
-title: Dependent queries
-description: A query that needs another query's result waits with enabled — the pattern in each call style, Enabled.yes, Enabled.no and Enabled.when, and why it is still a waterfall.
+title: "Dependent API queries in Flutter"
+sidebar_label: Dependent queries
+description: "Run a Flutter API query after another query supplies its input. Enable or pause dependent queries and understand the resulting request waterfall."
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Dependent queries
+# Dependent API queries in Flutter \{#dependent-queries\}
 
 Some requests need the answer to another one first. A smart-home app knows
 which home to show only once it has the signed-in account; the devices of that

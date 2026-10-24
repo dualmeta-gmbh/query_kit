@@ -1,10 +1,10 @@
 ---
-title: Next to Riverpod, Bloc or Provider
+title: "Use query_kit with Riverpod, Bloc or Provider"
 sidebar_label: Riverpod, Bloc, Provider
-description: Keep server state in query_kit and app state in your state-management package, and connect the two through QueryController without keeping a second copy.
+description: "Combine query_kit with Riverpod, Bloc or Provider in Flutter. Keep API data in the query cache and local UI state in your existing state management."
 ---
 
-# Next to Riverpod, Bloc or Provider
+# Use query_kit with Riverpod, Bloc or Provider \{#next-to-riverpod-bloc-or-provider\}
 
 **The problem.** The app already uses Riverpod, Bloc or Provider. Adding
 query_kit seems to mean choosing: either the store holds the server data and

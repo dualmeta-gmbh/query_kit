@@ -1,9 +1,10 @@
 ---
-title: Infinite queries
-description: A list of pages behind one key — pageFn, getNextPageParam and maxPages, why paging lives on the controller, and a scrolling list with load-on-scroll and pull-to-refresh.
+title: "Infinite scrolling in Flutter with query_kit"
+sidebar_label: Infinite queries
+description: "Build an infinite scrolling list in Flutter with query_kit. Fetch the next page, limit cached pages, and combine load-on-scroll with pull-to-refresh."
 ---
 
-# Infinite queries
+# Infinite scrolling in Flutter with query_kit \{#infinite-queries\}
 
 A query whose data is a *list of pages*. Same four call styles; the difference
 is that the function is `pageFn` rather than `queryFn`, and it receives a typed

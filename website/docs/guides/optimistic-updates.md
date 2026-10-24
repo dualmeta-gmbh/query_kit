@@ -1,9 +1,10 @@
 ---
-title: Optimistic updates
-description: Show a write before the server confirms it — drawn from the pending mutation's variables, or patched into the cache in onMutate and rolled back on error.
+title: "Optimistic updates in Flutter"
+sidebar_label: Optimistic updates
+description: "Update Flutter UI before a write completes. Show pending mutation variables or update the cache, then roll back on error with query_kit."
 ---
 
-# Optimistic updates
+# Optimistic updates in Flutter \{#optimistic-updates\}
 
 A user adds a device and waits half a second for the list to show it; flips
 a switch and watches it spring back until the server agrees. Most writes

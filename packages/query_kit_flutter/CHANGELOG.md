@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.3
+
+- Add screenshots of the optimistic updates and cache inspector demos to
+  the pub.dev package page. No API or behavior changes.
+
 ## 1.1.2
 
 - README only: a "Why this package" section with a diagram of the four call

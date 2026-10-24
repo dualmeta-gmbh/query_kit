@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Link the package's documentation directly to the hooks guide.
+  No API or behavior changes.
+
 ## 0.1.0
 
 First release. `query_kit_hooks` is React Query's hooks on

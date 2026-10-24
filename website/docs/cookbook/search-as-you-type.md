@@ -1,9 +1,10 @@
 ---
-title: Search as you type
-description: A debounced search box that asks the server nothing while empty, cancels the request a newer keystroke replaced, and keeps the last results on screen while the next arrive.
+title: "Debounced API search in Flutter"
+sidebar_label: Search as you type
+description: "Build debounced API search in Flutter with query_kit. Cancel outdated requests, skip empty searches, and keep previous results visible while loading."
 ---
 
-# Search as you type
+# Debounced API search in Flutter \{#search-as-you-type\}
 
 A search field over the product list. Typing "kettle" should not send six
 requests, an empty field should send none, and a request for "ket" that is

@@ -19,7 +19,7 @@ test('typing a class name lists the page that documents it, and Enter opens it',
   await expect(results.first()).toContainText('QueriesController')
   await expect(results.first()).toContainText('Widgets and controllers')
   // Also the pages that merely use it.
-  await expect(results.filter({ hasText: 'Parallel queries' }).first()).toBeVisible()
+  await expect(results.filter({ hasText: 'Parallel API queries in Flutter' }).first()).toBeVisible()
 
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(`${BASE}docs/reference/widgets-and-controllers#queriescontroller`)
@@ -32,7 +32,7 @@ test('a result can be clicked', async ({ page }) => {
   await page.goto(`${BASE}docs/overview`)
   await searchBox(page).click()
   await searchBox(page).pressSequentially('QueriesController')
-  await page.getByRole('listbox').getByRole('option').filter({ hasText: 'Parallel queries' }).first().click()
+  await page.getByRole('listbox').getByRole('option').filter({ hasText: 'Parallel API queries in Flutter' }).first().click()
   await expect(page).toHaveURL(new RegExp(`${BASE}docs/guides/parallel-queries`))
 })
 

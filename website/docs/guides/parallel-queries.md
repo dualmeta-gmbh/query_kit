@@ -1,12 +1,13 @@
 ---
-title: Parallel queries
-description: Several queries at once — separate reads that run side by side in every call style, QueriesBuilder for a list that changes length or order, and one loading indicator over all of them.
+title: "Parallel API queries in Flutter"
+sidebar_label: Parallel queries
+description: "Fetch independent API requests in parallel in Flutter. Read fixed or dynamic sets of queries with query_kit and avoid sequential request waterfalls."
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Parallel queries
+# Parallel API queries in Flutter \{#parallel-queries\}
 
 A home screen rarely needs one thing. The dashboard of a smart-home app wants
 the rooms and the devices; the energy panel wants one reading per device on

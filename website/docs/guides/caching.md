@@ -1,9 +1,10 @@
 ---
-title: Caching
-description: How long data is fresh (StaleTime), how long an unobserved entry is kept (GcTime), and what happens to a query from its first read to garbage collection.
+title: "API caching in Dart and Flutter"
+sidebar_label: Caching
+description: "Cache API responses in Dart and Flutter, keep data fresh with background refetching, and control cache lifetime with staleTime and gcTime."
 ---
 
-# Caching
+# API caching in Dart and Flutter \{#caching\}
 
 Two options decide the life of a cache entry: how long its data counts as
 **fresh**, and how long the entry is **kept** once nothing reads it. Most of

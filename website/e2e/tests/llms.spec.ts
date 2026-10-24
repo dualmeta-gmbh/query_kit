@@ -41,7 +41,7 @@ test('llms-full.txt holds every page', async ({ request }) => {
   const response = await request.get(`${BASE}llms-full.txt`)
   expect(response.ok()).toBe(true)
   const full = await response.text()
-  expect(full).toContain('\n# Optimistic updates\n')
+  expect(full).toContain('\n# Optimistic updates in Flutter\n')
   expect(full).toContain('\n# Credits, and what this is not\n')
 })
 

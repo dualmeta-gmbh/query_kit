@@ -1,9 +1,10 @@
 ---
-title: Mutation state
-description: MutationStateController and MutationStateObserver — every mutation matching a filter, for a "saving…" badge no widget owns, and its typed form.
+title: "Track pending mutations in Flutter"
+sidebar_label: Mutation state
+description: "Show saving indicators for concurrent writes in Flutter. Read pending and failed mutations from the shared cache with MutationStateController."
 ---
 
-# Mutation state
+# Track pending mutations in Flutter \{#mutation-state\}
 
 `MutationStateController` (and the core's `MutationStateObserver`) reads *every*
 mutation matching a filter through a `select` — the counterpart of
