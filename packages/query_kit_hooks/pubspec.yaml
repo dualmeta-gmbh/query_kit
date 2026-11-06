@@ -3,7 +3,7 @@ description: >-
   TanStack Query's hooks for Flutter: useQuery, useMutation, useInfiniteQuery
   and the rest on flutter_hooks, over query_kit_flutter. AI-coded, not
   affiliated with TanStack.
-version: 0.1.1
+version: 0.1.2
 homepage: https://query-kit.dev/
 documentation: https://query-kit.dev/docs/guides/hooks
 repository: https://github.com/dualmeta-gmbh/query_kit

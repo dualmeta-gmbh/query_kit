@@ -78,7 +78,7 @@ starts once C3 has fixed the sidebar and slugs.
 - **D7 — Deployment is prepared, not performed.** A GitHub Pages workflow may
   be added. The maintainer approved Pages (free for the public repository);
   it was switched on with source *GitHub Actions* on 2026-09-23, so the
-  site deploys to `https://dualmeta-gmbh.github.io/query_kit/` when `pages.yml`
+  site deploys to `https://query-kit.dev/` when `pages.yml`
   first runs on the default branch. Switching Pages on was the one exception; pushing, tagging and publishing stay with the
   maintainer (`scripts/release.sh`).
 - **D8 — Gates per chunk.** The repo's gates from CLAUDE.md (the five test

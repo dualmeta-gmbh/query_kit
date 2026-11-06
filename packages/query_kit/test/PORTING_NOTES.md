@@ -7414,3 +7414,15 @@ changed in this round; the work is wording, the site, and tests.
   Counts after this round: binding **546** (427 + 108 matrix + 11), hooks
   **335**, doc_snippets **48**; analyzer, the formatter scope, the jargon
   check and the site build pass.
+
+
+## Documentation domain move (2026-11-06)
+
+- **DOC-URL-1 (internal, documentation only).** At base `956ef79`, the core
+  and binding library comments still linked to the old documentation host.
+  Both now link to `https://query-kit.dev/`. Verified by reading and by
+  comparing every non-comment line with the base: executable code and exports
+  are identical, so runtime tests cannot observe this URL change. A separate
+  read-only review found no introduced defects. Existing website tests passed
+  (13/13); the generated sitemap's 120 URLs all use the new self-canonical host.
+  Package publication still follows the release gates in `docs/releasing.md`.

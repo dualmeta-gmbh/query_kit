@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4
+
+- Move the documentation to https://query-kit.dev/. Update homepage,
+  documentation and README links. No API or behavior changes.
+
 ## 1.0.3
 
 - A fetch or a mutation met from another error zone than the one it began
@@ -25,7 +30,7 @@
 ## 1.0.2
 
 No change to the code. The documentation site moved to its own address,
-<https://query-kit.dualmeta.io/>; the package page's homepage and
+<https://query-kit.dev/>; the package page's homepage and
 documentation links, the README and the library's dartdoc name it, and the
 former address redirects there. The README opens with a title a reader
 searches for, "TanStack Query for Dart | query_kit", instead of the package name,
@@ -34,7 +39,7 @@ which pub.dev's own heading above it already shows.
 ## 1.0.1
 
 No change to the code. The package page now names the documentation site,
-<https://dualmeta-gmbh.github.io/query_kit/>, as its homepage and
+<https://query-kit.dev/>, as its homepage and
 documentation, the README opens with a link to it, the quick start, the
 examples and the API reference, and the description says what the package is:
 TanStack Query for Dart.

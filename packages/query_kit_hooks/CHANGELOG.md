@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Move the documentation to https://query-kit.dev/. Update homepage,
+  documentation and README links. No API or behavior changes.
+
 ## 0.1.1
 
 - Link the package's documentation directly to the hooks guide.

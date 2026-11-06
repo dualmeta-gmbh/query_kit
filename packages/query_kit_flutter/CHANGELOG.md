@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.4
+
+- Move the documentation to https://query-kit.dev/. Update homepage,
+  documentation and README links. No API or behavior changes.
+
 ## 1.1.3
 
 - Add screenshots of the optimistic updates and cache inspector demos to
@@ -77,7 +82,7 @@
 ## 1.0.3
 
 No change to the code. The documentation site moved to its own address,
-<https://query-kit.dualmeta.io/>; the package page's homepage and
+<https://query-kit.dev/>; the package page's homepage and
 documentation links, the README and the library's dartdoc name it, and the
 former address redirects there. The README opens with a title a reader
 searches for, "TanStack Query for Flutter | query_kit", instead of the package name,
@@ -91,7 +96,7 @@ because its line was wrapped at the hyphen; it reads "AI-coded" again.
 ## 1.0.1
 
 No change to the code. The package page now names the documentation site,
-<https://dualmeta-gmbh.github.io/query_kit/>, as its homepage and
+<https://query-kit.dev/>, as its homepage and
 documentation, the README opens with a link to it, the quick start, the
 examples and the API reference, and the description says what the package is:
 TanStack Query for Flutter.

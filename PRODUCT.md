@@ -45,7 +45,7 @@ served as Markdown for AI agents (`llms.txt`).
 ## Capabilities and Constraints
 
 - Docusaurus 3 site under `website/`, deployed to GitHub Pages at
-  https://query-kit.dualmeta.io/ on a release tag.
+  https://query-kit.dev/ on a release tag.
 - URLs, slugs, heading anchors and the sidebar structure are stable; the build
   fails on a broken link or anchor.
 - Light and dark mode, following the system preference, with a toggle.

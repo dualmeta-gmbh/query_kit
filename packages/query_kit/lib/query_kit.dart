@@ -85,7 +85,7 @@
 /// * **Advanced** — the plumbing: cache events, actions, fetch behaviours.
 ///
 /// Guides, recipes and live examples are on the documentation site:
-/// https://query-kit.dualmeta.io/
+/// https://query-kit.dev/
 library;
 
 // Export policy (maintainer note): what is exported is the public surface,
