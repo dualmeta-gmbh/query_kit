@@ -244,7 +244,7 @@ leg also runs its `backend_contract_test.dart` against the real server; the
 hooks add-on's example runs against the showcase's, on ports of its own.
 **Core and binding are published since 1.0.0** (2026-09-23), the hooks
 add-on since 0.1.0 (2026-10-16), and the site is live
-at <https://query-kit.dualmeta.io/>. A breaking change is now a
+at <https://query-kit.dev/>. A breaking change is now a
 major. How a later release goes — bump, merge, tag; `publish.yml` and
 `pages.yml` do the rest — and the repository settings the deploy needs are in
 [`docs/releasing.md`](docs/releasing.md).

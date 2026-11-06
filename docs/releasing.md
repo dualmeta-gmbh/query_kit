@@ -212,7 +212,7 @@ the first binding version to export `adapter.dart`, in these steps:
 ## Documentation site
 
 The site under `website/` is deployed to GitHub Pages at
-<https://query-kit.dualmeta.io/>, live demos included, by
+<https://query-kit.dev/>, live demos included, by
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml). What has to be
 true for that, all of it set on 2026-09-23:
 
@@ -234,15 +234,16 @@ true for that, all of it set on 2026-09-23:
   is the `ci` workflow's `website` job step for step, demos from `tool/build_demos.sh` included, so
   what CI tested is what ships. A failed deploy is retried with *Re-run
   failed jobs*; the built artifact is kept.
-- **Settings → Pages → Custom domain: `query-kit.dualmeta.io`**, with
-  *Enforce HTTPS* (since 2026-10-15). DNS holds a `CNAME` from
-  `query-kit.dualmeta.io` to `dualmeta-gmbh.github.io`. With an Actions-built
+- **Settings → Pages → Custom domain: `query-kit.dev`**, with
+  *Enforce HTTPS*. Namecheap DNS holds an apex `ALIAS` from `@` to
+  `dualmeta-gmbh.github.io`, and a `CNAME` from `www` to the same target.
+  With an Actions-built
   site the domain lives only in this setting — a `CNAME` file in the
   artifact is ignored — and GitHub redirects the former
   `https://dualmeta-gmbh.github.io/query_kit/` there. From the command line:
 
   ```bash
-  gh api -X PUT repos/dualmeta-gmbh/query_kit/pages -f cname=query-kit.dualmeta.io
+  gh api -X PUT repos/dualmeta-gmbh/query_kit/pages -f cname=query-kit.dev
   gh api -X PUT repos/dualmeta-gmbh/query_kit/pages -F https_enforced=true
   ```
 
@@ -250,6 +251,16 @@ true for that, all of it set on 2026-09-23:
   top of `website/docusaurus.config.ts` (the site sits at the domain's root,
   `baseUrl: '/'`), and the live demos' base href is derived from them; a
   move is one edit there plus the setting above.
+
+- **Keep the old custom domain working.** `query-kit.dualmeta.io` needs its
+  own HTTPS endpoint returning a permanent redirect to `https://query-kit.dev`
+  with the original path and query string. Changing the Pages custom domain
+  only redirects the GitHub Pages address; it does not provision an HTTPS
+  redirect for the former custom domain. The old domain's DNS is managed at
+  ALL-INKL. Keep its Search Console property and verification records so the
+  migration can be monitored alongside the new `query-kit.dev` domain property.
+  Submit `https://query-kit.dev/sitemap.xml` in the new property after the
+  new HTTPS site and old-domain redirects have been verified.
 
 ## What the archives hold
 

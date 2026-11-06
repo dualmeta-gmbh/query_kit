@@ -18,9 +18,9 @@ refetching, retries, cancellation, mutations and infinite queries — a port of
 TanStack Query's `query-core`, checked against upstream's own test suite,
 ported case by case.
 
-**Documentation: [TanStack Query for Flutter at query-kit.dualmeta.io](https://query-kit.dualmeta.io/)**
-· [Quick start](https://query-kit.dualmeta.io/docs/quick-start)
-· [Coming from React Query](https://query-kit.dualmeta.io/docs/coming-from-react-query)
+**Documentation: [TanStack Query for Flutter at query-kit.dev](https://query-kit.dev/)**
+· [Quick start](https://query-kit.dev/docs/quick-start)
+· [Coming from React Query](https://query-kit.dev/docs/coming-from-react-query)
 
 > **query_kit is an entirely AI-coded project: all code, tests and
 > documentation were written by AI coding agents (Anthropic's Claude). A human
@@ -41,7 +41,7 @@ ported case by case.
 - **Checked against TanStack Query's own tests.** Upstream's test suite is
   ported case by case and run against this code: 414 of the 536 core cases
   and 269 of the 305 hook cases, with every case left out listed with its
-  reason. [How fidelity is measured](https://query-kit.dualmeta.io/docs/project/fidelity).
+  reason. [How fidelity is measured](https://query-kit.dev/docs/project/fidelity).
 - **Four equal ways to read a query.** `context.query(...)`, a builder
   widget, a `State` mixin, or a controller that is a plain `ValueListenable`.
   All four take the same options, and none of them is the default. Apps on
@@ -59,7 +59,7 @@ ported case by case.
   collection completely.
 
 What it does not have yet: a built-in persister and devtools.
-[Other Dart libraries](https://query-kit.dualmeta.io/docs/reference/other-dart-libraries)
+[Other Dart libraries](https://query-kit.dev/docs/reference/other-dart-libraries)
 describes the alternatives and where each may fit better.
 
 ## Packages
@@ -97,7 +97,7 @@ later. Each package README has a quick start.
 
 The documentation site — getting started, a guide per concept, examples, the
 JavaScript-to-Dart name map and troubleshooting — is built from
-[`website/`](website) and published at <https://query-kit.dualmeta.io/>. To
+[`website/`](website) and published at <https://query-kit.dev/>. To
 run it locally:
 
 ```bash

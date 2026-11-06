@@ -5,11 +5,11 @@ mutations and infinite queries, read from your widgets in whichever of four
 equal styles suits the screen. **No dependency beyond Flutter** — not
 `flutter_hooks`, not a signals package, not `connectivity_plus`.
 
-**Documentation: [query-kit.dualmeta.io](https://query-kit.dualmeta.io/)**, with
+**Documentation: [query-kit.dev](https://query-kit.dev/)**, with
 guides, a cookbook and live examples.
-[Quick start](https://query-kit.dualmeta.io/docs/quick-start) ·
-[Four ways to read a query](https://query-kit.dualmeta.io/docs/guides/reading-queries-in-widgets) ·
-[Examples](https://query-kit.dualmeta.io/docs/examples) ·
+[Quick start](https://query-kit.dev/docs/quick-start) ·
+[Four ways to read a query](https://query-kit.dev/docs/guides/reading-queries-in-widgets) ·
+[Examples](https://query-kit.dev/docs/examples) ·
 [API reference](https://pub.dev/documentation/query_kit_flutter/latest/)
 
 > **AI-coded.** query_kit is an entirely AI-coded project: all code, tests
@@ -33,7 +33,7 @@ guides, a cookbook and live examples.
 - **Checked against TanStack Query's own tests**: 414 of the 536 upstream
   core cases are ported and run against the core, and every case left out is
   listed with its reason.
-  [How fidelity is measured](https://query-kit.dualmeta.io/docs/project/fidelity).
+  [How fidelity is measured](https://query-kit.dev/docs/project/fidelity).
 - **Four equal ways to read a query**, with the same options and the same
   behaviour. The opt-in [`query_kit_hooks`](https://pub.dev/packages/query_kit_hooks)
   adds `useQuery` for apps on `flutter_hooks`.
@@ -44,7 +44,7 @@ guides, a cookbook and live examples.
   through `package:clock`.
 
 Not there yet: a built-in persister and devtools.
-[Other Dart libraries](https://query-kit.dualmeta.io/docs/reference/other-dart-libraries)
+[Other Dart libraries](https://query-kit.dev/docs/reference/other-dart-libraries)
 describes the alternatives.
 
 ## Install
@@ -261,7 +261,7 @@ testWidgets('the list loads', (tester) async {
 });
 ```
 
-The [testing guide](https://query-kit.dualmeta.io/docs/guides/testing)
+The [testing guide](https://query-kit.dev/docs/guides/testing)
 wraps these steps once per suite.
 
 ## Building on the binding
@@ -284,19 +284,19 @@ is built on it. See the
 
 ## Learn more
 
-- [Overview](https://query-kit.dualmeta.io/docs/overview),
-  [quick start](https://query-kit.dualmeta.io/docs/quick-start) and
-  [important defaults](https://query-kit.dualmeta.io/docs/important-defaults)
-- [Four ways to read a query](https://query-kit.dualmeta.io/docs/guides/reading-queries-in-widgets)
-  and [what rebuilds, and when](https://query-kit.dualmeta.io/docs/guides/render-optimizations)
-- [Mutations](https://query-kit.dualmeta.io/docs/guides/mutations),
-  [optimistic updates](https://query-kit.dualmeta.io/docs/guides/optimistic-updates)
-  and [infinite queries](https://query-kit.dualmeta.io/docs/guides/infinite-queries)
-- [App focus](https://query-kit.dualmeta.io/docs/guides/window-focus-refetching)
-  and [connectivity](https://query-kit.dualmeta.io/docs/guides/connectivity)
-- [Testing](https://query-kit.dualmeta.io/docs/guides/testing)
-- [Coming from React Query](https://query-kit.dualmeta.io/docs/coming-from-react-query)
-  and [troubleshooting](https://query-kit.dualmeta.io/docs/reference/troubleshooting)
+- [Overview](https://query-kit.dev/docs/overview),
+  [quick start](https://query-kit.dev/docs/quick-start) and
+  [important defaults](https://query-kit.dev/docs/important-defaults)
+- [Four ways to read a query](https://query-kit.dev/docs/guides/reading-queries-in-widgets)
+  and [what rebuilds, and when](https://query-kit.dev/docs/guides/render-optimizations)
+- [Mutations](https://query-kit.dev/docs/guides/mutations),
+  [optimistic updates](https://query-kit.dev/docs/guides/optimistic-updates)
+  and [infinite queries](https://query-kit.dev/docs/guides/infinite-queries)
+- [App focus](https://query-kit.dev/docs/guides/window-focus-refetching)
+  and [connectivity](https://query-kit.dev/docs/guides/connectivity)
+- [Testing](https://query-kit.dev/docs/guides/testing)
+- [Coming from React Query](https://query-kit.dev/docs/coming-from-react-query)
+  and [troubleshooting](https://query-kit.dev/docs/reference/troubleshooting)
 - [API reference](https://pub.dev/documentation/query_kit_flutter/latest/)
 - A runnable one-file tour: [`example/lib/main.dart`](https://github.com/dualmeta-gmbh/query_kit/blob/main/packages/query_kit_flutter/example/lib/main.dart)
 

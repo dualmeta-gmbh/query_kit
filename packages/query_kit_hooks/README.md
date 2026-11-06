@@ -6,8 +6,8 @@ the same cache, with the same rules, as the four call styles of
 [`query_kit_flutter`](https://pub.dev/packages/query_kit_flutter), which this
 package builds on and re-exports.
 
-**Documentation: [the hooks guide](https://query-kit.dualmeta.io/docs/guides/hooks)**
-on [query-kit.dualmeta.io](https://query-kit.dualmeta.io/) ·
+**Documentation: [the hooks guide](https://query-kit.dev/docs/guides/hooks)**
+on [query-kit.dev](https://query-kit.dev/) ·
 [API reference](https://pub.dev/documentation/query_kit_hooks/latest/)
 
 > **AI-coded.** query_kit is an entirely AI-coded project: all code, tests
@@ -104,7 +104,7 @@ what the widget is already showing.
 
 What each hook takes and returns, the rules of hooks, what a throw in
 `build` costs and how to test a `HookWidget` are in
-[the hooks guide](https://query-kit.dualmeta.io/docs/guides/hooks).
+[the hooks guide](https://query-kit.dev/docs/guides/hooks).
 
 ## License and credits
 

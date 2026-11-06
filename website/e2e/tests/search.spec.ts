@@ -41,7 +41,7 @@ test('the home page names the site query_kit', async ({ request }) => {
   const graph: { '@type': string; name?: string; url?: string }[] = JSON.parse(json![1])['@graph']
   const site = graph.find((node) => node['@type'] === 'WebSite')
   expect(site?.name).toBe('query_kit')
-  expect(site?.url).toBe(`https://query-kit.dualmeta.io${BASE}`)
+  expect(site?.url).toBe(`https://query-kit.dev${BASE}`)
 })
 
 test('the favicon is served as SVG, PNG and ICO', async ({ request }) => {

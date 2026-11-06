@@ -3,7 +3,7 @@
 [Docusaurus 3](https://docusaurus.io). The prose lives in `docs/`, the landing
 page in `src/pages/`. The site is built in CI on every push, so a broken link
 or a failing build is caught, and deployed to GitHub Pages
-(<https://query-kit.dualmeta.io/>) on a release tag or by hand.
+(<https://query-kit.dev/>) on a release tag or by hand.
 
 ```bash
 npm ci
@@ -258,11 +258,13 @@ different matter and blocks.
 
 ## Deployment
 
-The site is live at <https://query-kit.dualmeta.io/>, GitHub Pages under a
+The site is live at <https://query-kit.dev/>, GitHub Pages under a
 custom domain; the former `https://dualmeta-gmbh.github.io/query_kit/`
-redirects there. `npm run demos && npm run build` produces a static `build/`
+redirects there. The previous custom domain, `query-kit.dualmeta.io`, needs
+its own permanent HTTPS redirect with the path and query string preserved
+(see `docs/releasing.md`). `npm run demos && npm run build` produces a static `build/`
 directory; anything that serves files will do. `url` and `baseUrl` in the
-config point at `https://query-kit.dualmeta.io/` — written once as constants
+config point at `https://query-kit.dev/` — written once as constants
 at the top of `docusaurus.config.ts`, so a move is one edit there — and
 `.github/workflows/pages.yml` builds and deploys it on a `query_kit-v*` tag or
 by hand. Pages is switched on for the repository (source: GitHub Actions), and the
