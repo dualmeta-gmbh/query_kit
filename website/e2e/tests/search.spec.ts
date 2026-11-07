@@ -47,8 +47,16 @@ test('the home page names the site query_kit', async ({ request }) => {
 test('the favicon is served as SVG, PNG and ICO', async ({ request }) => {
   const html = await (await request.get(BASE)).text()
   for (const href of ['/img/favicon.svg', '/img/favicon-96x96.png', '/img/apple-touch-icon.png']) {
-    expect(html, href).toContain(`href=${href}`)
+    expect(html, href).toContain(`href="${href}"`)
     expect((await request.get(href)).ok(), href).toBe(true)
   }
   expect((await request.get('/favicon.ico')).ok()).toBe(true)
+})
+
+// Read from the raw HTML on purpose: a browser's parser accepts these values
+// without quotes, and WhatsApp's then drops the image. `docusaurus.config.ts`
+// keeps the minifier that strips them switched off.
+test('the share image is named in quotes, for WhatsApp', async ({ request }) => {
+  const html = await (await request.get(BASE)).text()
+  expect(html).toMatch(/<meta[^>]* property="og:image" content="https:[^"]+"/)
 })
