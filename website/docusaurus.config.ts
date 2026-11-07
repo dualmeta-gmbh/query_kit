@@ -58,7 +58,10 @@ const config: Config = {
   onBrokenAnchors: 'throw',
   markdown: { hooks: { onBrokenMarkdownLinks: 'throw' } },
 
-  future: { v4: true, faster: true },
+  // `v4` turns every `faster` flag on but this one. SWC's HTML minifier strips
+  // the quotes from attribute values: valid HTML, but WhatsApp's parser then
+  // drops the `og:image`, and with it the link preview's picture.
+  future: { v4: true, faster: { swcHtmlMinimizer: false } },
 
   customFields: { sourceRevision: sourceRevision() },
 
