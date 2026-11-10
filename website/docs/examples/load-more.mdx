@@ -36,16 +36,18 @@ leaving and coming back should not start from page one.
 
 ## The code
 
-The query names its first cursor and reads the next one off the last page;
-`null` there is what makes `hasNextPage` false. A `select` keeps the page
-structure but drops the cursors, and a five-minute `staleTime` is what lets
-the list come back from About without refetching.
+The query is declared once, as an [infinite
+definition](../guides/typed-queries.md#infinite-definitions). It names its
+first cursor and reads the next one off the last page; `null` there is what
+makes `hasNextPage` false. A five-minute `staleTime`, set in its
+`configure`, is what lets the list come back from About without refetching,
+and the list's `withSelect` keeps the page structure but drops the cursors.
 
 <DartSource
   source={screen}
   path="examples/showcase/lib/features/load_more/load_more_screen.dart"
-  from="/// The screen's one query."
-  end="    );"
+  from="/// The screen's one query, declared once with the api it fetches from."
+  end="}"
 />
 
 The list reads it with an `InfiniteQueryBuilder`, whose builder receives the
@@ -61,8 +63,9 @@ since the last time it asked:
   end="    }"
 />
 
-The About view observes nothing. `getInfiniteQueryData` reads the pages as
-the cache holds them, without adding an observer or starting a request:
+The About view observes nothing. The definition's `read` returns the pages
+as the cache holds them, typed by the definition, without adding an observer
+or starting a request:
 
 <DartSource
   source={screen}

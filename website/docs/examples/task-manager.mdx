@@ -58,46 +58,54 @@ the same constant, so they test the policy the app ships.
 
 ### The list seeds each task
 
-Two kinds of query split the data. The list query owns *which* tasks exist;
-a per-task query owns *what each task is*. When a list arrives, its query
-function writes every task into that task's own entry. `initialData` could
-not do this: it is read only while an entry is empty, so later list responses
-would never reach a row that had already been built. Seeding also stamps
-each entry fresh, so rendering the rows does not start a burst of per-task
-fetches. The options are one shared function, never re-declared per screen,
-so every observer of the key runs the same query function.
+Two kinds of query split the data, and both are declared once, in
+`TaskQueries`, as [typed query definitions](../guides/typed-queries.md). The
+list family owns *which* tasks exist; the per-task family owns *what each
+task is*. When a list arrives, its fetch function writes every task into that
+task's own entry, through the sibling `byId`. `initialData` could not do
+this: it is read only while an entry is empty, so later list responses would
+never reach a row that had already been built. Seeding also stamps each
+entry fresh, so rendering the rows does not start a burst of per-task
+fetches. Every screen observes these definitions, so every observer of a key
+runs the same fetch function.
+
+The list's key holds the filters as their JSON map, the shape the backend
+receives them in, so the family has a `keyOf`. The per-task family's
+`refetchInterval` is a function of the data: while the task has a reminder
+write the scheduler has not confirmed, it polls every half second; once the
+server confirms, the function returns `null` and polling stops. The poll
+keeps running in the background, so a confirmation that lands while the user
+looks away is still picked up.
 
 <DartSource
   source={queries}
   path="examples/task_manager/lib/src/queries.dart"
-  from="QueryObserverOptions<TaskListResponse> taskListQuery("
-  to="    );"
+  from="final class TaskQueries {"
+  end="}"
 />
 
 ### Two widgets, two shapes, one request
 
-The header's sync badge uses the same key, function and stale time as the
-unfiltered list, and adds a `select`. It reads the entry the overview already
+The header's sync badge reads the unfiltered list's own options with a
+`select` added by `withSelect`. It reads the entry the overview already
 fetched, so it costs nothing.
 
 <DartSource
   source={queries}
   path="examples/task_manager/lib/src/queries.dart"
-  from="/// Used by the header. Same key"
-  end="}"
+  from="/// Used by the header: the overview's unfiltered list with a `select`, so"
+  end="        );"
 />
 
 ### The per-task query: a fallback seed and a poll that stops
 
 Both the overview's rows and the detail screen read `taskQuery`. If a task is
-opened before any list has seeded it, the query looks for it in whatever lists
-the cache holds and uses that as initial data, **with the list's timestamp**,
-so old data does not pass for freshly fetched and still revalidates. Its
-`refetchInterval` is a function of the data: while the task has a reminder
-write the scheduler has not confirmed, it polls every half second; once the
-server confirms, the function returns `null` and polling stops. The poll keeps
-running in the background, so a confirmation that lands while the user looks
-away is still picked up.
+opened before any list has seeded it, the function looks for it in whatever
+lists the cache holds, with the list family's `readAll`, and adds it as
+initial data to the reference's options, **with the list's timestamp**, so
+old data does not pass for freshly fetched and still revalidates. A
+definition holds no client, so a seed that reads the cache is added per use. The poll that stops is
+`byId`'s, shown above.
 
 <DartSource
   source={queries}
@@ -141,9 +149,10 @@ invalidation: the poll is the reconciliation.
 
 Creating a task has no optimistic step, so it uses `MutationOptions.simple`
 and invalidates every list. Deleting removes the row from every cached list
-at once and keeps a snapshot of all of them for the rollback. The task's own
-entry is removed only once the server agrees, so a refused delete springs back
-to a row whose detail still renders from cache.
+at once with `updateAll`, and keeps what `readAll` returned as the snapshot:
+each list's typed key with its data, which the rollback writes back. The
+task's own entry is removed only once the server agrees, so a refused delete
+springs back to a row whose detail still renders from cache.
 
 <DartSource
   source={queries}
@@ -203,7 +212,7 @@ The badge selects from the list's entry:
 <DartSource
   source={header}
   path="examples/task_manager/lib/src/widgets/header.dart"
-  from="QuerySelectBuilder<TaskListResponse, ({int synced, int total})>("
+  from="child: QuerySelectBuilder("
   end="            ),"
 />
 
