@@ -200,7 +200,7 @@ test('a todo shows up in the mutations table, pending then success', async ({ pa
 })
 
 test.describe('the leak sweep', () => {
-  // The catalogue's thirty rows and the inspector's table of every entry the
+  // The catalogue's thirty-one rows and the inspector's table of every entry the
   // sweep left behind, unscrolled.
   test.use({ viewport: { width: 1280, height: 4000 } })
 
@@ -213,7 +213,7 @@ test.describe('the leak sweep', () => {
     const names = (await rows.evaluateAll((buttons) => buttons.map((button) => button.textContent ?? '')))
       .map((name) => name.replace(/\s+/g, ' ').trim())
       .filter((name) => !name.startsWith('Cache inspector '))
-    expect(names.length).toBe(29)
+    expect(names.length).toBe(30)
 
     for (const name of names) {
       await button(page, name).click()

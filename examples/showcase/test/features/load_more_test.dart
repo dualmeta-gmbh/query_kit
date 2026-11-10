@@ -8,6 +8,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:query_kit_flutter/query_kit_flutter.dart';
 import 'package:showcase/features/load_more/load_more_screen.dart';
 import 'package:showcase/shared/chrome.dart';
 import 'package:showcase/shared/models.dart';
@@ -235,7 +236,7 @@ void main() {
   });
 
   showcaseTest(
-      'About reads the pages off the cache with getInfiniteQueryData, no '
+      'About reads the pages off the cache through the definition, no '
       'observer and no request', (tester, h) async {
     tall(tester);
     await h.open(tester, '/load-more');
@@ -249,11 +250,14 @@ void main() {
     expect(find.text('cached pages=2'), findsOneWidget);
     expect(find.text('cached rows=20'), findsOneWidget);
     expect(h.requests('GET', '/api/projects'), 2);
-    // The same read, typed by hand: two pages, twenty rows.
-    final cached =
-        h.client.getInfiniteQueryData<ProjectSlice, int>(projectsInfiniteKey)!;
+    // The same read, typed by hand through the raw client on the key the
+    // definition derives, `[...namespace, name]`: two pages, twenty rows.
+    final cached = h.client.getInfiniteQueryData<ProjectSlice, int>(
+        QueryKey(const <Object?>['projects', 'infinite']))!;
     expect(cached.pageParams, <int>[0, 10]);
     expect(cached.pages.expand((page) => page.items), hasLength(20));
+    // And through the definition: the same entry, the same instance.
+    expect(LoadMoreQueries(h.api).feed.read(h.client), same(cached));
   });
 
   showcaseTest('a refetch re-requests every held page, first to last',

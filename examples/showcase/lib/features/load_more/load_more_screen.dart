@@ -9,8 +9,16 @@
 /// goes dark. An `About` view, upstream's `/about` page, unmounts the list:
 /// the pages stay in the cache without an observer and are back at once on
 /// return, with no request — and the About view proves it by reading them
-/// straight from the cache with `client.getInfiniteQueryData`, no observer
+/// straight from the cache with the definition's `read`, no observer
 /// involved.
+///
+/// The query is declared once, as an `InfiniteQueryDefinition`: a key, a
+/// page function and the paging functions in one value, whose `options()`
+/// every reader takes and whose `read` is the About view's, with no type
+/// argument and no key at either call site. The two type arguments are
+/// written once, at the declaration: Dart cannot infer the page type here,
+/// because the paging function reads the page and `configure` takes the
+/// options the page type belongs to.
 ///
 /// The read is an `InfiniteQueryBuilder`, whose builder receives the
 /// controller — where `hasNextPage`, `isFetchingNextPage` and
@@ -62,37 +70,58 @@ const double rowHeight = 48;
 /// is fetched on its own — upstream's intersection observer, in pixels.
 const double loadMoreThreshold = 100;
 
-/// This screen owns its key: the paginated screens share the projects but
-/// not the entry, and a page-numbered cache must not be confused with a
-/// cursor-based one.
-QueryKey get projectsInfiniteKey =>
-    QueryKey(const <Object?>['projects', 'infinite']);
-
 /// What the widget sees: the pages as lists of projects, cursors dropped.
 typedef ProjectRows = InfiniteData<List<Project>, int>;
 
-/// The screen's one query. `initialPageParam` is the first cursor,
-/// `getNextPageParam` reads the cursor the backend sent with the last page —
-/// `null` means there is no more, and that is what `hasNextPage` reports.
+/// The screen's one query, declared once with the api it fetches from.
 ///
-/// Fresh for five minutes: with the default stale time coming back from
-/// `About` would be a mount over stale data, and that refetches every held
-/// page — ten requests to show that the cache survived. Upstream's example
-/// does exactly that; here the survival is what the screen is about.
+/// Its key is `['projects', 'infinite']`: the namespace, then the name. This
+/// screen owns the entry — the paginated screens share the projects but not
+/// the entry, and a page-numbered cache must not be confused with a
+/// cursor-based one.
+///
+/// `initialPageParam` is the first cursor, `getNextPageParam` reads the
+/// cursor the backend sent with the last page — `null` means there is no
+/// more, and that is what `hasNextPage` reports.
+///
+/// Fresh for five minutes, set in `configure`: with the default stale time
+/// coming back from `About` would be a mount over stale data, and that
+/// refetches every held page — ten requests to show that the cache survived.
+/// Upstream's example does exactly that; here the survival is what the
+/// screen is about.
+final class LoadMoreQueries {
+  LoadMoreQueries(this._api);
+
+  final ShowcaseApi _api;
+
+  /// Everything about projects. A namespace claims no data type; it is the
+  /// prefix the definitions below are declared under.
+  static final QueryNamespace namespace =
+      QueryNamespace(const <Object?>['projects']);
+
+  /// The cursor-paged projects: `ProjectSlice` pages, `int` cursors.
+  late final feed = InfiniteQueryDefinition<ProjectSlice, int>(
+    namespace: namespace,
+    name: 'infinite',
+    pageFn: (context) => _api.projectsFrom(
+      context.pageParam,
+      limit: pageSize,
+      signal: context.signal,
+    ),
+    initialPageParam: 0,
+    getNextPageParam: (page, pages, param, params) => page.nextId,
+    configure: (base) => base.copyWith(
+      staleTime: const StaleTime.duration(Duration(minutes: 5)),
+    ),
+  );
+}
+
+/// The list's options: the definition's, with the [_rowsOf] projection.
 InfiniteQuerySelectOptions<ProjectSlice, int, ProjectRows>
-    projectsInfiniteQuery(ShowcaseApi api) =>
-        InfiniteQuerySelectOptions<ProjectSlice, int, ProjectRows>(
-          queryKey: projectsInfiniteKey,
-          initialPageParam: 0,
-          pageFn: (context) => api.projectsFrom(
-            context.pageParam,
-            limit: pageSize,
-            signal: context.signal,
-          ),
-          getNextPageParam: (page, pages, param, params) => page.nextId,
-          select: _rowsOf,
-          staleTime: const StaleTime.duration(Duration(minutes: 5)),
-        );
+    projectsInfiniteQuery(
+  InfiniteQueryRef<ProjectSlice, int> feed,
+) =>
+        feed.options().withSelect(_rowsOf);
 
 /// A top-level function, not a closure: the observer runs `select` again
 /// whenever the function is a different one, and the options are rebuilt
@@ -113,6 +142,20 @@ class _LoadMoreScreenState extends State<LoadMoreScreen> {
   /// Upstream's two routes, as one screen with two views.
   bool _about = false;
 
+  /// Declared once for the life of the screen; both views are handed the
+  /// same reference.
+  late final InfiniteQueryRef<ProjectSlice, int> _feed;
+
+  @override
+  void initState() {
+    super.initState();
+    // The lookup does not subscribe: the api is fixed for the life of the
+    // app, and a subscribing lookup is not allowed here anyway.
+    _feed = LoadMoreQueries(
+      context.getInheritedWidgetOfExactType<ShowcaseScope>()!.api,
+    ).feed;
+  }
+
   @override
   Widget build(BuildContext context) => FeatureScaffold(
         feature: loadMoreFeature,
@@ -120,17 +163,25 @@ class _LoadMoreScreenState extends State<LoadMoreScreen> {
           // The strip first, on both views: the list card is tall, and a
           // strip pushed out of the scaffold's lazy viewport is one no test
           // can read.
-          QueryDebugStrip(queryKey: projectsInfiniteKey, label: 'projects'),
+          QueryDebugStrip(queryKey: _feed.key.rawKey, label: 'projects'),
           if (_about)
-            _AboutView(onBack: () => setState(() => _about = false))
+            _AboutView(
+              feed: _feed,
+              onBack: () => setState(() => _about = false),
+            )
           else
-            _ProjectList(onAbout: () => setState(() => _about = true)),
+            _ProjectList(
+              feed: _feed,
+              onAbout: () => setState(() => _about = true),
+            ),
         ],
       );
 }
 
 class _ProjectList extends StatefulWidget {
-  const _ProjectList({required this.onAbout});
+  const _ProjectList({required this.feed, required this.onAbout});
+
+  final InfiniteQueryRef<ProjectSlice, int> feed;
 
   final VoidCallback onAbout;
 
@@ -204,9 +255,8 @@ class _ProjectListState extends State<_ProjectList> {
 
   @override
   Widget build(BuildContext context) {
-    final api = ShowcaseScope.apiOf(context);
     return InfiniteQueryBuilder<ProjectSlice, int, ProjectRows>(
-      options: projectsInfiniteQuery(api),
+      options: projectsInfiniteQuery(widget.feed),
       builder: (context, projects) {
         _projects = projects;
         final result = projects.value;
@@ -344,9 +394,11 @@ class _ListSkeleton extends StatelessWidget {
 
 /// Upstream's `/about` page: nothing here *observes* the projects, so the
 /// entry has no observer while this is on screen — and it is still in the
-/// cache, which `client.getInfiniteQueryData` reads without adding one.
+/// cache, which the definition's `read` reads without adding one.
 class _AboutView extends StatelessWidget {
-  const _AboutView({required this.onBack});
+  const _AboutView({required this.feed, required this.onBack});
+
+  final InfiniteQueryRef<ProjectSlice, int> feed;
 
   final VoidCallback onBack;
 
@@ -354,10 +406,10 @@ class _AboutView extends StatelessWidget {
   Widget build(BuildContext context) {
     // A plain read of the cache: the pages as the cache holds them — slices,
     // not the lists the list's `select` projects them to — or null if the
-    // entry is gone. Typed by the key's page and param types, and it throws
-    // `QueryDataTypeError` rather than guess if they were wrong.
-    final cached = QueryClientProvider.of(context)
-        .getInfiniteQueryData<ProjectSlice, int>(projectsInfiniteKey);
+    // entry is gone. Typed by the definition, with no type argument to get
+    // wrong, and it throws `QueryDataTypeError` rather than guess if the
+    // entry held another type.
+    final cached = feed.read(QueryClientProvider.of(context));
     final rows =
         cached?.pages.fold<int>(0, (n, page) => n + page.items.length) ?? 0;
     return SectionCard(
@@ -373,8 +425,8 @@ class _AboutView extends StatelessWidget {
             'The list is unmounted. Nothing on this view observes the '
             'projects query, so its entry has no observer — the strip above '
             'says observers=0 — and the pages it holds are untouched. This '
-            'view reads them anyway, with client.getInfiniteQueryData: a '
-            'read of the cache, no observer, no request.',
+            "view reads them anyway, with the definition's read: a read of "
+            'the cache, no observer, no request.',
           ),
           const SizedBox(height: 8),
           FactGroup(
