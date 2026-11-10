@@ -134,9 +134,11 @@
 ///   definitions shares. It claims no data type, so it invalidates and
 ///   removes, and neither reads nor writes.
 ///
-/// All of them are a [QueryTarget], the argument of everything that needs
-/// no data type: `invalidate`, `refetch`, `cancel`, `reset`, `remove`,
-/// `filters`.
+/// A definition, a reference and a namespace are each a [QueryTarget],
+/// the argument of everything that needs no data type: `invalidate`,
+/// `refetch`, `cancel`, `reset`, `remove`, `filters`. A typed key is not
+/// one. It reads and writes its entry and has none of those operations;
+/// the reference it came from has them.
 ///
 /// They sit on top of the client and change nothing about it. A typed
 /// reference and a plain [QueryKey] with the same parts are the same cache
@@ -181,7 +183,8 @@
 ///   input into a new fetch function per `options()` call, so an observer
 ///   handed them again takes them as changed options, as it does options
 ///   written inline. A definition without an input hands out the function
-///   it was declared with, and its options are equal from call to call.
+///   it was declared with, and its options are equal from call to call
+///   unless its `configure` builds something new each time it runs.
 /// * **Nothing registers definitions.** Two that share a namespace and a
 ///   name with different data types are found at the first read or write
 ///   of the second type, with a [QueryDataTypeError]. Two with the same

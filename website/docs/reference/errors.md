@@ -167,6 +167,7 @@ arguments cannot work. None of them is retried; none reaches a result.
 | `UnsupportedError` | `InfiniteQueryObserver.setOptions`, `getOptimisticResult` | Plain observer options were passed. | Pass the `InfiniteQueryObserverOptions` or `InfiniteQuerySelectOptions` to `setInfiniteOptions` (`getOptimisticInfiniteResult`), or pass `setOptions` what `client.infiniteObserverOptions` makes of them. |
 | `StateError` | a definition's `options()`, and so every read and fetch through it | Its `configure` returned options of another data type than the definition's. | Return the options `configure` is handed, or a `copyWith` of them. See [typed query definitions](#typed-query-definitions). |
 | `StateError` | an infinite definition's `options()` | Its first page param is `null`, and `configure` set one. | Set `initialPageParam` on the definition. |
+| `StateError` | a reference's or a typed key's `write`, `update`; a family's `updateAll` | A cache listener or the entry's own `structuralSharing` removed or replaced the entry in the middle of the write. Nothing was stored. | Change the cache after the write. See [typed query definitions](#from-a-write-whose-entry-left-the-cache). |
 | `ArgumentError` | calling a `QueryFamily` or an `InfiniteQueryFamily` | The input is not a `TInput`, which only a family held under a wider type argument lets through the analyzer. | Keep the family's own type. |
 | `ArgumentError` | `AppFocusManager` constructor | `refetchMinBackgroundDuration` is negative. | Pass zero or more. |
 
@@ -241,6 +242,23 @@ the family's prefix holds another type, before anything is written.
 **Fix.** One key, one data type: give the other entry another name, or
 declare its key under a name of its own beside the family rather than under
 it.
+
+### From a write whose entry left the cache
+
+A typed write stores its value in the entry the cache holds under the key.
+Two pieces of your code run before the value is stored: a cache listener
+hears `QueryAdded` for an entry the write creates, and the entry's
+`structuralSharing` is handed the value. If either removes that entry, the
+write throws a `StateError` that names the key ("… was removed or replaced
+by a … while a typed write was storing into it") and stores nothing. If an
+entry of another type is under the key by then, the write throws
+`QueryDataTypeError`. An entry of the same type that a listener put there is
+written. One that `structuralSharing` put there is not, and the write throws
+the `StateError`: the value was shared against the entry that is gone.
+
+**Fix.** Leave an entry alone in its own `structuralSharing` and in a
+listener's answer to its `QueryAdded`. Change the cache in answer to
+`QueryUpdated`, or once the write has returned.
 
 ### From a widened reference
 

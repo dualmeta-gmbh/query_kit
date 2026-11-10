@@ -28,6 +28,6 @@ fixture support/models.dart errors=0 strict=0
 fixture support/namespace_factories.dart errors=0 strict=0
 fixture support/static_type.dart errors=0 strict=0
 fixture surface.dart errors=0 strict=0
-observations runtime/observations.debug.expect lines=136
-observations runtime/observations.release.expect lines=136
-observations runtime/observations.unchecked.expect lines=136
+observations runtime/observations.debug.expect lines=152
+observations runtime/observations.release.expect lines=152
+observations runtime/observations.unchecked.expect lines=152

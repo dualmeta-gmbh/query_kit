@@ -7900,3 +7900,126 @@ class per resource; `MutationOptions` without type arguments leaves an
 untyped `onMutate` parameter `Object?`; options handed through a wider
 parameter type create a wider entry; no typed single-entry snapshot and
 restore.
+
+### Review of the core (GPT-6.1-Sol, cd4bc21)
+
+**What.** An independent, read-only review of `lib/src/query_definition.dart`
+and its fixtures at `cd4bc21`, by another model, with probes of its own.
+Four findings and no P1. Each was reproduced first, by running the
+reviewer's probes against the library as it stood (`a95dcc0`, whose core
+is `cd4bc21`'s) on Dart 3.6.2, 3.10.7 and 3.13.4, on the VM and compiled
+with dart2js at `-O4`. One file of `lib/` changed besides a paragraph of
+the barrel's dartdoc; no signature, no existing case. The plan's rows are
+SC-1 to SC-4 and LC-1 to LC-3, and its D4, D5 and D7 hold the options
+weighed.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| SC-1 (P2) | A typed write reports success on an entry replaced under it. `_write` held the `Query` that `build` returned across the synchronous `QueryAdded`; a listener that removed it and put a `Query<String>` under the key left `write`, `update` and both key writes returning `42` with the cache holding the string | yes: `returned=42, cached=replacement` and `next typed read: QueryDataTypeError` for the four calls, three SDKs, VM and `-O4` | Fixed as a rule, below. `_write` takes the key, not a `Query`; `_created` looks the key up again after `build`; `setData`'s `canCommit` guards the entry's `structuralSharing` by identity; `_gone` throws `QueryDataTypeError` for another type in the entry's place and a `StateError` otherwise |
+| SC-2 (P2) | A bulk update's check before the first write does not cover a `structuralSharing` that throws while the batch commits; the dartdoc and the plan read as if only a listener's swap could leave earlier writes in place | yes: `Bad state: sharing rejected`, `a=11, b=2`, typed and raw alike | No code beyond SC-1 (the product owner's decision: no transaction machinery). The limit is stated exactly in the dartdoc of both `updateAll`s, the plan and the guide, and pinned beside the raw call |
+| SC-3 (P3) | A held zero-input infinite definition whose `configure` returns one top-level `structuralSharing` (or `InitialData.compute`) resolves unequal options per call, because the page-type wrapper was a new closure each time | yes: `sharing identical: false`, `observer options events: 1`, three SDKs, VM, `-O1`, `-O4` | Fixed: `_ExactWrappers`, two `Expando`s per zero-input infinite definition, made on first use, find the wrapper again by the callback it wraps. A family passes none. What stays unequal is stated |
+| SC-4 (P3) | The barrel's overview reads as if a typed key were a `QueryTarget` | yes: the analyzer refuses the reviewer's probe (`INVALID_ASSIGNMENT`, `UNDEFINED_METHOD`) | Wording. The guide has no such sentence |
+
+**SC-1, the rule.** *The value goes into the entry the cache holds under
+the key at the moment it is stored, or the write throws; a typed write
+never returns a value that went into an entry the cache had dropped.*
+Every point where a typed operation held a `Query` across the caller's
+code, and what the rule makes of it:
+
+| Point | The caller's code that runs | Before | Now |
+|---|---|---|---|
+| a write that builds its entry (`ref.write`, `ref.update`, `key.write`, `key.update`, a bulk write of an entry that was removed) | cache listeners, `QueryAdded` | wrote the detached entry and returned the value | looked up again: another type → `QueryDataTypeError`; the same type → that entry is written; removed → `StateError`. Nothing is written in the two refusals |
+| `setData`, before the value is stored | the entry's `structuralSharing`, or a `==`/`shareWith` under the default walk | wrote the detached entry | `canCommit`: removed or replaced by the same type → `StateError`; another type → `QueryDataTypeError`; a reset entry is still the cache's and is written |
+| `setData`, after the value is stored | listeners and observers of the write | returned what it stored | the same, pinned: what they do comes after the write |
+| `update`, between reading `previous` and writing | the updater | looked up again (since TQ1); removed → made again; another type → refused | the same through `_write`, and a same-type replacement is written (new case) |
+| `updateAll`, between its second lookup and each write | the listeners of the batch's earlier writes | each write looked its entry up by key; a re-created entry replaced at `QueryAdded` was written detached | each write is `_write`: removed → made again from the key; same type → written; replaced at `QueryAdded` by another type or removed → `QueryDataTypeError` / `StateError`, the earlier writes made |
+| the infinite path | all of the above | the same hole | the same function; the page types are in the check, the stored value normalised |
+
+Not changed, because they are the client's own and the raw API stays as it
+is: `ref.fetch` (the client's `query`) under such a listener ends in
+`CancelledError`, an observer made from `ref.options()` in
+`QueryDataTypeError`, and the raw `setQueryData` returns a value it did
+not store. Upstream at the pin does the same: `setQueryData` ends in
+`this.#queryCache.build(this, defaultedOptions).setData(data, …)`
+(`queryClient.ts:300-303`) and `QueryCache.add` notifies synchronously
+(`queryCache.ts:185`), so the raw behaviour is no divergence; a control
+test and `W-4` pin it.
+
+**The fact each fix is safe because of**, and how far it was proven.
+
+- *SC-1: for a caller whose listeners and sharing leave the cache alone,
+  the entry found by key is the entry held, so nothing changes.* `build`
+  returns the entry it added or found, and the lookup after it returns
+  the same object unless a listener intervened; `canCommit` is asked once
+  per write and answers `true`. Ran: the 191 typed cases that existed pass
+  unchanged, the core's 1367 unchanged, and each new refusal has a
+  control beside it in the same run (a listener that writes the new entry
+  itself; a sharing callback that resets its entry; a listener answering
+  the write). Red against the library before: 47 of the 61 single-write
+  cases and 2 of the 7 batch cases; the other 19 are the controls and the
+  pins of what was already so. VM on 3.6.2, 3.10.7, 3.13.4; Chrome on
+  3.10.7; `W-1` to `W-10` on the five runtimes of each SDK.
+- *SC-3: a wrapper found again is the wrapper that would have been made.*
+  It closes over its callback only, and the table is per definition, so
+  it cannot hand one definition another's wrapper or one callback
+  another's (a test for each). The table is weak: a wrapper holds its
+  callback, the options hold the wrapper, nothing else holds either. Ran:
+  eight cases, five red before; `D4-19`, `D4-20` on five runtimes.
+
+**Looked at where grep stops.** No timer, no microtask and no zone is
+added: every new step is synchronous inside the call. The extra lookups
+are one `get` after a `build` and one `peek` per write. `canCommit` was
+already `setData`'s parameter (the fetch path uses it), so `query.dart`
+is untouched. The throw path: a `structuralSharing` that throws still
+propagates as before (SC-2's tests). The re-entrant path is the finding
+itself. `clear()` inside a listener is the removed case. The binding and
+the hooks call the same public methods and were not edited (another
+agent is working in their tests; their suites were run read-only, below).
+The browser: one case is VM-only, a method torn off twice, which dart2js
+makes one object.
+
+**Mutations of the fix** (Dart 3.10.7, the three typed files; each
+applied to the library, run, restored byte for byte):
+
+| Mutation | Cases that fail |
+|---|---|
+| `_gone` without its exact lookup | 8 |
+| `canCommit` by presence, not identity | 12 |
+| no `canCommit` | 21 |
+| `_created` returns what `build` returned | 9 |
+| the sharing wrapper not kept | 4 |
+| the computed seed's wrapper not kept | 2 |
+| the definition passes no table | 5 |
+| `_writeEntry` without its leading lookup | 0, and the fixture runner exits 1 on `W-10`. The order of two mismatches (an entry of another type and a value of the wrong type) is visible only where Dart's own covariance check is compiled out, so no VM or default-dart2js test can see it; the observation was added for it |
+
+**Self-review** (a labelled self-review: the rules of this round forbid
+a sub-agent, so the diff was read again against the parent and upstream
+with the question "what did this introduce"). Nothing found that changes
+a result for an undisturbed cache. Noted and left: a same-type entry a
+listener put in place of a new one is written although it carries the
+listener's options (LC-3); `_writeEntry` looks the key up twice, once to
+report the entry's mismatch before the value's and once in `_write`.
+
+**The reviewer's "checked and sound" list** had nothing that needed a
+new test beyond the above; the plan's section lists it item by item. Its
+method of mutating the library was applied to the new code (the table
+above), and that found the one gap, closed by `W-10`.
+
+**Verified.** Core 1443 VM / 1437 browser on Dart 3.10.7 (1367 / 1362
+before; `query_definition_test.dart` 114 → 160,
+`infinite_query_definition_test.dart` 54 → 84), the VM suite also on
+3.6.2 and 3.13.4. The fixture runner (152 observations, 136 before) and
+its self-test (31 cases) on the three SDKs. Line coverage 3808 of 3814,
+99.84 % against a floor of 99.8 %; `query_definition.dart` 282 of 284,
+the same two lines. Over the changed core, on Flutter 3.38.8: the
+binding (659), the hooks (361), the task manager (45, its 14 server
+cases skipped), the showcase (345, 25 skipped) and the doc snippets (80)
+pass; the site builds.
+
+**Not proven here.** dart2wasm is not run. The examples' Playwright and
+contract runs against a real server were not run for this change. No application meets the new
+`StateError`: it needs a cache listener or a sharing callback that
+removes or replaces the entry it is told about, and no example has one.
+That the weak tables release their entries is argued from `Expando`'s
+contract and not measured (the VM gives a test no way to force a
+collection).

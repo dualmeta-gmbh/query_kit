@@ -651,7 +651,11 @@ Consequences:
   input in a fresh closure each time, so its options never resolve equal.
   A zero-input definition has nothing to bind and hands out the function
   it was given (corrected after TQ3, below; this bullet first claimed the
-  fresh closure for every reference).
+  fresh closure for every reference). Since the review of the core one
+  thing is remembered, and it is neither options nor a reference: a
+  zero-input infinite definition finds the wrapper it put around a
+  callback of its `configure` again by that callback, weakly (SC-3,
+  below).
 - A changed fetcher or a changed definition default is an options change and
   reaches the observer; nothing suppresses it.
 - Acceptance is parity with raw options, because the observer never sees
@@ -689,6 +693,8 @@ the table.)
 | the options of a zero-input definition, asked for twice; of the same definition made again | not identical, the **same** fetcher, equal once a client resolved them; another fetcher (`D4-16`) |
 | the paging functions of an infinite definition, and of an infinite family's reference, asked for twice | the definition's are the same functions, the family's are not (`D4-17`) |
 | an observer handed the options again: of a held zero-input definition, then of a family's reference | `QueryObserverOptionsUpdated` heard 0 times, then once (`D4-18`) |
+| a held infinite definition whose `configure` returns one top-level sharing function and one top-level seed function, asked twice and handed to an observer again (added by the review of the core) | the same `structuralSharing`, an equal seed, equal once resolved, 0 events (`D4-19`) |
+| the same with the two functions written as closures inside `configure` | none of the three, 1 event (`D4-20`) |
 
 **After TQ3 (which options are equal):** this decision, limit 14 and the
 dartdoc said that every `options()` call makes another fetcher closure.
@@ -719,6 +725,61 @@ stands as it was, since nothing gates on the equality either way: the
 observer runs `setOptions` and re-evaluates `enabled` in both cases
 (#84). Three tests in the core pin it (the definition's functions, the
 observer's event count for the plain and for the infinite kind).
+
+**After the review of the core (SC-3: the wrappers of an infinite
+definition).** The first bullet above was still too broad for one shape.
+An infinite definition wraps a `structuralSharing` and an
+`InitialData.compute` that its `configure` returns, to hold the declared
+page types (D5), and it made the wrapper anew on every `options()` call.
+So a held zero-input infinite definition whose `configure` returned the
+*same* top-level function every time still resolved unequal options and
+emitted one `QueryObserverOptionsUpdated` per rebuild, where the plain
+definition with the same `configure` emitted none. Reproduced on the three
+SDKs, VM and dart2js `-O1`/`-O4`, before a word changed. Options:
+
+- (a) *narrow the wording:* "equal unless `configure` sets
+  `structuralSharing` or a computed seed". Costs nothing, and leaves a
+  cache scan per rebuild (`IsFetchingController`) for a definition that
+  did everything right.
+- (b) *one strong slot per definition*, the last callback and its wrapper,
+  compared with `==`. Small, and it also catches a method torn off inside
+  `configure` (tear-offs of one method are `==`). It keeps the last
+  callback, and what that closes over, alive as long as the definition
+  lives, after the options that carried it are gone: retention the
+  definition did not have.
+- (c) *a weak table per definition, keyed by the callback's identity*
+  (`Expando`), the wrapper as the value. A wrapper holds its callback and
+  only the options it went into hold the wrapper, so the table keeps
+  alive nothing `configure` does not already: a closure made per call is
+  collected with its wrapper. The precedent is in the core already: the
+  client finds its adapted default sharing again the same way.
+- (d) *a `WeakReference` slot with a callable wrapper class that carries
+  `==`*: catches the tear-off as (b) does without the retention, at the
+  price of the core's first `WeakReference`, a callable class in place of
+  a function, and `==` on a wrapper.
+
+Answer: (c), for the zero-input definition only. It is small (one private
+class of two tables, created on first use), it changes no signature, and
+it is the brief's condition met: nothing is retained that a definition
+does not already hold. A family keeps no table and must not: its options
+differ per call by their paging closures anyway, and a table per input is
+the memo D4 declined. What D4 forbids is untouched: no options and no
+reference is remembered, nothing gates on equality, and the observer runs
+`setOptions` either way.
+
+The promise, as the dartdoc and the guide state it: the options of a held
+zero-input infinite definition are equal from call to call when
+`configure` returns the same function object each time (a top-level or
+static function, or one held in a field or variable). A closure written
+inside `configure` is a new object per call, and so is a method torn off
+there on the VM, where two tear-offs of one method are equal and not
+identical; both leave the options unequal, as any option built anew
+does. A seed given as a value (`InitialData.value`) of a narrower type is
+rebuilt per call and compares by `InfiniteData`'s own `==`, which is the
+two lists element by element, a page list by identity: equal when
+`configure` holds the seed, unequal when it builds one. Eight tests
+(one VM-only, the tear-off) and observations `D4-19`, `D4-20`, the same
+on five runtimes of three SDKs.
 
 That a reference holds no client is also what the signatures say: every
 operation takes the client as its first argument, and a reference has no
@@ -787,6 +848,77 @@ must create an entry of the declared type, or the next typed read throws.
   definition's options.
 - `write` and `update` take the raw path's `updatedAt`, which a rollback
   needs.
+- **The entry under a write** (after the review of the core, SC-1). Step
+  1 found the entry and step 4 stored into the `Query` object it had
+  found or built, and the caller's code runs in between: a cache listener
+  hears `QueryAdded` synchronously for an entry the write builds, and the
+  entry's `structuralSharing` is handed the value inside `setData`. A
+  listener that answered `QueryAdded` by removing the new `Query<int>` and
+  putting a `Query<String>` under the key left `write` returning `42`
+  while the cache held the listener's string and the reference's next
+  `read` threw. The raw `setQueryData` does the same and is upstream's
+  (`build(...).setData(...)` at the pin, listeners called synchronously);
+  it stays as it is. For the typed write, the options: (a) state it as a
+  limit; (b) one rule for every place a typed operation holds a `Query`
+  across the caller's code; (c) build and write without notifying, which
+  is another operation and hides an entry from the devtools-style
+  listeners that the raw write shows them. Answer: (b), and the rule is
+
+  > **the value goes into the entry the cache holds under the key at the
+  > moment it is stored, or the write throws. A typed write never returns
+  > a value that went into an entry the cache had dropped.**
+
+  It is one private function (`_write`), which resolves the entry by key
+  as late as it can and then closes the two places that are left:
+
+  | Where the caller's code runs | What it may have done | The write |
+  |---|---|---|
+  | `QueryAdded` for an entry the write built (`write`, `update`, a bulk write of a removed entry) | put an entry of another type under the key | `QueryDataTypeError`, nothing written |
+  | | put an entry of the same type there | writes that entry, the one the cache holds; it carries the listener's options, as any entry that already existed carries its own |
+  | | removed the entry | `StateError`, nothing written |
+  | | written the new entry itself (the control) | writes over it |
+  | `structuralSharing` of the entry, and a `==` or `shareWith` the default walk calls, inside `setData` | removed the entry, or put one of the same type there | `StateError`, nothing written |
+  | | put an entry of another type there | `QueryDataTypeError`, nothing written |
+  | | reset the entry (the control) | writes: it is still the cache's entry |
+  | `update`'s updater, between reading `previous` and writing | removed the entry | made again, and written (as before, D5 step 1's second lookup) |
+  | | put an entry of the same type there | writes that entry |
+  | | put an entry of another type there | `QueryDataTypeError`, nothing written |
+  | `updateAll`, between its second lookup and each write (an earlier write's listeners) | removed a later entry | made again from the key alone, and written |
+  | | put an entry of the same type there | writes that entry |
+  | | put an entry of another type there | `QueryDataTypeError` at that entry, the earlier writes made (limit 16) |
+  | listeners and observers of the stored value | anything | comes after the write: the call returns what it stored |
+  | the infinite path | each of the above | the same function, with the page types in the check and the stored value normalised |
+
+  Three choices inside the rule, each with what was weighed. *A removed
+  entry at `QueryAdded` throws and is not built again:* a listener that
+  removes every entry it hears of would be asked again without end, a
+  bound on the retries is an arbitrary number, returning without writing
+  is a `T` that was not stored, and writing into the detached entry is
+  the finding. *A same-type replacement at `QueryAdded` is written:* it
+  is the canonical entry, of exactly the declared type, and "an entry
+  that exists is written as it is, whoever writes" (above) already says
+  so. *A same-type replacement by `structuralSharing` throws:* what
+  sharing returned was shared against the previous value of the entry
+  that is gone, by that entry's callback; running the new entry's sharing
+  on it runs the caller's code a second time, which can replace the entry
+  again, and storing it unshared stores something neither entry's options
+  asked for. The guard is `setData`'s existing `canCommit`, asked after
+  sharing and before the dispatch, comparing the cache's entry with the
+  held one by identity.
+
+  What stays the client's own, because the typed layer delegates and the
+  raw API does not change: `ref.fetch` (the client's `query`) under such
+  a listener ends in `CancelledError`, an observer made from
+  `ref.options()` in `QueryDataTypeError`, and the raw `setQueryData`
+  returns a value it did not store (a control test pins it beside the
+  typed write). 39 plain and 22 infinite cases, 47 of them red against
+  the code before and the rest controls; observations `W-1` to `W-10`, of which `W-10` is the one
+  place where only an unchecked runtime can tell: an `int` written
+  through a widened reference over a `Query<String>` is Dart's own
+  `TypeError` on checked runtimes and at `-O3`/`-O4` a
+  `QueryDataTypeError` that names the entry's type, the entry before the
+  value. A copy of the library without the write's leading lookup passes
+  every test and fails the fixture runner on that line.
 - **Infinite normalisation** rebuilds an `InfiniteData` whose runtime type is
   narrower than `InfiniteData<TPageData, TPageParam>` from its pages and
   params, as `List<TPageData>.unmodifiable` and `List<TPageParam>.unmodifiable`
@@ -1179,13 +1311,51 @@ returned and before the batch; (c) write into the `Query` objects captured
 in the first pass, which loses the write to a removed entry (D5's reason
 for the second lookup). Answer: (b). It is one cache lookup per written
 entry, it changes no result for a caller whose updaters leave the cache
-alone, and it makes the sentence true for everything an updater can do:
-the swap now throws `QueryDataTypeError` with **no** entry written. What
+alone, and it makes the sentence true for everything an updater can do
+to an entry's *type* (the review of the core found the case beyond
+that, below): the swap now throws `QueryDataTypeError` with **no** entry written. What
 remains, and limit 16 now says only this: a cache listener or an observer
 that reacts to one of the writes by replacing a later entry. That happens
 inside the batch, between two writes, and the only way to exclude it is to
 write without notifying, which is a different operation. Both are tests,
 the listener's with the raw call beside it.
+
+**After the review of the core (SC-2, SC-1): what the check before the
+first write covers.** "True for everything an updater can do" was one
+case too broad, and the review found it: an updater can leave every type
+as it is and give a later entry a `structuralSharing` that throws
+(`setQueryDefaults` for an entry it removes, or the definition's own).
+The second lookup looks at types; sharing runs inside the write. The
+first entry is then written and the call throws at the second:
+`a=11, b=2`, the typed call and the raw `updateQueriesData` alike.
+Options: (a) run every entry's sharing before the first write and commit
+the results, which needs a way to store a value without running sharing
+again, changes what sharing sees as `previous` when a listener wrote in
+between, and still leaves a throwing listener's zone error and a
+listener's swap; (b) undo the earlier writes, which is a transaction with
+its own notifications; (c) state the limit exactly. Answer: (c), the
+product owner's decision: no transaction machinery.
+
+The limit, as the dartdoc, the guide and limit 16 now state it: **the
+check covers the types and what the updaters return. It does not cover
+the writes.** A write can fail while the batch commits, in two ways: an
+entry's `structuralSharing` throws, or a listener that heard an earlier
+write put an entry of another type in a later one's place. The call then
+throws at that entry with the earlier writes made and the later ones not,
+as the raw bulk update does. A cache listener that throws stops no write:
+listeners are isolated and its error goes to the zone.
+
+Each write of the batch is D5's write (SC-1), so what a listener did to a
+later entry between two writes is resolved by key and not through an
+object the batch held: a removed entry is made again from the key alone,
+a same-type replacement is the one written (both the raw call's results
+too, compared in the tests), and an entry made again in the batch that a
+listener then replaces with another type or removes is refused,
+`QueryDataTypeError` or `StateError`, with the earlier write in place.
+That last pair is where the typed call and the raw one differ: the raw
+call completes and the write is lost (`D7-16`, `D7-17`; the throwing
+sharing is `D7-14`, `D7-15`). Seven tests, each with the raw call as its
+control.
 
 ### D8. Infinite queries keep all three types
 
@@ -1842,18 +2012,30 @@ introduced.
     `QueryObserverOptionsUpdated`; a held zero-input definition's resolve
     equal and emit none, unless its `configure` builds something new per
     call (D4, after TQ3; this limit first claimed the new closure for
-    every reference).
+    every reference). For an infinite definition "something new" is a
+    `structuralSharing` or a computed seed that is another function
+    object per call: a closure written in `configure`, or on the VM a
+    method torn off there. The same function object gets the same
+    wrapper (D4, after the review of the core).
 15. *A narrower `InfiniteData` supplied through a per-use `copyWith`* is
     outside the normalisation, and so is a `structuralSharing` from the
     client's or a key's defaults. The definition's own `structuralSharing`
     and `initialData` are inside it, built and tested by TQ1 (D5).
 16. *A bulk update is not a transaction:* every result is validated, and
     every entry about to be written looked up again, before the first
-    write, so nothing an updater does to the cache leaves it half-written
-    (TQ2). The writes notify as they are made: a cache listener or an
-    observer that answers one by replacing a later entry with one of
-    another type makes that entry's write throw after the earlier ones, and
-    nothing is rolled back (D7).
+    write, so no updater result and no entry type an updater changed
+    leaves it half-written (TQ2). That check covers the types and the
+    updaters' results and not the writes. A write can fail while the
+    batch commits: an entry's `structuralSharing` throws, or a cache
+    listener or an observer that answers an earlier write replaces a
+    later entry with one of another type. The call throws at that entry
+    after the earlier writes, as the raw bulk update does, and nothing is
+    rolled back. A listener that throws stops no write (D7, narrowed by
+    the review of the core).
+    *And a single write is not atomic with its notifications either:* it
+    goes into the entry the cache holds when the value is stored, or
+    throws (`QueryDataTypeError`, or `StateError` for an entry removed
+    under it); it never reports a value it did not store (D5).
 17. *A definition whose first page param is `null`* cannot have it changed
     by `configure`: making the options throws a `StateError` (D6, TQ1).
 18. *A collection literal of references of different data types infers a
@@ -2420,7 +2602,9 @@ filtering rows as far as the core alone can.
   fetches, leaked timers, duplicate observers or post-disposal
   notifications; a replaced repository is retained only until the next
   `setOptions` or the entry's collection, as with raw options (D4). No memo of references or closures anywhere
-  (D4). Exercise two
+  (D4; since the review of the core one weak table per zero-input
+  infinite definition finds a wrapper again by the callback it wraps,
+  and holds nothing alive). Exercise two
   clients using the same definitions independently.
 - **Integration:** core VM and Chrome suites, Flutter and hook VM/Chrome suites,
   affected examples and existing backend/Playwright flows. Use the repository
@@ -2764,3 +2948,69 @@ added afterwards.)
 | L3-3 | `MutationOptions` without type arguments leaves an untyped `onMutate` parameter as `Object?`, beside a typed `mutationFn` | Left: existing behaviour of the mutation options, the same inference as T3-2, and mutations have no definitions (out of scope). The recipes write the type arguments |
 | L3-4 | Options handed through a wider parameter type (`QueryObserverOptions<Object>`) create a wider entry, which the family's typed calls then refuse | Left: D2's boundary reached through a helper's signature, and raw options do the same. The cure is a generic helper, `<T>(QueryObserverOptions<T> options)`; Phase 4's guide names it beside limit 1 |
 | L3-5 | No typed single-entry snapshot and restore: the recipe keeps a `QueryState` and restores an entry without data by `reset`, which is not the state it had (P2-5) | Left: the recipe stays a recipe. A helper that restored a state exactly would write status, error and counters, which no public typed or raw call does today, and would be a second way to put an entry into a state the observers did not produce. The approximation is stated in the recipe |
+
+### Review of the core (GPT-6.1-Sol, cd4bc21)
+
+An independent review of the typed library and its fixtures at `cd4bc21`,
+read-only, with probes of its own. Four findings, no P1, each reproduced
+against the code as it stood before anything changed: the reviewer's
+probes run again on Dart 3.6.2, 3.10.7 and 3.13.4, on the VM and compiled
+with dart2js at `-O4`. "Run" is the fixture runner on those three SDKs;
+"test" is a case in the core's typed test files. The implementer's rows;
+no second reviewer has read the fixes.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| SC-1 (P2) | A write reports success on an entry replaced under it: a `QueryAdded` listener that removes the entry a typed write just built and puts a `Query<String>` under the key leaves `write`, `update` and both key writes returning `42` while the cache holds the string and the next typed read throws | yes, the four calls, three SDKs, VM and `-O4`: `returned=42, cached=replacement`, then `QueryDataTypeError` from the read | Fixed, as one rule for the whole family: the value goes into the entry the cache holds under the key when it is stored, or the write throws. `_write` resolves the entry by key, looks again after `QueryAdded`, and guards `structuralSharing` with `setData`'s `canCommit` by identity. Another type in its place is `QueryDataTypeError`; a removed entry, and a same-type replacement made by the entry's own sharing, a `StateError`; a same-type replacement made by a listener is the entry written. D5 has the table of points and the three choices inside the rule; `errors.md` has the `StateError`. 61 tests (39 plain, 22 infinite), 47 of them red against the code before, the rest controls and pins; `W-1` to `W-10` |
+| SC-2 (P2) | The check before a bulk update's first write does not cover a `structuralSharing` that throws: an updater installs one on a later entry, every type passes, the first entry is written and the second write throws (`a=11, b=2`) | yes, three SDKs, VM and `-O4`; the raw `updateQueriesData` gives the same result | No transaction machinery (the product owner's decision). The limit is stated exactly: the check covers the types and what the updaters return, not the writes; a failure while the batch commits, a throwing sharing callback or a listener's swap, leaves the earlier writes in place as the raw bulk update does; a throwing listener stops nothing. D7, limit 16, the dartdoc of both `updateAll`s, the guide. Seven tests, each with the raw call beside it; two were red before (the pair SC-1's rule decides), five pin what was already so; `D7-14` to `D7-17` |
+| SC-3 (P3) | A held zero-input infinite definition whose `configure` returns one top-level `structuralSharing` hands out unequal options per call: the wrapper that holds the page types is made anew, and an observer handed the options again emits `QueryObserverOptionsUpdated` | yes, three SDKs, VM, `-O1` and `-O4`: `sharing identical: false`, one event. The same for `InitialData.compute` | Fixed for the zero-input definition: it finds the wrapper it made for a callback again by that callback, in a weak table keyed by identity, so the same function object gets the same wrapper and the options resolve equal. A family keeps none. The statement names what is still unequal: a closure written in `configure`, and on the VM a method torn off there. D4 has the four options weighed; limit 14; the dartdoc of `InfiniteQueryRef.options`, the barrel and the guide. Eight tests (five red before, one VM-only); `D4-19`, `D4-20` |
+| SC-4 (P3) | The library overview reads as if a typed key were a `QueryTarget` ("All of them are a `QueryTarget`", after a list that includes typed keys) | yes: `INVALID_ASSIGNMENT` and `UNDEFINED_METHOD` from the analyzer on the reviewer's probe | Wording fixed in the barrel: a definition, a reference and a namespace are each a target, a typed key is not one. The guide was read for the same slip and has none (its table and its "not a target" sentence were right) |
+
+**The sweep over what the report lists as checked.** The report has no
+list of suspicions beyond its four findings; its "checked and sound"
+list, item by item:
+
+| Item | What was done |
+|---|---|
+| The 191 typed cases pass | Still do, unchanged, among 267 |
+| The fixture runner on three SDKs, 136 observations | Rerun with 152; the sixteen new lines are the same on every runtime except `W-10`, which is the point of it |
+| `--self-test`, and that the inventory pins paths and counts, not content | Rerun, 31 cases. Left as documented: a changed observation is a changed `.expect` line in the diff, and `--record` prints what moved; a content hash would pin the same thing twice |
+| The TQ0 findings stay fixed | Their tests and observations are untouched and green |
+| Delegation, keys, guards, fresh and stale reads, declared creation types, re-pinning, equality | Nothing to add; SC-1's tests add the one creation path the list did not cover, an entry replaced at `QueryAdded` |
+| Lifecycle: a write starts no fetch and no observer | Unchanged by the fix (`_created` is the same `build`); the existing cases hold it |
+| The reviewer's four mutations and its cast-only compile | The same method applied to the new code, eight mutations (below) |
+| `probes/reentrancy.dart` (not cited by a finding) | An updater's removal and a listener's swap in one bulk call: SC-1 and SC-2 together, covered by the batch tests |
+
+**The eight mutations of the fix.** Each applied to a scratch copy of the
+library, the three typed files run on Dart 3.10.7, the copy restored.
+
+| Mutation | Cases that fail |
+|---|---|
+| the missing-entry error without its exact lookup (another type would read as `StateError`) | 8 |
+| the commit guard asks whether *an* entry is there, not whether it is the held one | 12 |
+| no commit guard around sharing | 21 |
+| the write takes the entry `build` returned, not the one the cache holds after `QueryAdded` | 9 |
+| the sharing wrapper is not kept | 4 |
+| the computed seed's wrapper is not kept | 2 |
+| the definition passes no table | 5 |
+| the write without its leading lookup | 0 tests; the fixture runner fails on `W-10` (the order of two mismatches shows only where Dart's own check is compiled out, which is why the observation was added) |
+
+The core's suite went from 1367 to 1443 VM cases and from 1362 to 1437 in
+Chrome (`query_definition_test.dart` 114 → 160,
+`infinite_query_definition_test.dart` 54 → 84; the one VM-only case is
+the tear-off, which dart2js canonicalises), no existing case rewritten.
+Line coverage is 3808 of 3814 (99.84 %, floor 99.8 %), the typed library's
+two missed lines the same two. The observations went from 136 to 152. No
+signature changed, `barrel_test` still pins ten exported names, ADR-0007
+carries the three decisions as a dated addition, and the raw API is
+untouched: `setQueryData` under the same listener still
+returns the value it did not store, which is upstream's behaviour at the
+pin and is pinned as the control.
+
+**Reported and left.**
+
+| # | Report | Decision |
+|---|---|---|
+| LC-1 | The raw `setQueryData` returns a value it did not store when a `QueryAdded` listener replaces the entry it built; `ref.fetch` under the same listener ends in `CancelledError` and an observer in `QueryDataTypeError` | Left: the raw API does not change, and upstream's `setQueryData` is `build(...).setData(...)` with listeners called synchronously. The typed fetch and observer paths are the client's own and say so by failing loudly. Pinned as the control (`W-4`, one test) |
+| LC-2 | A method torn off inside `configure` gives unequal options on the VM, although two such tear-offs are `==` | Left and stated. Catching it needs a table keyed by equality, which is a strong reference to the last callback, or a `WeakReference` with a callable wrapper class (D4, options (b) and (d)). The cure is one line in the application: tear the method off once, into a field |
+| LC-3 | A same-type entry a listener put in place of the one a write built is written although it carries the listener's options, not the definition's | Left: it is the entry the cache holds, of exactly the declared type, and an entry that exists is written as it is, whoever writes (D5). Refusing it would make a typed write fail in a cache where the raw one succeeds for no type reason |

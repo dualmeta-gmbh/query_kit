@@ -8,7 +8,10 @@
 ///
 /// Nothing here owns state. A definition, a reference and a typed key hold
 /// a key and functions; the cache, the observers and the fetches are the
-/// client's, reached through the client each operation is handed.
+/// client's, reached through the client each operation is handed. The one
+/// thing remembered is a wrapper: an infinite definition finds the one it
+/// made for a callback of its `configure` again by that callback, weakly,
+/// so that its options are equal from call to call.
 library;
 
 import 'dart:async';
@@ -280,6 +283,11 @@ final class TypedQueryKey<T> {
   /// Throws [QueryDataTypeError], and writes nothing, when the entry holds
   /// another data type, or when [value] is not of the key's type, which
   /// only a key held under a wider type argument lets through the analyzer.
+  /// And as on [QueryEntryRef.write], the value goes into the entry the
+  /// cache holds when it is stored: an entry that a cache listener or its
+  /// own `structuralSharing` removed or replaced in the middle of the
+  /// write is a [StateError] or a [QueryDataTypeError], never a value
+  /// returned and not stored.
   T write(QueryClient client, T value, {DateTime? updatedAt}) =>
       _writeEntry<T>(client, this, value, updatedAt, _bareOptions);
 
@@ -399,6 +407,26 @@ sealed class QueryEntryRef<T> extends QueryTarget {
   /// the client's `setQueryData` is another type than `Device`), or when
   /// [value] is not of the reference's type, which only a reference held
   /// under a wider type argument lets through the analyzer.
+  ///
+  /// The value goes into the entry the cache holds under the key at the
+  /// moment it is stored, and the call returns nothing it did not store
+  /// there. Two pieces of the caller's code run before that moment: a
+  /// cache listener hears of an entry the write creates, and the entry's
+  /// `structuralSharing` is handed the value. Either may remove the entry
+  /// or put another in its place, and the write then does not go into the
+  /// entry that left the cache:
+  ///
+  /// * an entry of the same data type that a listener put there is the
+  ///   one written;
+  /// * an entry of another type in its place throws [QueryDataTypeError];
+  /// * an entry a listener removed, and one that its own
+  ///   `structuralSharing` removed or replaced with the same type, throws
+  ///   a [StateError]. What sharing returned was shared against the entry
+  ///   that is gone, so there is nothing left to store it in.
+  ///
+  /// The last two write nothing. What a listener does once the value is
+  /// stored, in answer to the write, comes after it: the call returns what
+  /// it stored.
   T write(QueryClient client, T value, {DateTime? updatedAt}) =>
       _writeEntry<T>(client, key, value, updatedAt, _entryOptions);
 
@@ -414,7 +442,11 @@ sealed class QueryEntryRef<T> extends QueryTarget {
   /// ```
   ///
   /// Otherwise as [write]: the entry keeps the reference's data type, and
-  /// a mismatch throws [QueryDataTypeError] with nothing written.
+  /// a mismatch throws [QueryDataTypeError] with nothing written. The
+  /// entry is looked up again when [updater] has run, so one that
+  /// [updater] itself removed is made again, and one it replaced is
+  /// written when it has the same data type and refused when it has
+  /// another.
   T? update(
     QueryClient client,
     T? Function(T? previous) updater, {
@@ -566,6 +598,17 @@ abstract final class InfiniteQueryRef<TPageData, TPageParam>
   /// to call; an [InfiniteQueryFamily]'s reference binds its input into
   /// new ones on every call. What that means to an observer is on
   /// [QueryRef.options].
+  ///
+  /// That holds with a `structuralSharing` or an `InitialData.compute`
+  /// from `configure` when it is the same function every time `configure`
+  /// runs: a top-level or static function, or one held in a field or a
+  /// variable. The definition wraps such a function to hold the declared
+  /// page types and hands out the same wrapper for the same function
+  /// object. A closure written inside `configure` is a new one on every
+  /// call, and so is a method torn off there (`repository.share`) on the
+  /// Dart VM, where two such tear-offs are equal and not identical; the
+  /// options then differ, as they do with any other option built anew.
+  /// Tear the method off once, into a field, to have them equal.
   InfiniteQueryObserverOptions<TPageData, TPageParam> options();
 
   @override
@@ -870,12 +913,20 @@ final class QueryFamily<TInput, T> extends QueryTarget {
   /// when the updaters are done, so one that an updater itself replaced
   /// with an entry of another type refuses the call as well.
   ///
-  /// The writes then happen one after the other, inside one
-  /// `NotifyManager.batch`. It is not a transaction: a cache listener hears
-  /// each write as it is made, and one that reacts by changing the cache
-  /// is not undone; if it replaces a later entry with one of another type,
-  /// that entry's write throws with the earlier ones made. An entry removed
-  /// while the updaters ran is created again by its write.
+  /// That check covers the types and what the updaters return. It does not
+  /// cover the writes, which then happen one after the other inside one
+  /// `NotifyManager.batch`, each as [QueryEntryRef.write] makes it, and a
+  /// write can still fail: an entry's `structuralSharing` may throw, and a
+  /// cache listener that hears an earlier write may put an entry of
+  /// another type in a later one's place. The call then throws at that
+  /// entry with the earlier writes made and the later ones not, as
+  /// [QueryClient.updateQueriesData] does. It is not a transaction, and
+  /// nothing is rolled back.
+  ///
+  /// A cache listener that throws stops nothing: its error is reported to
+  /// the zone and the writes go on. An entry removed since the updaters
+  /// ran is created again by its write, and one replaced by an entry of
+  /// the same data type is written.
   List<(TypedQueryKey<T>, T?)> updateAll(
     QueryClient client,
     T? Function(T? previous) updater, {
@@ -1009,6 +1060,12 @@ final class InfiniteQueryDefinition<TPageData, TPageParam>
     InfiniteQueryObserverOptions<TPageData, TPageParam> base,
   )? _configure;
 
+  /// The wrappers [options] has put around the callbacks [_configure]
+  /// returned, so that the same callback gets the same wrapper again and
+  /// the options of two calls are equal. A family keeps none: its options
+  /// differ from call to call by their paging functions already.
+  late final _wrappers = _ExactWrappers<TPageData, TPageParam>();
+
   @override
   InfiniteQueryObserverOptions<TPageData, TPageParam> options() {
     final base = InfiniteQueryObserverOptions<TPageData, TPageParam>(
@@ -1019,7 +1076,9 @@ final class InfiniteQueryDefinition<TPageData, TPageParam>
       getPreviousPageParam: _getPreviousPageParam,
     );
     final configure = _configure;
-    return configure == null ? base : _pinnedInfinite(base, configure(base));
+    return configure == null
+        ? base
+        : _pinnedInfinite(base, configure(base), _wrappers);
   }
 }
 
@@ -1212,8 +1271,9 @@ final class InfiniteQueryFamily<TInput, TPageData, TPageParam>
   /// Runs [updater] over the cached pages of every input and writes what
   /// it returns, as [QueryFamily.updateAll] does and with the same rules:
   /// nothing is written unless every entry and every result has the
-  /// family's type, and returning `null` leaves an entry as it is. Each
-  /// result is stored under the declared page types.
+  /// family's type, returning `null` leaves an entry as it is, and a write
+  /// that fails leaves the ones before it made. Each result is stored
+  /// under the declared page types.
   List<
       (
         TypedQueryKey<InfiniteData<TPageData, TPageParam>>,
@@ -1267,10 +1327,11 @@ T _writeEntry<T>(
   QueryOptions<T> Function() optionsForNew,
 ) {
   final rawKey = key.rawKey;
-  final existing = client.queryCache.get<T>(rawKey);
+  // The entry before the value: of two mismatches the entry's is reported.
+  client.queryCache.get<T>(rawKey);
   return _write<T>(
     client,
-    existing,
+    rawKey,
     key._stored(_checked<T>(value, rawKey)),
     updatedAt,
     optionsForNew,
@@ -1295,42 +1356,92 @@ T? _updateEntry<T>(
     return null;
   }
   final value = _checked<T>(next, rawKey);
-  // Looked up again: the updater is the caller's code and may have removed
-  // the entry, or made it.
+  // [_write] looks the entry up again: the updater is the caller's code and
+  // may have removed it, made it or put another in its place.
   return _write<T>(
-    client,
-    client.queryCache.get<T>(rawKey),
-    key._stored(value),
-    updatedAt,
-    optionsForNew,
-  );
+      client, rawKey, key._stored(value), updatedAt, optionsForNew);
 }
 
-/// The one way a typed write reaches the cache: into [existing], or into an
-/// entry built for the key of [optionsForNew] when there is none.
+/// The one way a typed write reaches the cache: into the entry the cache
+/// holds under [rawKey] when [value] is stored, or not at all.
 ///
-/// [existing] is what `QueryCache.get<T>` returned, so it holds exactly `T`,
-/// and the write is `Query.setData(manual: true)`, the call the client's
+/// The write is `Query.setData(manual: true)`, the call the client's
 /// `setQueryData` ends in: sharing, timestamps and notifications are the
 /// same. What differs is before it. The client's write takes any entry that
 /// can hold the value, a `Device?` entry for a `Device`, which the
-/// reference's own next read would then refuse.
+/// reference's own next read would then refuse; this one takes the entry of
+/// exactly `T`, which is what `QueryCache.get<T>` returns or throws for.
+///
+/// It also differs in which entry that is. The entry is looked up here, by
+/// key, after every piece of the caller's code that runs before it (an
+/// updater, a bulk update's earlier writes and whoever heard them), and
+/// two more pieces run between the lookup and the stored value:
+///
+/// * the cache's listeners hear `QueryAdded` for an entry made here, and
+///   one may remove it or put another in its place: [_created] looks again;
+/// * the entry's `structuralSharing` is handed the value, and may do the
+///   same to the entry it is running for. `canCommit` is what `setData`
+///   asks after sharing and before it stores.
+///
+/// Without those two a value went into an entry the cache had dropped and
+/// was returned as stored, where the next read found nothing or an entry
+/// of another type.
 T _write<T>(
   QueryClient client,
-  Query<T>? existing,
+  QueryKey rawKey,
   T value,
   DateTime? updatedAt,
   QueryOptions<T> Function() optionsForNew,
 ) {
-  // `build` looks the key up once more and creates the entry only when it
-  // is still absent: resolving the options runs the caller's `configure`,
-  // and constructing the entry an `InitialData.compute`.
-  final query = existing ??
-      client.queryCache.build<T>(
-        client,
-        client.defaultQueryOptions<T>(optionsForNew()),
-      );
-  return query.setData(value, updatedAt: updatedAt, manual: true);
+  final cache = client.queryCache;
+  final query =
+      cache.get<T>(rawKey) ?? _created<T>(client, rawKey, optionsForNew);
+  var held = true;
+  final stored = query.setData(
+    value,
+    updatedAt: updatedAt,
+    manual: true,
+    canCommit: () => held = identical(cache.peek(rawKey), query),
+  );
+  if (!held) {
+    // What sharing returned was computed against the entry that is gone,
+    // its previous value and its own callback: there is no entry left that
+    // it could be stored in.
+    _gone<T>(cache, rawKey, 'structuralSharing');
+  }
+  return stored;
+}
+
+/// The entry a write made under [rawKey], as the cache holds it once its
+/// listeners have heard of it.
+///
+/// `build` looks the key up once more and creates the entry only when it
+/// is still absent: resolving the options runs the caller's `configure`,
+/// and constructing the entry an `InitialData.compute`. Adding it emits
+/// `QueryAdded`, so the key is looked up a last time afterwards. An entry
+/// of the same type that a listener put there is the one to write; one of
+/// another type is the mismatch every other is; and an entry the listener
+/// removed is not made a second time, because the listener would remove
+/// that one too.
+Query<T> _created<T>(
+  QueryClient client,
+  QueryKey rawKey,
+  QueryOptions<T> Function() optionsForNew,
+) {
+  final cache = client.queryCache;
+  cache.build<T>(client, client.defaultQueryOptions<T>(optionsForNew()));
+  return cache.get<T>(rawKey) ?? _gone<T>(cache, rawKey, 'cache listener');
+}
+
+/// What a write throws when the entry it was about to store into left the
+/// cache first: [QueryDataTypeError] when an entry of another type is in
+/// its place, a [StateError] naming [culprit] otherwise.
+Never _gone<T>(QueryCache cache, QueryKey rawKey, String culprit) {
+  cache.get<T>(rawKey);
+  throw StateError(
+    'The entry of $rawKey was removed or replaced by a $culprit while a '
+    'typed write was storing into it. Nothing was written.',
+  );
 }
 
 /// Every entry [filters] selects, each holding exactly `T`; or nothing is
@@ -1407,13 +1518,13 @@ List<(TypedQueryKey<T>, T?)> _updateAll<T>(
           keys[i],
           switch (next[i]) {
             null => null,
-            // Looked up by key, as the client's bulk update does: an entry
-            // removed since the first pass is made again, with the key's
-            // bare options, because a family cannot tell the input from
-            // the key.
+            // By key, as the client's bulk update writes: an entry removed
+            // since the first pass is made again, with the key's bare
+            // options, because a family cannot tell the input from the
+            // key.
             final T value => _write<T>(
                 client,
-                client.queryCache.get<T>(keys[i].rawKey),
+                keys[i].rawKey,
                 value,
                 updatedAt,
                 keys[i]._bareOptions,
@@ -1501,8 +1612,9 @@ Type _typeOf<X>() => X;
 InfiniteQueryObserverOptions<TPageData, TPageParam>
     _pinnedInfinite<TPageData, TPageParam>(
   InfiniteQueryObserverOptions<TPageData, TPageParam> base,
-  InfiniteQueryObserverOptions<TPageData, TPageParam> configured,
-) {
+  InfiniteQueryObserverOptions<TPageData, TPageParam> configured, [
+  _ExactWrappers<TPageData, TPageParam>? wrappers,
+]) {
   _ownOptions<InfiniteQueryObserverOptions<TPageData, TPageParam>>(
     configured,
     base.queryKey,
@@ -1522,9 +1634,23 @@ InfiniteQueryObserverOptions<TPageData, TPageParam>
     initialPageParam: initialPageParam,
     getNextPageParam: base.getNextPageParam,
     getPreviousPageParam: base.getPreviousPageParam,
-    structuralSharing: _exactSharing(configured.structuralSharing),
-    initialData: _exactInitialData(configured.initialData),
+    structuralSharing: _exactSharing(configured.structuralSharing, wrappers),
+    initialData: _exactInitialData(configured.initialData, wrappers),
   );
+}
+
+/// The wrappers one [InfiniteQueryDefinition] made, each found again by
+/// the callback it wraps.
+///
+/// Both tables are weak and keyed by identity. A wrapper holds its
+/// callback, and nothing but the options it went into holds the wrapper,
+/// so this keeps alive nothing the definition's `configure` does not
+/// already: a callback made anew on every call is collected with its
+/// wrapper once the options that carry them are.
+final class _ExactWrappers<TPageData, TPageParam> {
+  final sharing =
+      Expando<StructuralSharing<InfiniteData<TPageData, TPageParam>>>();
+  final compute = Expando<InfiniteData<TPageData, TPageParam>? Function()>();
 }
 
 /// [sharing] with its result under the declared page types, or `null` to
@@ -1536,21 +1662,30 @@ InfiniteQueryObserverOptions<TPageData, TPageParam>
 /// walk and the opt-out need no wrapper: both return the incoming value or
 /// one of its exact type. The opt-out must not get one, because it is
 /// recognised by identity.
+///
+/// With [wrappers], the wrapper made for [sharing] before is returned
+/// again; without, a new one every time.
 StructuralSharing<InfiniteData<TPageData, TPageParam>>?
     _exactSharing<TPageData, TPageParam>(
   StructuralSharing<InfiniteData<TPageData, TPageParam>>? sharing,
-) =>
-        sharing == null || isNoStructuralSharing(sharing)
-            ? null
-            : (previous, next) => _exactInfinite<TPageData, TPageParam>(
-                  sharing(previous, next),
-                );
+  _ExactWrappers<TPageData, TPageParam>? wrappers,
+) {
+  if (sharing == null || isNoStructuralSharing(sharing)) return null;
+  InfiniteData<TPageData, TPageParam> exact(
+    InfiniteData<TPageData, TPageParam>? previous,
+    InfiniteData<TPageData, TPageParam> next,
+  ) =>
+      _exactInfinite<TPageData, TPageParam>(sharing(previous, next));
+  return wrappers == null ? exact : wrappers.sharing[sharing] ??= exact;
+}
 
 /// [initialData] with its seed under the declared page types, or `null` to
 /// keep it as it is: a seed is written into the cache as fetched data is.
+/// [wrappers] as on [_exactSharing], for a seed that is computed.
 InitialData<InfiniteData<TPageData, TPageParam>>?
     _exactInitialData<TPageData, TPageParam>(
   InitialData<InfiniteData<TPageData, TPageParam>>? initialData,
+  _ExactWrappers<TPageData, TPageParam>? wrappers,
 ) {
   switch (initialData) {
     case null:
@@ -1563,12 +1698,16 @@ InitialData<InfiniteData<TPageData, TPageParam>>?
     case InitialDataCompute<InfiniteData<TPageData, TPageParam>>(
         :final compute
       ):
-      return InitialData<InfiniteData<TPageData, TPageParam>>.compute(() {
+      InfiniteData<TPageData, TPageParam>? exact() {
         final seed = compute();
         return seed == null
             ? null
             : _exactInfinite<TPageData, TPageParam>(seed);
-      });
+      }
+      // Two computed seeds are equal when their functions are.
+      return InitialData<InfiniteData<TPageData, TPageParam>>.compute(
+        wrappers == null ? exact : wrappers.compute[compute] ??= exact,
+      );
   }
 }
 

@@ -193,7 +193,8 @@ the options that were weighed.
 - **A bulk update is checked twice and is still not a transaction.** Every
   entry is looked up again before the first write, so nothing an updater
   does to the cache leaves it half-written; a listener that replaces an
-  entry in answer to one of the writes can.
+  entry in answer to one of the writes can. (One case too broad: narrowed
+  by the review of the core, at the end of this record.)
 
 Added on 2026-11-10 after ticket #134, when the binding, the hooks, the
 task manager and the showcase had used the surface. The first two
@@ -246,3 +247,44 @@ options that were weighed, and its limits 4, 14 and 21 the wording.
   A definition without an input hands out the functions it was declared
   with, so the options of one that is held resolve equal from build to
   build and emit none. Neither was changed to match the other.
+
+Added on 2026-11-10 after an independent review of the core by a second
+model (four findings, none a P1). The first is a consequence this record
+did not state, the other two correct what it said. The plan's D4, D5 and
+D7 and its limits 14 and 16 hold the options that were weighed.
+
+- **A typed write goes into the entry the cache holds, or throws.** The
+  client's `setQueryData` builds an entry and writes into the object it
+  built, and a cache listener hears of the new entry in between; one
+  that replaces it leaves the raw call returning a value the cache does
+  not hold, as upstream does. A typed write that did the same reported
+  success where its own next read threw, which is the claim this layer
+  exists to make. So the entry is resolved by key when the value is
+  stored: after the listeners heard of a new entry, and after the
+  entry's `structuralSharing` ran. An entry of another type in its place
+  is `QueryDataTypeError`; an entry that is gone, and one its own
+  sharing replaced, a `StateError`; a same-type entry a listener put
+  there is the one written. A removed entry is not built a second time:
+  the listener that removed it would remove that one too. The raw call
+  is unchanged.
+- **What a bulk update's check covers.** The types, and what the updaters
+  return; not the writes. "Nothing an updater does to the cache leaves it
+  half-written" was true of an entry's type only: an updater can give a
+  later entry a `structuralSharing` that throws, and that runs inside the
+  write. A write that fails while the batch commits, for that reason or
+  because a listener swapped a later entry, leaves the earlier writes in
+  place, exactly as the client's `updateQueriesData` does. Running every
+  sharing callback before the first write, or undoing writes, is the
+  transaction this record declines.
+- **Which options are equal, once more.** An infinite definition wraps a
+  `structuralSharing` and a computed seed from its `configure` to hold
+  the declared page types, and made the wrapper anew per call, so a held
+  zero-input infinite definition with such a `configure` was unequal
+  from build to build although it handed out the same functions. It now
+  finds the wrapper again by the callback it wraps, in a weak table of
+  its own, keyed by identity. That is not the memo this record declines:
+  no options and no reference is remembered, nothing gates on the
+  result, a family keeps no table, and the table keeps alive nothing
+  `configure` does not. A callback that is a new object per call (a
+  closure written in `configure`, or on the VM a method torn off there)
+  still makes the options unequal.

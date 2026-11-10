@@ -9,7 +9,9 @@
 ///   omit that check (`-O4` is Flutter's web release build).
 ///
 /// Open-7 is the `O7` block; D4's fixture that is not about types is the
-/// `D4` block. Nothing here prints a type's own name, a hash code or a
+/// `D4` block; the `W` block is the entry a write goes into when a cache
+/// listener or a `structuralSharing` replaces it under the write. Nothing
+/// here prints a type's own name, a hash code or a
 /// message: dart2js minifies type names, so every label is decided by an
 /// `is` test or a `Type` comparison.
 library;
@@ -31,6 +33,7 @@ Future<void> main() async {
   _d5Infinite();
   _d6Configure();
   await _d7Prefixes();
+  _entryUnderAWrite();
   _d9MixedList();
   _d10Backstop();
   _keyOfDefault();
@@ -728,7 +731,82 @@ void _d4Values() {
   unsubscribe();
   held.destroy();
   bound.destroy();
+
+  // An infinite definition wraps a `structuralSharing` and a computed seed
+  // from `configure`; the wrapper is found again by the function it wraps.
+  String asked(InfiniteQueryDefinition<List<Device>, int> definition) {
+    final a = definition.options();
+    final b = definition.options();
+    final observer = InfiniteQueryObserver(one, a);
+    var heard = 0;
+    final stop = one.queryCache.subscribe((event) {
+      if (event is QueryObserverOptionsUpdated) {
+        heard++;
+      }
+    });
+    observer.setInfiniteOptions(b);
+    stop();
+    observer.destroy();
+    return 'same structuralSharing '
+        '${identical(a.structuralSharing, b.structuralSharing)}, '
+        'equal seed ${a.initialData == b.initialData}, '
+        'equal once resolved by a client '
+        '${one.defaultQueryOptions<InfiniteData<List<Device>, int>>(a) == one.defaultQueryOptions<InfiniteData<List<Device>, int>>(b)}, '
+        'options updates heard: $heard';
+  }
+
+  InfiniteQueryDefinition<List<Device>, int> paged(
+    String name,
+    InfiniteQueryObserverOptions<List<Device>, int> Function(
+      InfiniteQueryObserverOptions<List<Device>, int> base,
+    ) configure,
+  ) =>
+      InfiniteQueryDefinition<List<Device>, int>(
+        namespace: DeviceQueries.namespace,
+        name: name,
+        pageFn: (context) => const [],
+        initialPageParam: 0,
+        getNextPageParam: (page, pages, pageParam, pageParams) => null,
+        configure: configure,
+      );
+
+  _note(
+    'D4-19',
+    'the options of a zero-input infinite definition whose configure sets '
+        'a top-level structuralSharing and a top-level computed seed, asked '
+        'for twice and handed to an observer again',
+    asked(
+      paged(
+        'stable',
+        (base) => base.copyWith(
+          structuralSharing: _keepNext,
+          initialData: InitialData.compute(_noSeed),
+        ),
+      ),
+    ),
+  );
+  _note(
+    'D4-20',
+    'the same with both written as closures inside configure',
+    asked(
+      paged(
+        'inline',
+        (base) => base.copyWith(
+          structuralSharing: (previous, next) => next,
+          initialData: InitialData.compute(() => null),
+        ),
+      ),
+    ),
+  );
 }
+
+InfiniteData<List<Device>, int> _keepNext(
+  InfiniteData<List<Device>, int>? previous,
+  InfiniteData<List<Device>, int> next,
+) =>
+    next;
+
+InfiniteData<List<Device>, int>? _noSeed() => null;
 
 // --------------------------------------------------------------------- D5
 
@@ -1259,6 +1337,272 @@ Future<void> _d7Prefixes() async {
               : throw StateError('no'),
         ),
       )}; kept: ${_allKept(client, queries)}',
+    );
+  }
+
+  // What the check before the writes does not cover: a write that fails.
+  // The typed call and the client's leave the same cache.
+  for (final (id, typed) in [('D7-14', true), ('D7-15', false)]) {
+    final client = _client();
+    final guarded = QueryFamily<String, Device>(
+      namespace: DeviceQueries.namespace,
+      name: 'guarded',
+      configure: (base, input) => base.copyWith(
+        structuralSharing: (previous, next) =>
+            previous != null && input == 'b' ? throw StateError('no') : next,
+      ),
+    );
+    guarded('a').write(client, const Device('a', name: 'kept'));
+    guarded('b').write(client, const Device('b', name: 'kept'));
+    Device? rename(Device? previous) => previous?.copyWith(name: 'new');
+    _note(
+      id,
+      '${typed ? 'updateAll' : 'the raw updateQueriesData<Device>'} over two '
+          'entries, the structuralSharing of the second throws',
+      '${_attempt(() => typed ? guarded.updateAll(client, rename) : client.updateQueriesData<Device>(rename, filters: guarded.filters()))}; '
+          'the first written: ${guarded('a').read(client)?.name == 'new'}, '
+          'the second kept: ${guarded('b').read(client)?.name == 'kept'}',
+    );
+  }
+
+  // An entry the batch makes again, replaced by a cache listener when it
+  // is added: the typed write is refused, the client's is lost.
+  for (final (id, typed) in [('D7-16', true), ('D7-17', false)]) {
+    final client = _client();
+    final a = queries.detail('a');
+    final b = queries.detail('b');
+    a.write(client, const Device('a', name: 'kept'));
+    b.write(client, const Device('b', name: 'kept'));
+    client.queryCache.subscribe((event) {
+      if (event is QueryAdded && event.query.queryKey == b.key.rawKey) {
+        if (event.query.dataType == _typeOf<Device>()) {
+          b.remove(client);
+          client.setQueryData<String>(b.key.rawKey, 'replacement');
+        }
+      }
+    });
+    Device? rename(Device? previous) {
+      // The updater removes the later entry; its write makes it again.
+      if (previous?.id == 'b') {
+        b.remove(client);
+      }
+      return previous?.copyWith(name: 'new');
+    }
+
+    _note(
+      id,
+      '${typed ? 'updateAll' : 'the raw updateQueriesData<Device>'} over two '
+          'entries; the updater removes the second, and a cache listener '
+          'puts a Query<String> in its place when the write makes it again',
+      '${_attempt(() => typed ? queries.detail.updateAll(client, rename) : client.updateQueriesData<Device>(rename, filters: queries.detail.filters()))}; '
+          'the first written: ${a.read(client)?.name == 'new'}, '
+          'the second: ${_entry(client, b.key.rawKey)}',
+    );
+  }
+}
+
+// ------------------------------------------- the entry a write goes into
+
+/// The four typed writes when the entry is removed or replaced under them:
+/// by a cache listener that hears `QueryAdded` for the entry the write
+/// makes, and by the entry's own `structuralSharing`.
+void _entryUnderAWrite() {
+  const value = Device('w1', name: 'written');
+  final writes =
+      <(String, void Function(QueryClient client, QueryRef<Device> ref))>[
+    ('ref.write', (client, ref) => ref.write(client, value)),
+    ('ref.update', (client, ref) => ref.update(client, (previous) => value)),
+    ('key.write', (client, ref) => ref.key.write(client, value)),
+    (
+      'key.update',
+      (client, ref) => ref.key.update(client, (previous) => value),
+    ),
+  ];
+
+  String held(QueryClient client, QueryKey key) {
+    final data = client.queryCache
+        .find(filters: QueryFilters(queryKey: key))
+        ?.state
+        .data;
+    return '${_entry(client, key)}, '
+        'the written value ${data == value ? 'stored' : 'not stored'}';
+  }
+
+  void another(QueryClient client, QueryRef<Device> ref) {
+    ref.remove(client);
+    client.setQueryData<String>(ref.key.rawKey, 'replacement');
+  }
+
+  void same(QueryClient client, QueryRef<Device> ref) {
+    ref.remove(client);
+    client.setQueryData<Device>(ref.key.rawKey, const Device('w1'));
+  }
+
+  void removed(QueryClient client, QueryRef<Device> ref) => ref.remove(client);
+
+  // The answer runs once, at the first `QueryAdded` the listener hears.
+  String whenAdded(
+    void Function(QueryClient client, QueryRef<Device> ref) answer, {
+    void Function(QueryClient client, QueryRef<Device> ref)? only,
+  }) =>
+      [
+        for (final (name, write) in writes)
+          if (only == null || name == 'ref.write')
+            () {
+              final client = _client();
+              final ref = DeviceQueries(const DeviceRepository()).detail('w1');
+              var answered = false;
+              client.queryCache.subscribe((event) {
+                if (event is QueryAdded && !answered) {
+                  answered = true;
+                  answer(client, ref);
+                }
+              });
+              final outcome = _attempt(() => (only ?? write)(client, ref));
+              return '${only == null ? '$name ' : ''}$outcome, '
+                  '${held(client, ref.key.rawKey)}';
+            }(),
+      ].join('; ');
+
+  _note(
+    'W-1',
+    'a typed write that makes its entry; a cache listener puts a '
+        'Query<String> in its place when it is added',
+    whenAdded(another),
+  );
+  _note(
+    'W-2',
+    'the same, the listener puts a Query<Device> of its own there',
+    whenAdded(same),
+  );
+  _note(
+    'W-3',
+    'the same, the listener removes the entry',
+    whenAdded(removed),
+  );
+  _note(
+    'W-4',
+    'the raw setQueryData<Device> under the first listener (the control)',
+    whenAdded(
+      another,
+      only: (client, ref) => client.setQueryData<Device>(ref.key.rawKey, value),
+    ),
+  );
+
+  // The entry exists; its `structuralSharing` runs the answer when it is
+  // handed the written value.
+  String whenSharing(
+    void Function(QueryClient client, QueryRef<Device> ref) answer,
+  ) =>
+      [
+        for (final (name, write) in writes)
+          () {
+            final client = _client();
+            late final QueryDefinition<Device> shared;
+            shared = QueryDefinition<Device>(
+              namespace: DeviceQueries.namespace,
+              name: 'shared',
+              configure: (base) => base.copyWith(
+                structuralSharing: (previous, next) {
+                  if (next == value) {
+                    answer(client, shared);
+                  }
+                  return next;
+                },
+              ),
+            );
+            shared.write(client, const Device('w1'));
+            return '$name ${_attempt(() => write(client, shared))}, '
+                '${held(client, shared.key.rawKey)}';
+          }(),
+      ].join('; ');
+
+  _note(
+    'W-5',
+    'a typed write into an entry whose structuralSharing puts a '
+        'Query<String> in its place',
+    whenSharing(another),
+  );
+  _note(
+    'W-6',
+    'the same, structuralSharing puts a Query<Device> of its own there',
+    whenSharing(same),
+  );
+  _note(
+    'W-7',
+    'the same, structuralSharing removes its entry',
+    whenSharing(removed),
+  );
+  _note(
+    'W-8',
+    'the same, structuralSharing resets its entry (the control: the entry '
+        'stays the one the cache holds)',
+    whenSharing((client, ref) => unawaited(ref.reset(client))),
+  );
+
+  // Paged data goes the same way, with the page types in the check.
+  {
+    final client = _client();
+    final feed = DeviceQueries(const DeviceRepository()).feed;
+    var answered = false;
+    client.queryCache.subscribe((event) {
+      if (event is QueryAdded && !answered) {
+        answered = true;
+        feed.remove(client);
+        client.setQueryData(
+          feed.key.rawKey,
+          InfiniteData<List<Thermostat>, int>(
+            pages: const [
+              [Thermostat('t1')],
+            ],
+            pageParams: const [0],
+          ),
+        );
+      }
+    });
+    _note(
+      'W-9',
+      'a write through an InfiniteQueryDefinition<List<Device>, int> that '
+          'makes its entry; a cache listener puts an entry of '
+          'InfiniteData<List<Thermostat>, int> in its place when it is added',
+      '${_attempt(
+        () => feed.write(
+          client,
+          InfiniteData(pages: const [], pageParams: const []),
+        ),
+      )}; cache: ${_entry(client, feed.key.rawKey)}',
+    );
+  }
+
+  // Two mismatches at once, the entry's type and the value's. Only a
+  // widened receiver in a build without the language's check gets as far
+  // as the library with both, and the entry's is the one it reports.
+  {
+    final client = _client();
+    final ref = DeviceQueries(const DeviceRepository()).detail('w1');
+    client.setQueryData<String>(ref.key.rawKey, 'not a device');
+    final QueryRef<Object?> widened = ref;
+    final TypedQueryKey<Object?> widenedKey = ref.key;
+    String refused(void Function() write) {
+      try {
+        write();
+        return 'completed';
+      } on QueryDataTypeError catch (error) {
+        return 'QueryDataTypeError naming '
+            '${error.actual == _typeOf<String>() ? "the entry's type" : "the value's type"}';
+      } on TypeError {
+        return 'TypeError';
+      }
+    }
+
+    _note(
+      'W-10',
+      'an int written through a QueryRef<Device> held as QueryRef<Object?> '
+          'and through its key held as TypedQueryKey<Object?>, over a '
+          'Query<String>',
+      '${refused(() => widened.write(client, 42))}, '
+          '${refused(() => widenedKey.write(client, 42))}; '
+          'cache: ${_entry(client, ref.key.rawKey)}',
     );
   }
 }

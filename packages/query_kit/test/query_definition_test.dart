@@ -1636,6 +1636,307 @@ void main() {
     });
   });
 
+  // Review of the core, SC-1. A typed write holds an entry across code of
+  // the application's that runs before the value is stored: the cache's
+  // listeners hear `QueryAdded` for an entry the write creates, the entry's
+  // `structuralSharing` is handed the value, and an `update` runs its
+  // updater. Each may remove or replace the entry. The rule, at every one
+  // of those points: the value goes into the entry the cache holds under
+  // the key when it is stored, or the write throws. It never returns a
+  // value that went into an entry the cache had already dropped.
+  group('a write goes into the entry the cache holds (SC-1)', () {
+    const value = Device('d1', name: 'written');
+    const other = Device('d1', name: 'other');
+    final rawKey = QueryKey(['devices', 'detail', 'd1']);
+
+    final writes =
+        <String, Device? Function(QueryClient client, QueryRef<Device> ref)>{
+      'ref.write': (client, ref) => ref.write(client, value),
+      'ref.update': (client, ref) => ref.update(client, (_) => value),
+      'key.write': (client, ref) => ref.key.write(client, value),
+      'key.update': (client, ref) => ref.key.update(client, (_) => value),
+    };
+
+    void remove(QueryClient client, QueryRef<Device> ref) => ref.remove(client);
+
+    void putAnotherType(QueryClient client, QueryRef<Device> ref) {
+      ref.remove(client);
+      client.setQueryData<String>(ref.key.rawKey, 'replacement');
+    }
+
+    void putTheSameType(QueryClient client, QueryRef<Device> ref) {
+      ref.remove(client);
+      client.setQueryData<Device>(ref.key.rawKey, other);
+    }
+
+    /// [act], and what became of it: what it returned or threw, the events
+    /// it caused and the entry the cache holds under the key afterwards.
+    ({
+      Object? returned,
+      Object? thrown,
+      List<String> events,
+      Query<Object?>? held,
+    }) outcome(
+      QueryClient client,
+      QueryRef<Device> ref,
+      List<String> events,
+      Device? Function() act,
+    ) {
+      events.clear();
+      Object? returned;
+      Object? thrown;
+      try {
+        returned = act();
+      } on Object catch (error) {
+        thrown = error;
+      }
+      final held =
+          client.queryCache.findAll(filters: ref.filters()).firstOrNull;
+      final recorded = [...events];
+      client.clear();
+      return (
+        returned: returned,
+        thrown: thrown,
+        events: recorded,
+        held: held,
+      );
+    }
+
+    /// [write] where there is no entry, on a client whose listener answers
+    /// the first `QueryAdded` with [onAdded].
+    ({
+      Object? returned,
+      Object? thrown,
+      List<String> events,
+      Query<Object?>? held,
+    }) created(
+      Device? Function(QueryClient client, QueryRef<Device> ref) write,
+      void Function(QueryClient client, QueryRef<Device> ref) onAdded,
+    ) {
+      final client = testClient();
+      final ref = deviceDetail()('d1');
+      final events = recordEvents(client);
+      var answered = false;
+      client.queryCache.subscribe((event) {
+        if (!answered && event is QueryAdded) {
+          answered = true;
+          onAdded(client, ref);
+        }
+      });
+      return outcome(client, ref, events, () => write(client, ref));
+    }
+
+    /// [write] into an entry that exists and whose `structuralSharing`
+    /// runs [whileSharing] when it is handed [value].
+    ({
+      Object? returned,
+      Object? thrown,
+      List<String> events,
+      Query<Object?>? held,
+    }) shared(
+      Device? Function(QueryClient client, QueryRef<Device> ref) write,
+      void Function(QueryClient client, QueryRef<Device> ref) whileSharing, {
+      bool existing = true,
+    }) {
+      final client = testClient();
+      late final QueryRef<Device> ref;
+      var ran = false;
+      ref = deviceDetail(
+        configure: (base, id) => base.copyWith(
+          structuralSharing: (previous, next) {
+            if (!ran && next == value) {
+              ran = true;
+              whileSharing(client, ref);
+            }
+            return next;
+          },
+        ),
+      )('d1');
+      if (existing) {
+        ref.write(client, const Device('d1', name: 'before'));
+      }
+      final events = recordEvents(client);
+      return outcome(client, ref, events, () => write(client, ref));
+    }
+
+    for (final MapEntry(key: name, value: write) in writes.entries) {
+      group(name, () {
+        test('an entry of another type put in its place when it was added', () {
+          final result = created(write, putAnotherType);
+          expect(result.thrown, dataTypeError(rawKey, Device, String));
+          expect(result.held!.state.data, 'replacement');
+          // The replacement's own write, and none after it: nothing was
+          // stored in the entry the cache had dropped.
+          expect(result.events, [
+            'added devices/detail/d1',
+            'removed devices/detail/d1',
+            'added devices/detail/d1',
+            'updated devices/detail/d1',
+          ]);
+        });
+
+        test('an entry of the same type put in its place is the one written',
+            () {
+          final result = created(write, putTheSameType);
+          expect(result.thrown, isNull);
+          expect(result.returned, value);
+          expect(result.held!.dataType, Device);
+          expect(result.held!.state.data, value);
+          // The listener's write and this one, into the same entry.
+          expect(result.held!.state.dataUpdateCount, 2);
+          expect(result.events, [
+            'added devices/detail/d1',
+            'removed devices/detail/d1',
+            'added devices/detail/d1',
+            'updated devices/detail/d1',
+            'updated devices/detail/d1',
+          ]);
+        });
+
+        test('an entry removed when it was added: StateError, nothing stored',
+            () {
+          final result = created(write, remove);
+          expect(result.thrown, isStateError);
+          expect(result.held, isNull);
+          expect(result.events, [
+            'added devices/detail/d1',
+            'removed devices/detail/d1',
+          ]);
+        });
+
+        test('the control: a listener that writes the new entry itself', () {
+          final result = created(
+            write,
+            (client, ref) => ref.write(client, other),
+          );
+          expect(result.thrown, isNull);
+          expect(result.returned, value);
+          expect(result.held!.state.data, value);
+          expect(result.held!.state.dataUpdateCount, 2);
+        });
+
+        test('structuralSharing that removes its entry: StateError', () {
+          final result = shared(write, remove);
+          expect(result.thrown, isStateError);
+          expect(result.held, isNull);
+          // No update of an entry that is gone.
+          expect(result.events, ['removed devices/detail/d1']);
+        });
+
+        test('structuralSharing that puts another type in its place', () {
+          final result = shared(write, putAnotherType);
+          expect(result.thrown, dataTypeError(rawKey, Device, String));
+          expect(result.held!.state.data, 'replacement');
+          expect(result.events, [
+            'removed devices/detail/d1',
+            'added devices/detail/d1',
+            'updated devices/detail/d1',
+          ]);
+        });
+
+        test('structuralSharing that puts the same type in its place', () {
+          final result = shared(write, putTheSameType);
+          // The value it shared belongs to the entry that is gone.
+          expect(result.thrown, isStateError);
+          expect(result.held!.state.data, other);
+          expect(result.held!.state.dataUpdateCount, 1);
+        });
+
+        test('the control: structuralSharing that resets its entry', () {
+          final result = shared(
+            write,
+            (client, ref) => unawaited(ref.reset(client)),
+          );
+          expect(result.thrown, isNull);
+          expect(result.returned, value);
+          expect(result.held!.state.data, value);
+        });
+
+        test('what a listener does in answer to the write comes after it', () {
+          for (final (answer, removes) in [
+            (remove, true),
+            (putAnotherType, false),
+          ]) {
+            final client = testClient();
+            final ref = deviceDetail()('d1');
+            ref.write(client, const Device('d1', name: 'before'));
+            var answered = false;
+            client.queryCache.subscribe((event) {
+              if (!answered && event is QueryUpdated) {
+                answered = true;
+                answer(client, ref);
+              }
+            });
+            // Stored, heard, and then changed by who heard it.
+            expect(write(client, ref), value);
+            if (removes) {
+              expect(ref.state(client), isNull);
+            } else {
+              expect(
+                () => ref.read(client),
+                throwsA(dataTypeError(rawKey, Device, String)),
+              );
+            }
+            client.clear();
+          }
+        });
+      });
+    }
+
+    test('an entry a reference creates, removed by its structuralSharing', () {
+      final result = shared(
+        (client, ref) => ref.write(client, value),
+        remove,
+        existing: false,
+      );
+      expect(result.thrown, isStateError);
+      expect(result.held, isNull);
+      expect(result.events, [
+        'added devices/detail/d1',
+        'removed devices/detail/d1',
+      ]);
+    });
+
+    test('an updater that puts the same type in its place: that one is written',
+        () {
+      for (final byKey in [false, true]) {
+        final client = testClient();
+        final ref = deviceDetail()('d1');
+        ref.write(client, const Device('d1', name: 'before'));
+        Device? updater(Device? previous) {
+          putTheSameType(client, ref);
+          return previous!.renamed('written');
+        }
+
+        final stored = byKey
+            ? ref.key.update(client, updater)
+            : ref.update(client, updater);
+        expect(stored, value);
+        expect(ref.read(client), value);
+        // The replacement's own write and the update's.
+        expect(ref.state(client)!.dataUpdateCount, 2);
+        client.clear();
+      }
+    });
+
+    // The control for all of the above: the client's own write reports a
+    // value the cache does not hold.
+    test('the control: setQueryData returns a value it did not store', () {
+      final client = testClient();
+      final ref = deviceDetail()('d1');
+      var answered = false;
+      client.queryCache.subscribe((event) {
+        if (!answered && event is QueryAdded) {
+          answered = true;
+          putAnotherType(client, ref);
+        }
+      });
+      expect(client.setQueryData<Device>(rawKey, value), value);
+      expect(entry(client, rawKey).state.data, 'replacement');
+      client.clear();
+    });
+  });
+
   group('options and defaults', () {
     test('options are made anew on every call, with the input', () {
       final inputs = <String>[];
@@ -3274,6 +3575,270 @@ void main() {
       expect(raw.cached, {
         'd1 Device': const Device('d1', name: 'one!'),
         'd2 Device?': const Device('d2', name: 'two!'),
+      });
+    });
+
+    // Review of the core, SC-1 and SC-2: what the writes of one batch do
+    // when the entry under one of them changed since the batch began, and
+    // what is left when one of them fails. Each case runs through the
+    // client's own bulk update as well.
+    group('the writes of a batch (SC-1, SC-2)', () {
+      /// A bulk update, typed or the client's, over `d1` and `d2` while
+      /// [listener] hears every cache event: what it threw and what the
+      /// family's entries hold afterwards.
+      ({Map<String, Object?> cached, Object? thrown}) bulk(
+        bool typed, {
+        QueryFamily<String, Device>? family,
+        void Function(
+          QueryClient client,
+          QueryFamily<String, Device> detail,
+          QueryCacheEvent event,
+        )? listener,
+        Device? Function(
+          QueryClient client,
+          QueryFamily<String, Device> detail,
+          Device? previous,
+        )? updater,
+      }) {
+        final client = testClient();
+        final detail = family ?? deviceDetail();
+        detail('d1').write(client, const Device('d1', name: 'one'));
+        detail('d2').write(client, const Device('d2', name: 'two'));
+        if (listener != null) {
+          client.queryCache.subscribe(
+            (event) => listener(client, detail, event),
+          );
+        }
+        Device? update(Device? previous) => updater == null
+            ? previous!.renamed('${previous.name}!')
+            : updater(client, detail, previous);
+        Object? thrown;
+        try {
+          if (typed) {
+            detail.updateAll(client, update);
+          } else {
+            client.updateQueriesData<Device>(
+              update,
+              filters: detail.filters(),
+            );
+          }
+        } on Object catch (error) {
+          thrown = error;
+        }
+        final cached = {
+          for (final query
+              in client.queryCache.findAll(filters: detail.filters()))
+            '${query.queryKey.parts.last} ${query.dataType}': query.state.data,
+        };
+        client.clear();
+        return (cached: cached, thrown: thrown);
+      }
+
+      final d2 = QueryKey(['devices', 'detail', 'd2']);
+
+      /// An updater that removes `d2` before the writes, so that `d2`'s
+      /// write makes the entry again and the cache's listeners hear of it.
+      Device? removingD2(
+        QueryClient client,
+        QueryFamily<String, Device> detail,
+        Device? previous,
+      ) {
+        if (previous!.id == 'd1') {
+          detail('d2').remove(client);
+        }
+        return previous.renamed('${previous.name}!');
+      }
+
+      test('a later entry removed by a listener is made again by its write',
+          () {
+        ({Map<String, Object?> cached, Object? thrown}) run(bool typed) {
+          var done = false;
+          return bulk(
+            typed,
+            listener: (client, detail, event) {
+              if (!done && event is QueryUpdated) {
+                done = true;
+                detail('d2').remove(client);
+              }
+            },
+          );
+        }
+
+        final typed = run(true);
+        expect(typed.thrown, isNull);
+        expect(typed.cached, {
+          'd1 Device': const Device('d1', name: 'one!'),
+          'd2 Device': const Device('d2', name: 'two!'),
+        });
+        final raw = run(false);
+        expect(raw.thrown, isNull);
+        expect(raw.cached, typed.cached);
+      });
+
+      test(
+          'a later entry replaced by a listener with one of the same type: '
+          'that one is written', () {
+        ({Map<String, Object?> cached, Object? thrown}) run(bool typed) {
+          var done = false;
+          return bulk(
+            typed,
+            listener: (client, detail, event) {
+              if (!done && event is QueryUpdated) {
+                done = true;
+                detail('d2').remove(client);
+                client.setQueryData<Device>(
+                  d2,
+                  const Device('d2', name: 'listener'),
+                );
+              }
+            },
+          );
+        }
+
+        final typed = run(true);
+        expect(typed.thrown, isNull);
+        expect(typed.cached, {
+          'd1 Device': const Device('d1', name: 'one!'),
+          'd2 Device': const Device('d2', name: 'two!'),
+        });
+        final raw = run(false);
+        expect(raw.thrown, isNull);
+        expect(raw.cached, typed.cached);
+      });
+
+      test(
+          'an entry made again in the batch, and another type put in its '
+          'place when it was added: refused, the earlier write stays', () {
+        ({Map<String, Object?> cached, Object? thrown}) run(bool typed) => bulk(
+              typed,
+              updater: removingD2,
+              listener: (client, detail, event) {
+                if (event is QueryAdded && event.query.dataType == Device) {
+                  detail('d2').remove(client);
+                  client.setQueryData<String>(d2, 'replacement');
+                }
+              },
+            );
+
+        final typed = run(true);
+        expect(typed.thrown, dataTypeError(d2, Device, String));
+        expect(typed.cached, {
+          'd1 Device': const Device('d1', name: 'one!'),
+          'd2 String': 'replacement',
+        });
+        // The control: the client's update reports a write it lost.
+        final raw = run(false);
+        expect(raw.thrown, isNull);
+        expect(raw.cached, typed.cached);
+      });
+
+      test(
+          'an entry made again in the batch and removed when it was added: '
+          'StateError, the earlier write stays', () {
+        ({Map<String, Object?> cached, Object? thrown}) run(bool typed) => bulk(
+              typed,
+              updater: removingD2,
+              listener: (client, detail, event) {
+                if (event is QueryAdded) {
+                  detail('d2').remove(client);
+                }
+              },
+            );
+
+        final typed = run(true);
+        expect(typed.thrown, isStateError);
+        expect(typed.cached, {'d1 Device': const Device('d1', name: 'one!')});
+        final raw = run(false);
+        expect(raw.thrown, isNull);
+        expect(raw.cached, typed.cached);
+      });
+
+      // SC-2. Every type check passes and every updater returns a value;
+      // the second write fails in its entry's own `structuralSharing`.
+      test(
+          'a structuralSharing that throws at a later entry: the earlier '
+          'write stays, as with the client\'s update', () {
+        ({Map<String, Object?> cached, Object? thrown}) run(bool typed) => bulk(
+              typed,
+              family: deviceDetail(
+                configure: (base, id) => base.copyWith(
+                  structuralSharing: (previous, next) =>
+                      previous != null && next.id == 'd2'
+                          ? throw StateError('sharing rejected')
+                          : next,
+                ),
+              ),
+            );
+
+        for (final result in [run(true), run(false)]) {
+          expect(
+            result.thrown,
+            isStateError.having(
+                (e) => e.message, 'message', 'sharing rejected'),
+          );
+          expect(result.cached, {
+            'd1 Device': const Device('d1', name: 'one!'),
+            'd2 Device': const Device('d2', name: 'two'),
+          });
+        }
+      });
+
+      test(
+          'the same when an updater installed it: the second lookup looks '
+          'at types, not at what a write will run', () {
+        ({Map<String, Object?> cached, Object? thrown}) run(bool typed) => bulk(
+              typed,
+              updater: (client, detail, previous) {
+                if (previous!.id == 'd1') {
+                  // An observer hands its options to the entry it is for.
+                  QueryObserver<Device, Device>(
+                    client,
+                    detail('d2').options().copyWith(
+                          structuralSharing: (previous, next) =>
+                              throw StateError('sharing rejected'),
+                        ),
+                  );
+                }
+                return previous.renamed('${previous.name}!');
+              },
+            );
+
+        for (final result in [run(true), run(false)]) {
+          expect(
+            result.thrown,
+            isStateError.having(
+                (e) => e.message, 'message', 'sharing rejected'),
+          );
+          expect(result.cached, {
+            'd1 Device': const Device('d1', name: 'one!'),
+            'd2 Device': const Device('d2', name: 'two'),
+          });
+        }
+      });
+
+      test('a listener that throws stops no write: its error goes to the zone',
+          () {
+        for (final typed in [true, false]) {
+          final uncaught = <Object>[];
+          late final ({Map<String, Object?> cached, Object? thrown}) result;
+          runZonedGuarded(
+            () => result = bulk(
+              typed,
+              listener: (client, detail, event) {
+                if (event is QueryUpdated) {
+                  throw StateError('listener');
+                }
+              },
+            ),
+            (error, stackTrace) => uncaught.add(error),
+          );
+          expect(result.thrown, isNull);
+          expect(result.cached, {
+            'd1 Device': const Device('d1', name: 'one!'),
+            'd2 Device': const Device('d2', name: 'two!'),
+          });
+          expect(uncaught, [isStateError, isStateError]);
+        }
       });
     });
 

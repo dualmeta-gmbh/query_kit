@@ -227,7 +227,8 @@ on a rebuild takes them as changed options, as it does with options written
 inline in `build`. That costs [one defaulting pass and nothing
 else](query-options.md#options-built-in-build-are-fine). A definition
 without an input hands out the function it was declared with, and its
-options are equal from call to call.
+options are equal from call to call as long as its `configure` builds
+nothing new each time it runs.
 
 ## Reading and writing
 
@@ -541,13 +542,19 @@ fetch function until the query is used again (see [typed
 keys](#typed-keys)). The [optimistic updates](optimistic-updates.md) guide
 has the single-entry form.
 
-`updateAll` checks everything before it writes anything: every entry under
+`updateAll` checks the types before it writes anything: every entry under
 the prefix must hold exactly the family's data type, every updater runs, and
 every result must be of that type, or the call throws with the cache as it
-was. Each updater sees the data from before the call. It is not a
-transaction, though: the writes are made one after the other in one batch,
-and a cache listener that answers one of them by changing the cache is not
-undone.
+was. Each updater sees the data from before the call.
+
+That check covers the types and what the updaters return. It does not cover
+the writes, which are made one after the other in one batch, and a write can
+still fail. An entry's `structuralSharing` may throw, and a cache listener
+that answers an earlier write may put an entry of another type in a later
+one's place. The call then throws at that entry with the earlier writes made
+and the later ones not, as the client's `updateQueriesData` does. It is not
+a transaction, and nothing is rolled back. A cache listener that throws
+stops no write: its error is reported to the zone.
 
 ## Where the raw API still fits
 

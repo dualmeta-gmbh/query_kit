@@ -111,6 +111,18 @@ Query<Object?> entry(QueryClient client, QueryKey key) => client.queryCache
     .findAll(filters: QueryFilters(queryKey: key, exact: true))
     .single;
 
+/// Callbacks that are one function object however often `configure` runs,
+/// as a top-level or static function is.
+Feed keepNext(Feed? previous, Feed next) => next;
+
+Feed keepSeven(Feed? previous, Feed next) => narrow(7);
+
+Feed? seedOfSeven() => narrow(7);
+
+class Sharer {
+  Feed keep(Feed? previous, Feed next) => next;
+}
+
 void main() {
   group('keys and identity', () {
     test('keys are the namespace, the name and the input', () {
@@ -283,6 +295,231 @@ void main() {
       observer.destroy();
       refObserver.destroy();
       client.clear();
+    });
+
+    // A `structuralSharing` and a computed seed from `configure` are held
+    // to the page types by a wrapper. A wrapper made per call made the
+    // options of a held definition differ from call to call.
+    group('the wrapper of a callback is the same for the same callback (SC-3)',
+        () {
+      // How many times an observer handed the options [times] more times
+      // heard that they changed.
+      int changes(
+        InfiniteQueryObserverOptions<List<Post>, int> Function() options, {
+        int times = 2,
+      }) {
+        final client = testClient();
+        var heard = 0;
+        final observer = InfiniteQueryObserver(client, options());
+        client.queryCache.subscribe((event) {
+          if (event is QueryObserverOptionsUpdated) heard++;
+        });
+        for (var i = 0; i < times; i++) {
+          observer.setInfiniteOptions(options());
+        }
+        observer.destroy();
+        client.clear();
+        return heard;
+      }
+
+      bool equalOnceResolved(
+        InfiniteQueryObserverOptions<List<Post>, int> a,
+        InfiniteQueryObserverOptions<List<Post>, int> b,
+      ) {
+        final client = testClient();
+        final resolvedA = client.defaultQueryOptions<Feed>(a);
+        final resolvedB = client.defaultQueryOptions<Feed>(b);
+        return resolvedA == resolvedB &&
+            resolvedA.hashCode == resolvedB.hashCode;
+      }
+
+      test('a structuralSharing that is one function: equal options', () {
+        final definition = feed(
+          configure: (base) => base.copyWith(structuralSharing: keepNext),
+        );
+        final a = definition.options();
+        final b = definition.options();
+        expect(identical(a, b), isFalse);
+        // A wrapper, and the same one.
+        expect(a.structuralSharing, isNot(same(keepNext)));
+        expect(a.structuralSharing, same(b.structuralSharing));
+        expect(equalOnceResolved(a, b), isTrue);
+        expect(changes(definition.options), 0);
+
+        // Held in a field or a local, as a closure can be.
+        Feed held(Feed? previous, Feed next) => next;
+        final holding = feed(
+          configure: (base) => base.copyWith(structuralSharing: held),
+        );
+        expect(equalOnceResolved(holding.options(), holding.options()), isTrue);
+        expect(changes(holding.options), 0);
+      });
+
+      test('a computed seed that is one function: equal options', () {
+        final definition = feed(
+          configure: (base) =>
+              base.copyWith(initialData: InitialData.compute(seedOfSeven)),
+        );
+        final a = definition.options();
+        final b = definition.options();
+        expect(a.initialData, isNot(same(b.initialData)));
+        expect(a.initialData, b.initialData);
+        expect(equalOnceResolved(a, b), isTrue);
+        expect(changes(definition.options), 0);
+
+        // The wrapper is still what seeds the entry, under the page types.
+        final client = testClient();
+        InfiniteQueryObserver(client, definition.options());
+        expect(definition.read(client).runtimeType, typeOf<Feed>());
+        expect(definition.read(client)!.pages, [
+          [const Pinned(7)],
+        ]);
+        client.clear();
+      });
+
+      test('a narrower seed value that is held is rebuilt per call, and equal',
+          () {
+        // Rebuilt around the same pages, and two `InfiniteData` are equal
+        // by their pages.
+        final seed = InitialData<Feed>.value(narrow());
+        final definition = feed(
+          configure: (base) => base.copyWith(initialData: seed),
+        );
+        final a = definition.options();
+        final b = definition.options();
+        expect(a.initialData, isNot(same(seed)));
+        expect(a.initialData, isNot(same(b.initialData)));
+        expect(equalOnceResolved(a, b), isTrue);
+        expect(changes(definition.options), 0);
+
+        // The control: a seed made in `configure` has pages of its own
+        // every time, rebuilt or not, as it has in options written by hand.
+        for (final value in [narrow, exact]) {
+          final making = feed(
+            configure: (base) =>
+                base.copyWith(initialData: InitialData.value(value())),
+          );
+          expect(
+            equalOnceResolved(making.options(), making.options()),
+            isFalse,
+          );
+        }
+      });
+
+      test('both at once, and the wrapper still holds the page types', () {
+        final definition = feed(
+          configure: (base) => base.copyWith(
+            structuralSharing: keepSeven,
+            initialData: InitialData.compute(seedOfSeven),
+          ),
+        );
+        expect(
+          equalOnceResolved(definition.options(), definition.options()),
+          isTrue,
+        );
+        expect(changes(definition.options, times: 3), 0);
+
+        final client = testClient();
+        definition.options();
+        final stored = definition.write(client, exact());
+        expect(stored.runtimeType, typeOf<Feed>());
+        expect(stored.pages, [
+          [const Pinned(7)],
+        ]);
+        client.clear();
+      });
+
+      test('the control: a callback made in configure is another every call',
+          () {
+        final definition = feed(
+          configure: (base) => base.copyWith(
+            structuralSharing: (previous, next) => next,
+          ),
+        );
+        final a = definition.options();
+        final b = definition.options();
+        expect(a.structuralSharing, isNot(same(b.structuralSharing)));
+        expect(equalOnceResolved(a, b), isFalse);
+        expect(changes(definition.options), 2);
+
+        final seeded = feed(
+          configure: (base) => base.copyWith(
+            initialData: InitialData.compute(() => null),
+          ),
+        );
+        expect(equalOnceResolved(seeded.options(), seeded.options()), isFalse);
+        expect(changes(seeded.options), 2);
+      });
+
+      // The wrapper is found by identity. Two tear-offs of one method are
+      // equal, which is all options written by hand need, and on the VM
+      // they are two objects.
+      test('a method torn off in configure: another wrapper per call', () {
+        final sharer = Sharer();
+        expect(sharer.keep == sharer.keep, isTrue);
+        final tearing = feed(
+          configure: (base) => base.copyWith(structuralSharing: sharer.keep),
+        );
+        expect(
+          equalOnceResolved(tearing.options(), tearing.options()),
+          isFalse,
+        );
+        expect(changes(tearing.options), 2);
+
+        // Torn off once and held, it is one function.
+        final keep = sharer.keep;
+        final holding = feed(
+          configure: (base) => base.copyWith(structuralSharing: keep),
+        );
+        expect(equalOnceResolved(holding.options(), holding.options()), isTrue);
+        expect(changes(holding.options), 0);
+      }, testOn: 'vm');
+
+      test('a wrapper belongs to its definition, and to its callback', () {
+        final first = feed(
+          configure: (base) => base.copyWith(structuralSharing: keepNext),
+        );
+        final second = feed(
+          configure: (base) => base.copyWith(structuralSharing: keepNext),
+        );
+        expect(
+          first.options().structuralSharing,
+          isNot(same(second.options().structuralSharing)),
+        );
+
+        // One definition, two callbacks in turn: each keeps its own.
+        var seven = false;
+        final turning = feed(
+          configure: (base) => base.copyWith(
+            structuralSharing: seven ? keepSeven : keepNext,
+          ),
+        );
+        final next = turning.options().structuralSharing!;
+        seven = true;
+        final sevens = turning.options().structuralSharing!;
+        expect(sevens, isNot(same(next)));
+        expect(sevens(null, exact()).pages, [
+          [const Pinned(7)],
+        ]);
+        expect(next(null, exact()).pages, exact().pages);
+        seven = false;
+        expect(turning.options().structuralSharing, same(next));
+      });
+
+      test('a family keeps no wrapper: its options differ already', () {
+        final family = byAuthor(
+          configure: (base, author) => base.copyWith(
+            structuralSharing: keepNext,
+            initialData: InitialData.compute(seedOfSeven),
+          ),
+        );
+        final ref = family('ada');
+        final a = ref.options();
+        final b = ref.options();
+        expect(a.structuralSharing, isNot(same(b.structuralSharing)));
+        expect(a.initialData, isNot(b.initialData));
+        expect(changes(ref.options), 2);
+      });
     });
 
     testFakeAsync('fetch is client.infiniteQuery: fresh, stale, joined',
@@ -1041,6 +1278,200 @@ void main() {
         definition.read(client).runtimeType,
         typeOf<InfiniteData<List<Pinned>, int>>(),
       );
+      client.clear();
+    });
+  });
+
+  // The infinite references write through the function the plain ones do.
+  // These are the same points with the page types in the check: an entry of
+  // narrower page types is another type.
+  group('a write goes into the entry the cache holds (SC-1)', () {
+    final rawKey = QueryKey(['posts', 'feed']);
+    final narrower = typeOf<InfiniteData<List<Pinned>, int>>();
+    final writes = <String,
+        Feed? Function(QueryClient, InfiniteQueryRef<List<Post>, int>)>{
+      'ref.write': (client, ref) => ref.write(client, narrow(2)),
+      'ref.update': (client, ref) =>
+          ref.update(client, (previous) => narrow(2)),
+      'key.write': (client, ref) => ref.key.write(client, narrow(2)),
+      'key.update': (client, ref) =>
+          ref.key.update(client, (previous) => narrow(2)),
+    };
+
+    void remove(QueryClient client) =>
+        client.removeQueries(filters: QueryFilters(queryKey: rawKey));
+
+    // Answers the first `QueryAdded` it hears, once; the function it
+    // returns says whether it has.
+    bool Function() whenAdded(QueryClient client, void Function() answer) {
+      var answered = false;
+      client.queryCache.subscribe((event) {
+        if (event is QueryAdded && !answered) {
+          answered = true;
+          answer();
+        }
+      });
+      return () => answered;
+    }
+
+    // Two `InfiniteData` are equal by their page lists, which two calls of
+    // `narrow` do not share; the posts in them are compared here.
+    List<List<Post>> pagesOf(QueryClient client, QueryKey key) =>
+        (entry(client, key).state.data! as InfiniteData<List<Post>, int>).pages;
+
+    for (final MapEntry(key: name, value: write) in writes.entries) {
+      group(name, () {
+        test('narrower page types put in its place when it was added', () {
+          final client = testClient();
+          whenAdded(client, () {
+            remove(client);
+            client.setQueryData(rawKey, narrow(9));
+          });
+          expect(
+            () => write(client, feed()),
+            throwsA(dataTypeError(rawKey, typeOf<Feed>(), narrower)),
+          );
+          final held = entry(client, rawKey);
+          expect(held.dataType, narrower);
+          expect(pagesOf(client, rawKey), narrow(9).pages);
+          expect(held.state.dataUpdateCount, 1);
+          client.clear();
+        });
+
+        test('the same page types put in its place: that entry is written', () {
+          final client = testClient();
+          whenAdded(client, () {
+            remove(client);
+            client.setQueryData<Feed>(rawKey, exact(9));
+          });
+          final stored = write(client, feed())!;
+          // Under the declared page types, as every infinite write.
+          expect(stored.runtimeType, typeOf<Feed>());
+          expect(stored.pages, [
+            [const Pinned(2)],
+          ]);
+          final held = entry(client, rawKey);
+          expect(held.state.data, same(stored));
+          expect(held.state.dataUpdateCount, 2);
+          client.clear();
+        });
+
+        test('removed when it was added: StateError, nothing stored', () {
+          final client = testClient();
+          whenAdded(client, () => remove(client));
+          expect(() => write(client, feed()), throwsStateError);
+          expect(client.queryCache.findAll(), isEmpty);
+          client.clear();
+        });
+
+        test('the definition\'s structuralSharing removes its entry', () {
+          final client = testClient();
+          var ran = 0;
+          final definition = feed(
+            configure: (base) => base.copyWith(
+              structuralSharing: (previous, next) {
+                // Not for the write that sets the scene.
+                if (previous != null) {
+                  ran++;
+                  remove(client);
+                }
+                return next;
+              },
+            ),
+          );
+          definition.write(client, exact());
+          expect(() => write(client, definition), throwsStateError);
+          expect(ran, 1);
+          expect(client.queryCache.findAll(), isEmpty);
+          client.clear();
+        });
+
+        test('the definition\'s structuralSharing puts narrower pages there',
+            () {
+          final client = testClient();
+          final definition = feed(
+            configure: (base) => base.copyWith(
+              structuralSharing: (previous, next) {
+                if (previous != null) {
+                  remove(client);
+                  client.setQueryData(rawKey, narrow(9));
+                }
+                return next;
+              },
+            ),
+          );
+          definition.write(client, exact());
+          expect(
+            () => write(client, definition),
+            throwsA(dataTypeError(rawKey, typeOf<Feed>(), narrower)),
+          );
+          expect(entry(client, rawKey).dataType, narrower);
+          expect(pagesOf(client, rawKey), narrow(9).pages);
+          client.clear();
+        });
+      });
+    }
+
+    test('a family\'s updateAll: an entry made again and replaced when added',
+        () {
+      final client = testClient();
+      final family = byAuthor();
+      final ada = family('ada');
+      final bob = family('bob');
+      ada.write(client, exact(1));
+      bob.write(client, exact(2));
+      void removeBob() => client.removeQueries(
+            filters: QueryFilters(queryKey: bob.key.rawKey, exact: true),
+          );
+      final answered = whenAdded(client, () {
+        removeBob();
+        client.setQueryData(bob.key.rawKey, narrow(9));
+      });
+      expect(
+        () => family.updateAll(client, (previous) {
+          // The updater removes the later entry; its write makes it again.
+          final id = previous!.pages.single.single.id;
+          if (id == 2) removeBob();
+          return narrow(id + 10);
+        }),
+        throwsA(dataTypeError(bob.key.rawKey, typeOf<Feed>(), narrower)),
+      );
+      expect(answered(), isTrue);
+      // The earlier write was made, as a batch that fails while writing
+      // leaves it.
+      expect(ada.read(client)!.pages, [
+        [const Pinned(11)],
+      ]);
+      expect(pagesOf(client, bob.key.rawKey), narrow(9).pages);
+      client.clear();
+    });
+
+    test('a family\'s updateAll: the same page types put there are written',
+        () {
+      final client = testClient();
+      final family = byAuthor();
+      final bob = family('bob');
+      family('ada').write(client, exact(1));
+      bob.write(client, exact(2));
+      void removeBob() => client.removeQueries(
+            filters: QueryFilters(queryKey: bob.key.rawKey, exact: true),
+          );
+      final answered = whenAdded(client, () {
+        removeBob();
+        client.setQueryData<Feed>(bob.key.rawKey, exact(9));
+      });
+      final updated = family.updateAll(client, (previous) {
+        final id = previous!.pages.single.single.id;
+        if (id == 2) removeBob();
+        return narrow(id + 10);
+      });
+      expect(answered(), isTrue);
+      expect(updated[1].$2.runtimeType, typeOf<Feed>());
+      expect(bob.read(client), same(updated[1].$2));
+      expect(bob.read(client)!.pages, [
+        [const Pinned(12)],
+      ]);
+      expect(bob.state(client)!.dataUpdateCount, 2);
       client.clear();
     });
   });
