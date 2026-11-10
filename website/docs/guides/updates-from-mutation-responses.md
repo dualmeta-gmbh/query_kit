@@ -17,15 +17,18 @@ The notification settings of a user, read by a query and saved by a
 mutation. The server may clamp or fill in values, so what it answers is the
 truth, not what the form sent:
 
-```dart snippet="guides/updates-from-mutation-responses.md#settings"
+```dart snippet="guides/updates-from-mutation-responses.md#typed-settings"
 // lib/data/settings_queries.dart
-final QueryKey settingsKey = QueryKey(<Object?>['settings', 'notifications']);
+/// ['settings', 'notifications']
+final QueryDefinition<NotificationSettings> notificationSettings =
+    QueryDefinition<NotificationSettings>(
+  namespace: QueryNamespace(<Object?>['settings']),
+  name: 'notifications',
+  queryFn: (context) => settingsRepository.load(signal: context.signal),
+);
 
 QueryObserverOptions<NotificationSettings> settingsQuery() =>
-    QueryObserverOptions(
-      queryKey: settingsKey,
-      queryFn: (context) => settingsRepository.load(signal: context.signal),
-    );
+    notificationSettings.options();
 
 MutationOptions<NotificationSettings, NotificationSettings, void>
     saveSettingsMutation(QueryClient client) => MutationOptions.simple(
@@ -34,7 +37,7 @@ MutationOptions<NotificationSettings, NotificationSettings, void>
           // values clamped. That is the new truth; there is nothing to
           // fetch.
           onSuccess: (saved, _, __) {
-            client.setQueryData(settingsKey, saved);
+            notificationSettings.write(client, saved);
           },
         );
 ```
@@ -65,10 +68,68 @@ class NotificationSettingsTile extends StatelessWidget {
 ```
 
 A cache write marks the data fresh as of now, so it triggers no refetch of
-its own, and every other widget reading `settingsKey` — a badge in the app
+its own, and every other widget reading the entry — a badge in the app
 bar, a banner on the home screen — rebuilds with the saved value.
 
+### With raw keys
+
+The same query and mutation over a hand-written key. The screen above reads
+either, because both hand it a `settingsQuery()`:
+
+```dart snippet="guides/updates-from-mutation-responses.md#settings"
+// lib/data/settings_queries.dart
+final QueryKey settingsKey = QueryKey(<Object?>['settings', 'notifications']);
+
+QueryObserverOptions<NotificationSettings> settingsQuery() =>
+    QueryObserverOptions(
+      queryKey: settingsKey,
+      queryFn: (context) => settingsRepository.load(signal: context.signal),
+    );
+
+MutationOptions<NotificationSettings, NotificationSettings, void>
+    saveSettingsMutation(QueryClient client) => MutationOptions.simple(
+          mutationFn: settingsRepository.save,
+          // The server answers with what it stored — defaults applied,
+          // values clamped. That is the new truth; there is nothing to
+          // fetch.
+          onSuccess: (saved, _, __) {
+            client.setQueryData(settingsKey, saved);
+          },
+        );
+```
+
 ## The calls
+
+Through a reference of a [typed query definition](typed-queries.md), the
+reference carries the data type, so no call names it:
+
+```dart snippet="guides/updates-from-mutation-responses.md#typed-cache-writes"
+final detail = taskQueries.detail(id); // QueryRef<Task>
+
+final Task? cached = detail.read(client);
+detail.write(client, task);
+detail.update(client, (previous) => previous?.copyWith(name: 'Renamed'));
+taskQueries.detail.updateAll(
+  client,
+  (previous) => previous?.copyWith(name: 'Renamed'),
+);
+```
+
+- `read` returns what is cached, or `null`. Under a nullable data type a
+  cached `null` and no data read the same; `state(client)` tells them apart
+  with `hasData`.
+- `write` takes a **value** and returns what the cache stored, after
+  [structural sharing](structural-sharing.md). Through a reference of a
+  nullable type, a `QueryRef<Task?>`, `write(client, null)` stores a `null`.
+- `update` takes an updater from the previous value — `null` when nothing is
+  cached — and returning `null` from it leaves the cache untouched.
+- A family's `updateAll` runs one updater over every input's entry. It runs
+  every updater and checks every result before writing any.
+
+An infinite reference reads and writes its whole `InfiniteData` the same way;
+see [infinite queries](infinite-queries.md#the-data).
+
+### With raw keys
 
 ```dart snippet="guides/updates-from-mutation-responses.md#cache-writes"
 client.getQueryData<List<Task>>(tasksKey);
@@ -83,13 +144,9 @@ client.updateQueriesData<Task>(
 );
 ```
 
-- `getQueryData` reads what is cached, or `null`.
-- `setQueryData` takes a **value** and returns what the cache stored, after
-  [structural sharing](structural-sharing.md).
-- `updateQueryData` takes an updater from the previous value — `null` when
-  nothing is cached — and returning `null` from it leaves the cache untouched.
-- `updateQueriesData` runs one updater over every query the filters match. It
-  runs every updater and checks every result before writing any.
+`getQueryData`, `setQueryData` and `updateQueryData` are `read`, `write` and
+`update`, each naming its type; `updateQueriesData` is `updateAll` over
+whatever its filters match, and checks every result before writing any too.
 
 For an infinite query, the typed read is
 `getInfiniteQueryData<TPageData, TPageParam>(key)`.
@@ -102,6 +159,42 @@ store a null in a query whose type allows one.
 
 A renamed device is in its detail entry and in its room's list. The answer
 updates both, the list by building a new one:
+
+```dart snippet="guides/updates-from-mutation-responses.md#typed-rename-everywhere"
+MutationOptions<Device, String, void> renameDeviceMutation(
+  QueryClient client,
+  String id,
+) =>
+    MutationOptions.simple(
+      mutationFn: (String name) => devices.rename(id, name),
+      onSuccess: (renamed, _, __) {
+        deviceQueries.detail(id).write(client, renamed);
+        // Every room list that holds it gets a new list with the new device;
+        // `null` leaves the others untouched.
+        deviceQueries.list.updateAll(
+          client,
+          (list) => list == null || !list.any((device) => device.id == id)
+              ? null
+              : <Device>[
+                  for (final device in list) device.id == id ? renamed : device,
+                ],
+        );
+      },
+    );
+```
+
+`updateAll` over the `list` family reaches every room's list,
+including rooms the device is not in. For those the updater returns `null`,
+which leaves the entry alone: writing back an equal list would still date the
+entry now and rebuild its readers. When the answer is only part of the
+picture — the device moved rooms, a count on another screen changed —
+[invalidate](invalidations-from-mutations.md) the rest rather than computing
+it on the client.
+
+### With raw keys
+
+`updateQueriesData` over `DeviceKeys.lists` does the same over a hand-written
+prefix:
 
 ```dart snippet="guides/updates-from-mutation-responses.md#rename-everywhere"
 MutationOptions<Device, String, void> renameDeviceMutation(
@@ -125,14 +218,6 @@ MutationOptions<Device, String, void> renameDeviceMutation(
       },
     );
 ```
-
-`updateQueriesData` over `DeviceKeys.lists` reaches every room's list,
-including rooms the device is not in. For those the updater returns `null`,
-which leaves the entry alone: writing back an equal list would still date the
-entry now and rebuild its readers. When the answer is only part of the
-picture — the device moved rooms, a count on another screen changed —
-[invalidate](invalidations-from-mutations.md) the rest rather than computing
-it on the client.
 
 ## Immutability
 
@@ -179,6 +264,11 @@ type can hold — a `String` into a `String?` query, a sealed type's variant
 into a query of the sealed type — and keeps its type. Name the type when the
 write *creates* the entry, as when seeding a key before its query exists:
 `setQueryData<List<Task>>(key, [])`.
+
+A reference of a [typed query definition](typed-queries.md) names the type
+once, where the query is declared, so its first write creates the entry with
+the declared type. A raw write to the same key is not checked against the
+definition: it keeps the leniency above.
 :::
 
 :::note[In React Query]

@@ -10,7 +10,6 @@ library;
 import 'package:flutter/material.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
-import '../api.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../queries.dart';
@@ -18,10 +17,10 @@ import '../theme.dart';
 import 'overview.dart' show iconFor;
 
 class TaskDetail extends StatefulWidget {
-  const TaskDetail({super.key, required this.id, required this.api});
+  const TaskDetail({super.key, required this.id, required this.queries});
 
   final String id;
-  final TaskApi api;
+  final TaskQueries queries;
 
   @override
   State<TaskDetail> createState() => _TaskDetailState();
@@ -41,7 +40,7 @@ class _TaskDetailState extends State<TaskDetail> with QueryMixin {
 
   void _syncName(QueryClient client, String id) {
     if (!mounted) return;
-    final name = client.getQueryData<Task>(TaskKeys.detail(id))?.name;
+    final name = widget.queries.byId(id).read(client)?.name;
     if (name != null) _name.text = name;
   }
 
@@ -49,9 +48,9 @@ class _TaskDetailState extends State<TaskDetail> with QueryMixin {
   Widget build(BuildContext context) {
     final client = QueryClientProvider.of(context);
 
-    final task = watchQuery(taskQuery(client, widget.api, widget.id));
-    final rename = watchMutation(renameTaskMutation(client, widget.api));
-    final matter = watchMutation(setReminderMutation(client, widget.api));
+    final task = watchQuery(taskQuery(client, widget.queries, widget.id));
+    final rename = watchMutation(renameTaskMutation(client, widget.queries));
+    final matter = watchMutation(setReminderMutation(client, widget.queries));
 
     final data = task.dataOrNull;
     if (data != null && _nameFor != data.id) {

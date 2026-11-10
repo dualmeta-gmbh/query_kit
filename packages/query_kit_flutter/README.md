@@ -84,19 +84,34 @@ the app comes back to the foreground. It does not dispose the client; use
 `QueryClientProvider.create(create: QueryClient.new, child: …)` if the
 provider should own it.
 
-### 2. Describe a query and read it
+### 2. Declare a query and read it
 
-A query is a key plus a function that fetches. Describe it once:
+A query is a key plus a function that fetches. Declare both once, in a
+class per resource, and write the type arguments out:
 
-```dart snippet="packages/query_kit_flutter/README.md#query-options"
-QueryObserverOptions<List<Task>> tasksQuery() => QueryObserverOptions(
-      queryKey: QueryKey(<Object?>['tasks']),
-      queryFn: (context) => api.listTasks(signal: context.signal),
+```dart snippet="packages/query_kit_flutter/README.md#definitions"
+final class TaskQueries {
+  TaskQueries(this._api);
+
+  final Api _api;
+
+  static final QueryNamespace namespace = QueryNamespace(<Object?>['tasks']);
+
+  late final list = QueryDefinition<List<Task>>(
+    namespace: namespace,
+    name: 'list',
+    queryFn: (context) => _api.listTasks(signal: context.signal),
+    configure: (base) => base.copyWith(
       staleTime: const StaleTime.duration(Duration(seconds: 30)),
-    );
+    ),
+  );
+}
+
+final tasks = TaskQueries(api);
 ```
 
-and read it from a widget:
+and read it from a widget. `tasks.list.options()` are the options every call
+style takes:
 
 ```dart snippet="packages/query_kit_flutter/README.md#first-query"
 class TasksScreen extends StatelessWidget {
@@ -104,9 +119,9 @@ class TasksScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tasks = context.query(tasksQuery());
+    final result = context.query(tasks.list.options());
 
-    return switch (tasks) {
+    return switch (result) {
       QueryPending() => const Center(child: CircularProgressIndicator()),
       QueryError(:final error) => Center(child: Text('$error')),
       QuerySuccess(:final data) => ListView(
@@ -118,7 +133,8 @@ class TasksScreen extends StatelessWidget {
 ```
 
 The result is a **sealed** type, so the `switch` is exhaustive and the data
-needs no `!`. Every widget reading `tasksQuery()` shares one cache entry and
+needs no `!`. Its data type comes from the definition, with no type argument
+at the call. Every widget reading `tasks.list` shares one cache entry and
 one request.
 
 `context.query` is one of **four equal ways** to read a query. None is the
@@ -127,7 +143,7 @@ recommended default; they interoperate on one screen, so pick per situation:
 ```dart snippet="excerpt: packages/query_kit_flutter/README.md#builder"
 // A builder widget, the StreamBuilder shape.
 QueryBuilder<List<Task>>(
-  options: tasksQuery(),
+  options: tasks.list.options(),
   builder: (context, result) => switch (result) { … },
 )
 ```
@@ -137,21 +153,44 @@ QueryBuilder<List<Task>>(
 class _TasksPageState extends State<TasksPage> with QueryMixin {
   @override
   Widget build(BuildContext context) {
-    final tasks = watchQuery(tasksQuery());
+    final result = watchQuery(tasks.list.options());
     …
   }
 }
 ```
 
 ```dart snippet="packages/query_kit_flutter/README.md#controller"
-final tasks = QueryController.create(client, tasksQuery());
-// … tasks.value, tasks.addListener, tasks.refetch() …
-tasks.dispose();
+final list = QueryController.create(client, tasks.list.options());
+// … list.value, list.addListener, list.refetch() …
+list.dispose();
 ```
 
 A `QueryController` is a `ValueListenable<QueryResult<T>>`, so it also works
 with `ValueListenableBuilder` and with any state-management package that can
 listen to a `Listenable`.
+
+The same reference reads and writes the cache without a widget:
+`tasks.list.read(client)` is a `List<Task>?`, and a `write` or an `update`
+of another type does not compile. Without its type arguments a definition
+can lose its data type, which a debug build refuses and a release build
+does not; a reference assigned to a wider type is checked when a write
+runs, not by the analyzer. The
+[typed queries guide](https://query-kit.dev/docs/guides/typed-queries) has
+the whole list. Typed query definitions come with query_kit_flutter 1.2.0.
+
+#### With raw keys
+
+`options()` returns plain `QueryObserverOptions`. Written by hand, with the
+key the definition builds, they are the same query, and every call style
+takes them the same way:
+
+```dart snippet="packages/query_kit_flutter/README.md#query-options"
+QueryObserverOptions<List<Task>> tasksQuery() => QueryObserverOptions(
+      queryKey: QueryKey(<Object?>['tasks', 'list']),
+      queryFn: (context) => api.listTasks(signal: context.signal),
+      staleTime: const StaleTime.duration(Duration(seconds: 30)),
+    );
+```
 
 ### 3. A first mutation
 
@@ -169,9 +208,7 @@ Widget build(BuildContext context) {
     MutationOptions.simple(
       mutationFn: api.addTask,
       // Mark the list stale; everyone reading it refetches.
-      onSuccess: (_, __, ___) => client.invalidateQueries(
-        filters: QueryFilters(queryKey: QueryKey(<Object?>['tasks'])),
-      ),
+      onSuccess: (_, __, ___) => tasks.list.invalidate(client),
     ),
   );
 
@@ -189,6 +226,8 @@ Mutations come in the same four styles: `context.mutation`, `watchMutation`,
 
 - **Four equal call styles** for queries, infinite queries and mutations:
   `context.query`, `QueryBuilder`, `QueryMixin` and `QueryController`.
+- **Typed query definitions**: a query's key, input and data type declared
+  once, and a reference's `options()` read by any call style.
 - **Precise rebuilds.** A widget rebuilds when its result changes; `select`
   narrows the data it sees and `buildWhen` decides when it rebuilds.
 - **Everything from the core**: caching with `staleTime` and `gcTime`,
@@ -287,6 +326,7 @@ is built on it. See the
 - [Overview](https://query-kit.dev/docs/overview),
   [quick start](https://query-kit.dev/docs/quick-start) and
   [important defaults](https://query-kit.dev/docs/important-defaults)
+- [Typed queries](https://query-kit.dev/docs/guides/typed-queries)
 - [Four ways to read a query](https://query-kit.dev/docs/guides/reading-queries-in-widgets)
   and [what rebuilds, and when](https://query-kit.dev/docs/guides/render-optimizations)
 - [Mutations](https://query-kit.dev/docs/guides/mutations),

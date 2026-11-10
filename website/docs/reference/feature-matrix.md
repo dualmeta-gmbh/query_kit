@@ -24,6 +24,7 @@ reference](api.md) pages, with their types and defaults.
 | `initialData` and `placeholderData` | including `keepPrevious` |
 | `select` and structural sharing | `QuerySelectOptions`, a second options shape with `select` required; plus `buildWhen` on the builders and the keyless reads |
 | `select` from a shared options factory | `withSelect(select)` keeps every other field |
+| A query declared once with its key and data type (`queryOptions()`, `infiniteQueryOptions()`, key factories) | [typed query definitions](../guides/typed-queries.md): `QueryDefinition`, `QueryFamily` and the infinite twins. Beyond upstream: reads and writes go through the reference with no key and no type argument, a namespace, a family and a reference are each a target for `invalidate`, `refetch`, `cancel`, `reset` and `remove`, and a family reads and updates every cached entry of its own |
 | A list of queries | `QueriesObserver` / `QueriesBuilder` |
 | Combining results of different types | `(a, b).combine(…)` over a record, `combine` over a `List`, `combineWith`, `optional()`, `CombineMemo` |
 | How many queries are fetching, how many mutations are running (`useIsFetching`, `useIsMutating`) | `client.isFetching()` / `IsFetchingController`, `client.isMutating()` |

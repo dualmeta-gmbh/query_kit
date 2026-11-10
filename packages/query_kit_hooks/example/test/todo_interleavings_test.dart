@@ -133,11 +133,7 @@ void main() {
     api.reads.single.complete(seeded);
     await settle(tester);
     // A read the screen did not start, from before either add.
-    client
-        .refetchQueries(
-          filters: QueryFilters(queryKey: Keys.todos, exact: true),
-        )
-        .ignore();
+    client.refetchQueries(filters: TodoQueries(api).list.filters()).ignore();
     await settle(tester);
     for (final text in ['A', 'B']) {
       await tester.enterText(find.byType(TextField), text);
@@ -219,9 +215,7 @@ void main() {
           ),
         );
     await tester.pumpWidget(tab(const SizedBox()));
-    client.removeQueries(
-      filters: QueryFilters(queryKey: Keys.todos, exact: true),
-    );
+    TodoQueries(api).list.remove(client);
     await tester.pumpWidget(tab(const TodosTab()));
     await settle(tester);
     expect(api.reads, hasLength(2));
@@ -233,7 +227,7 @@ void main() {
     await settle(tester);
     expect(writing(client), 0);
     // Cancelled before it answered, or answered before the tick went in.
-    final todos = client.getQueryData<List<Todo>>(Keys.todos);
+    final todos = TodoQueries(api).list.read(client);
     expect(todos == null || todos.first.done, isTrue);
 
     expect(api.reads, hasLength(3));
@@ -256,7 +250,7 @@ void main() {
     // A read the screen did not start, answered with the list from before
     // both ticks.
     final refetch = client.refetchQueries(
-      filters: QueryFilters(queryKey: Keys.todos, exact: true),
+      filters: TodoQueries(api).list.filters(),
     );
     await settle(tester);
     api.reads[1].complete(seeded);
@@ -350,7 +344,7 @@ void main() {
     // Served before A was stored: a list without it.
     api.reads.first.complete(seeded);
     await settle(tester);
-    expect(client.getQueryData<List<Todo>>(Keys.todos), isNull);
+    expect(TodoQueries(api).list.read(client), isNull);
     expect(find.text('Loading todos…'), findsOneWidget);
     expect(api.reads, hasLength(1));
 
@@ -384,7 +378,7 @@ void main() {
     expect(writing(client), 1);
     expect(api.reads, hasLength(1));
     // Cancelled before it answered, or answered before A went in.
-    final todos = client.getQueryData<List<Todo>>(Keys.todos);
+    final todos = TodoQueries(api).list.read(client);
     expect(todos == null || todos.any((todo) => todo.id == 4), isTrue);
 
     api.adds['B']!.complete(const Todo(id: 5, text: 'B', done: false));

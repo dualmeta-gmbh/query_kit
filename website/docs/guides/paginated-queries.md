@@ -21,7 +21,27 @@ buttons jump, and the scroll position is gone. The fix is one option.
 ## Keeping the previous page
 
 `PlaceholderData.keepPrevious()` shows the previous key's data while the new
-key loads:
+key loads. As a [typed query definition](typed-queries.md), the pages are a
+family over the page number, and `configure` gives every page the option:
+
+```dart snippet="guides/paginated-queries.md#typed-page-query"
+/// ['devices', 'page', page]
+final QueryFamily<int, DevicePage> devicePages = QueryFamily<int, DevicePage>(
+  namespace: QueryNamespace(<Object?>['devices']),
+  name: 'page',
+  queryFn: (page, context) =>
+      deviceRepository.page(page, signal: context.signal),
+  configure: (base, page) => base.copyWith(
+    placeholderData: const PlaceholderData.keepPrevious(),
+    staleTime: const StaleTime.duration(Duration(seconds: 30)),
+  ),
+);
+
+// The reader observes `devicePages(page).options()`, and prefetches with
+// `devicePages(page + 1).fetch(client)`.
+```
+
+With raw keys, the options function writes the key itself:
 
 ```dart snippet="guides/paginated-queries.md#page-query"
 QueryObserverOptions<DevicePage> devicePageQuery(int page) =>
@@ -270,6 +290,7 @@ cache.
   through two hundred pages holds at most five minutes' worth.
 - **Invalidating the list invalidates every page.** With keys under one
   prefix, `invalidateQueries(filters: QueryFilters(queryKey: DeviceKeys.all))`
+  — or, typed, `devicePages.invalidate(client)` for the pages alone —
   marks every page stale; only the one on screen is refetched, the rest when
   they are next shown. See [query invalidation](query-invalidation.md).
 - **Rows moving between pages.** Offset paging over data that changes can

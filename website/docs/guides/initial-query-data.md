@@ -59,7 +59,32 @@ after the build — so the picker shows it at once and refetches behind it.
 ## Seeding a detail from a list
 
 `InitialData.compute` can look in another cache entry. The task list's row
-becomes the task detail's first state:
+becomes the task detail's first state. With
+[typed query definitions](typed-queries.md), the list and the detail are two
+references — a `QueryDefinition<List<Task>>` and a
+`QueryFamily<String, Task>`. A definition holds no client, so a seed that
+reads the cache is added where the client is, per use, with a `copyWith` of
+the reference's options:
+
+```dart snippet="guides/initial-query-data.md#typed-seed-from-list"
+QueryObserverOptions<Task> taskSeededFromList(QueryClient client, String id) =>
+    // The definition holds no client, so the seed is added here, per use.
+    taskQueries.detail(id).options().copyWith(
+          initialData: InitialData.compute(
+            () => taskQueries.list
+                .read(client)
+                ?.where((task) => task.id == id)
+                .firstOrNull,
+          ),
+          // As old as the list it came from.
+          initialDataUpdatedAtCompute: () =>
+              taskQueries.list.state(client)?.dataUpdatedAt,
+        );
+```
+
+#### With raw keys
+
+The same seed, over the keys and the client's typed reads:
 
 ```dart snippet="guides/initial-query-data.md#seed-from-list"
 QueryObserverOptions<Task> taskSeededFromList(QueryClient client, String id) =>

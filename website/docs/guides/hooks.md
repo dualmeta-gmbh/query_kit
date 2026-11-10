@@ -203,7 +203,9 @@ One data type is a rule, not a default. A list of a `String` query and an
 `Object`, so a reader of either key as its own type, `String` or `int`, then
 throws `QueryDataTypeError`. Where React Query types each query of the list on its
 own, read queries of different types with a `useQuery` each, and combine the
-results with `(a, b).combine(…)`.
+results with `(a, b).combine(…)`. A reference's options are no exception:
+`useQueries([tasks.detail('1').options(), tasks.list.options()])` creates
+both entries as `Object`, and each reference then refuses its own entry.
 
 ```dart snippet="prose-only: its twin is in query_kit_hooks, which no example may depend on" twin="guides/hooks.md#use-combined-queries"
 final matching = useCombinedQueries(
@@ -310,6 +312,165 @@ one left pending are all left alone, and a reader that mounts may refetch it
 as its own options allow. The hooks hold no observer and never rebuild the
 widget. There is no Suspense: each reader shows its own pending state. See
 [prefetching](prefetching.md).
+
+## Typed query definitions \{#typed-query-definitions\}
+
+A [typed query definition](typed-queries.md) declares a query's key, its
+input and its data type once. A reference's `options()` are ordinary
+options, and every hook takes them as it takes any others. The samples in
+this section read these definitions, with the type arguments written out on
+each:
+
+```dart snippet="prose-only: its twin is in query_kit_hooks, which no example may depend on" twin="guides/hooks.md#typed-definitions"
+final class TaskQueries {
+  TaskQueries(this._api);
+
+  final Api _api;
+
+  static final QueryNamespace namespace = QueryNamespace(<Object?>['tasks']);
+
+  late final list = QueryDefinition<List<Task>>(
+    namespace: namespace,
+    name: 'list',
+    queryFn: (context) => _api.listTasks(signal: context.signal),
+  );
+
+  late final detail = QueryFamily<String, Task>(
+    namespace: namespace,
+    name: 'detail',
+    queryFn: (id, context) => _api.getTask(id, signal: context.signal),
+  );
+
+  late final pages = InfiniteQueryDefinition<List<Task>, int>(
+    namespace: namespace,
+    name: 'pages',
+    pageFn: (context) => _api.taskPage(cursor: context.pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (page, pages, pageParam, pageParams) =>
+        page.isEmpty ? null : pageParam + page.length,
+  );
+}
+
+final tasks = TaskQueries(api);
+```
+
+and read them as any options:
+
+```dart snippet="prose-only: its twin is in query_kit_hooks, which no example may depend on" twin="guides/hooks.md#typed-read"
+final task = useQuery(tasks.detail(id).options()); // QueryResult<Task>
+final pages = useInfiniteQuery(tasks.pages.options());
+```
+
+`useQuery` returns a `QueryResult<Task>` and `useInfiniteQuery` an
+`InfiniteQueryController` over pages of `List<Task>`, with no type argument
+at the call. A reference's options take `copyWith` and `withSelect` as any
+others do, so `useSelectQuery(tasks.list.options().withSelect(…))` reads a
+part of the list.
+
+### A reference as a hook key
+
+Calling a family makes a new reference every time, and two references to
+the same entry are `==`. So a reference can be a key of `useEffect` or
+`useMemoized`: made anew in every build, it changes the key only when its
+input does.
+
+```dart snippet="prose-only: its twin is in query_kit_hooks, which no example may depend on" twin="guides/hooks.md#typed-key"
+final client = useQueryClient();
+final next = tasks.detail(nextId);
+// A new reference on every build, equal to the last one for an equal
+// id: the prefetch runs again only when the next id changes.
+useEffect(() {
+  next.fetch(client).ignore();
+  return null;
+}, [next]);
+```
+
+The options are not such a key. A family's reference makes new ones on
+every call, and they are never equal to the ones before.
+
+### Mutations through references
+
+Mutations have no definitions. Their callbacks reach the cache through a
+reference, which reads, writes, cancels and invalidates with the data type
+it carries:
+
+```dart snippet="prose-only: its twin is in query_kit_hooks, which no example may depend on" twin="guides/hooks.md#typed-mutation"
+class RenameTask extends HookWidget {
+  const RenameTask(this.id, {super.key});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context) {
+    final client = useQueryClient();
+    final task = tasks.detail(id); // QueryRef<Task>
+    final rename = useMutation(
+      MutationOptions<Task, String, Task?>(
+        mutationFn: (name) => api.rename(id, name),
+        onMutate: (name) async {
+          await task.cancel(client);
+          final previous = task.read(client);
+          task.update(client, (current) => current?.copyWith(name: name));
+          return previous;
+        },
+        onError: (_, __, ___, previous) {
+          if (previous != null) task.write(client, previous);
+        },
+        onSettled: (_, __, ___, ____, _____) => task.invalidate(client),
+      ),
+    );
+
+    return FilledButton(
+      onPressed: rename.value.isPending ? null : () => rename.mutate('Renamed'),
+      child: const Text('Rename'),
+    );
+  }
+}
+```
+
+Write the type arguments of `MutationOptions`, as here. Without them, an
+`onMutate` parameter without a type is an `Object?`, even beside a typed
+`mutationFn`. Type it, `onMutate: (String name) async { … }`, or write the
+type arguments.
+
+### A helper over options is generic
+
+A helper that hands options to a hook decides the type the hook creates the
+entry for:
+
+```dart snippet="prose-only: its twin is in query_kit_hooks, which no example may depend on" twin="guides/hooks.md#typed-helper"
+/// Shows what [builder] makes of the data, once [options] have some.
+class Loaded<T> extends HookWidget {
+  const Loaded(this.options, {required this.builder, super.key});
+
+  // `QueryObserverOptions<T>`, not `QueryObserverOptions<Object>`: the
+  // hook creates the entry for the type it is handed.
+  final QueryObserverOptions<T> options;
+  final Widget Function(T data) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (useQuery(options)) {
+      QueryPending() => const CircularProgressIndicator(),
+      QueryError(:final error) => Text('$error'),
+      QuerySuccess(:final data) => builder(data),
+    };
+  }
+}
+
+// A Loaded<Task>: the type comes from the reference.
+final title = Loaded(
+  tasks.detail('1').options(),
+  builder: (task) => Text(task.name),
+);
+```
+
+With a `QueryObserverOptions<Object>` parameter instead, every call
+compiles, and the hook creates the entry as `Object`. A reference reads
+only an entry of its own data type, so `tasks.detail('1').read(client)`
+then throws a `QueryDataTypeError`. Take `QueryObserverOptions<T>`, in a
+generic function `<T>(QueryObserverOptions<T> options)` or a generic widget
+as above, and Dart infers `T` from the reference.
 
 ## What rebuilds
 
@@ -497,7 +658,9 @@ React Query hooks and options with no counterpart here:
   `onSuccess`, `onError` and `onSettled` get no client, `meta` or key; they
   close over what they need.
 - **`queryOptions` and `mutationOptions`.** In Dart a function that returns
-  options does the same, and the samples here use one.
+  options does the same, and the samples here use one. A [typed
+  definition](#typed-query-definitions) also carries the data type to reads
+  and writes of the cache.
 
 :::note[In React Query]
 The names are React Query's, and so is the behaviour: React Query's own hook

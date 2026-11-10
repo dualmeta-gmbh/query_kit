@@ -1,12 +1,13 @@
 ---
 title: Type safety in Dart
-description: Sealed results, one key one exact type, two options shapes, and the analyzer setting that catches the one literal inference cannot type.
+description: Sealed results, typed query definitions, one key one exact type, two options shapes, and the analyzer setting that catches the one literal inference cannot type.
 ---
 
 # Type safety in Dart
 
 TanStack Query leans on TypeScript: generics that thread a key's shape into
-its function, a data type the compiler trusts and nobody checks at runtime.
+its function, and a data type the compiler infers through `queryOptions()`
+and trusts, with no check at runtime.
 Dart's type system is sound and has sealed classes, so the port leans on those
 instead. The result is fewer type parameters, no `!`, and one runtime check
 that is stricter than you may expect. What you feel at the call site:
@@ -98,9 +99,12 @@ client.getQueryData<List<Object?>>(key); // throws QueryDataTypeError
 The error is thrown by the call itself, synchronously, and names the key, the
 type asked for and the type the entry holds.
 
-TanStack Query casts blindly, and TypeScript cannot tell. Here
-`getQueryData<T>`, `getQueriesData<T>` and an observer's `TQueryData` all have
-to agree with the key's first use. It is the single most likely thing to catch
+In TanStack Query a key made by `queryOptions()` carries its data type as a
+`DataTag`, so `getQueryData(options.queryKey)` is inferred; a plain key or a
+`getQueriesData` filter gives `unknown` unless a type argument is written,
+and that argument is trusted, not checked. Here `getQueryData<T>`,
+`getQueriesData<T>` and an observer's `TQueryData` all have to agree with the
+key's first use, at runtime. It is the single most likely thing to catch
 you out when porting JavaScript, and it is catching a real bug.
 
 A **write** is the one place a related type is welcome. `setQueryData` infers
@@ -141,6 +145,28 @@ When one key prefix spans entries of different types, give each type its own
 key, or store a wrapper type that says what the entry is. See
 [troubleshooting](reference/troubleshooting.md#querydatatypeerror-for-a-list-that-is-the-right-type).
 
+## Typed query definitions
+
+A [typed query definition](guides/typed-queries.md) declares a key, its
+fetch function and its data type once. The reference it hands out reads and
+writes the entry with no key and no type argument at the call site, so a
+mismatch the client would refuse at runtime becomes one the analyzer refuses
+at the call:
+
+```dart snippet="dart-type-safety.md#typed-writes"
+final ref = queries.devices.detail(device.id); // QueryRef<Device>
+
+ref.write(client, device.copyWith(name: 'Porch lamp'));
+ref.update(client, (current) => current?.copyWith(room: 'porch'));
+final Device? cached = ref.read(client); // no type argument to repeat
+```
+
+The one-type rule above still holds underneath: a reference's write into an
+entry that holds another type throws `QueryDataTypeError`, and so does a raw
+call that disagrees with the definition. What the analyzer checks, what only
+the runtime checks and what nothing checks are listed in the guide's
+[limits](guides/typed-queries.md#limits).
+
 ## Sealed values instead of magic numbers
 
 `null` means "not configured" on every option field. An option with modes is
@@ -155,17 +181,21 @@ computed forms.
 ## Where the types live in an app
 
 The pattern the guides use: one file per data area under `lib/data/`, holding
-the key factory and one function per query returning fully typed options —
-`QueryObserverOptions<List<Device>> devicesQuery(...)`. Widgets call the
-function and never write a type argument; the options carry it, the result is
-typed from them, and the one place a key is bound to its type is the one
-function that builds it. See [query keys](guides/query-keys.md) and
-[describing a query once](guides/query-options.md).
+that area's definitions, a namespace and one definition or family per query.
+Widgets call a reference and never write a type argument; the reference
+carries it, the result is typed from its options, and the one place a key is
+bound to its type is the one declaration that builds it. Without
+definitions, the same file holds a key factory and one function per query
+returning fully typed options, `QueryObserverOptions<List<Device>>
+devicesQuery(...)`. See [typed query definitions](guides/typed-queries.md),
+[query keys](guides/query-keys.md) and [describing a query
+once](guides/query-options.md).
 
 :::note[In React Query]
-TanStack's `queryOptions()` helper and its `DataTag`-branded keys solve the
-same problem — tying a key to its data type — at the type level only. Here the
-options value carries the type, and the cache checks it at runtime. See
+TanStack's `queryOptions()` helper and its `DataTag`-branded keys tie a key to
+its data type at the type level, and an app can register the shape every
+query key must have through the `Register` interface. Here a definition's
+reference carries the type, and the cache checks it at runtime as well. See
 [differences from TanStack Query](reference/differences-from-tanstack.md).
 :::
 

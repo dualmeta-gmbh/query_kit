@@ -44,6 +44,27 @@ class Harness {
     }
   }
 
+  /// Replaces the app's api under the open screen [route] with one over
+  /// [backend], a fake of its own, and returns it: the same app, the same
+  /// client, the same screen state — only the api the scope hands out is
+  /// another. The caller closes [backend].
+  Future<ShowcaseApi> replaceApi(
+    WidgetTester tester,
+    String route,
+    FakeBackend backend,
+  ) async {
+    final replacement = ShowcaseApi(
+      dio: Dio(BaseOptions(baseUrl: 'http://backend.test/api'))
+        ..httpClientAdapter = backend,
+      scenario: scenario,
+    );
+    await tester.pumpWidget(
+      ShowcaseApp(api: replacement, client: client, initialRoute: route),
+    );
+    await tester.pumpAndSettle();
+    return replacement;
+  }
+
   /// How many requests the backend answered for [method] and [path]
   /// (`/api/...`, exact or a `RegExp`).
   int requests(String method, Pattern path) => backend.count(method, path);

@@ -145,14 +145,15 @@ caller wants to know.
 | `parallel-queries` | several queries in one widget; `client.isFetching` | — |
 | `query-collections` | `QueriesBuilder` over a list that grows, shrinks and reorders; duplicate keys; partial failure; the same collection as a `QueriesController` | — |
 | `combine` | `(a, b, c).combine(...)` over three reads of three types: the sealed `CombinedResult`, `retry()` for the failed sources only, `refetchError` beside kept data, `isFetching`, and a `CombineMemo` that skips the combiner; below it a list and a read per item, `combineWith`, and a pinned post that may be missing, `optional()` | — |
+| `typed-queries` | a `QueryNamespace`, a `QueryDefinition` list and a `QueryFamily<int, Post>` detail, read through `ref.options()` beside a raw reader of the same key; `ref.write`, `ref.update`, `family.updateAll`, and `invalidate` on a reference, a family and a namespace, each selecting exactly what it names | — |
 | `prefetching` | `client.query(...).ignore()` before the screen that needs it, `revalidateIfStale`, and `client.infiniteQuery(...).ignore()` for the first page of an infinite one | `prefetching` |
 | `select-and-sharing` | `select` through `withSelect`, `QuerySelectBuilder`, `buildWhen`, `structuralSharing`, rebuild counts; a value class around the list as a leaf and as `StructurallyShareable`, `kept=K of N` | — |
 | `build-when` | `buildWhen` on all eight keyless reads, each beside an unfiltered twin; a knob for the predicate, and the build counts either half of a pair reaches | — |
 | `initial-and-placeholder` | `InitialData` with `initialDataUpdatedAt` and its lazy `initialDataUpdatedAtCompute`, versus `PlaceholderData`, `isPlaceholderData` | — |
 | `stale-and-gc` | every `StaleTime` and `GcTime` value, watched in the inspector | — |
 | `pagination` | `PlaceholderData.keepPrevious()` keeping the previous page, prefetching the next | `pagination` |
-| `load-more` | an infinite query appending pages on scroll; cache survival across navigation, read back with `getInfiniteQueryData` | `load-more-infinite-scroll` |
-| `max-pages` | pages in both directions with `maxPages: 3`; the page context's `direction` | `infinite-query-with-max-pages` |
+| `load-more` | an infinite query appending pages on scroll, declared once as an `InfiniteQueryDefinition`; cache survival across navigation, read back with the definition's `read` | `load-more-infinite-scroll` |
+| `max-pages` | pages in both directions from a cursor, an `InfiniteQueryDefinition` with `maxPages: 3` in its `configure`; the page context's `direction` | `infinite-query-with-max-pages` |
 | `mutations` | `mutate`, `mutateAsync`, `reset`, `isMutating`, per-call callbacks, `MutationScope` | — |
 | `optimistic-updates` | the write shown before the answer, from `variables` and from the cache with rollback | `nextjs-app-optimistic-updates` |
 | `mutation-cancel` | `mutationFnWithContext` — `onMutateResult` sent as `from`, `signal` to the transport — and `cancel()`: a `CancelledError`, rolled back by `onError`, invalidated by `onSettled` | — |
@@ -177,6 +178,12 @@ to together is `combine`), `streamedQuery`, SSR. The reasons are in the core's
 
 No screen presents one of the four call styles as the default; across the
 catalogue each is used in its turn.
+
+Three screens declare their queries as typed definitions: `typed-queries`,
+which is about them, and the two infinite screens, `load-more` and
+`max-pages`. Every other screen writes its keys and options out with the raw
+API, on purpose: definitions are an addition, the raw API is unchanged, and
+the rest of the catalogue is what shows it still works on its own.
 
 **What the catalogue found.** Building it turned up two bugs in the library
 that no ported upstream test could reach, because neither is visible without a
@@ -369,12 +376,12 @@ Rules that cost someone a debugging session, in the order they bite:
   scroller, and widen the test window (`tester.view.physicalSize`,
   `test.use({ viewport })`) when a screen is taller than the default. **That
   size is a fact about the screen and stays in its own test file** — there is
-  deliberately no shared `tall()`: twenty-three widget-test files set the
-  window, sixteen of them behind a local function of that name, over
-  twenty-one different sizes from 800×900 to 2400×8400; nineteen specs set a
-  viewport of their own over eleven heights. A helper taking the size would be
-  the size with an import in front of it, and a helper *not* taking it would
-  be twenty-three wrong windows (#69).
+  deliberately no shared `tall()`: twenty-nine widget-test files set the
+  window, eighteen of them behind a local function of that name, over
+  twenty-four different sizes from 800×900 to 2400×8400; twenty-five specs set
+  a viewport of their own over fourteen heights. A helper taking the size
+  would be the size with an import in front of it, and a helper *not* taking
+  it would be twenty-nine wrong windows (#69).
 - **A lazy `ListView.builder` with a fixed `itemExtent` does not relayout when
   only the item count grows**, so rows appended by a "load more" can be
   unreachable in a widget test. An eager bounded `Column` is the honest fix.

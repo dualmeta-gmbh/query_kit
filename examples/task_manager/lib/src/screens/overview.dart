@@ -13,7 +13,6 @@ library;
 import 'package:flutter/material.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
-import '../api.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../queries.dart';
@@ -35,9 +34,9 @@ IconData iconFor(Priority priority) => switch (priority) {
     };
 
 class TaskOverview extends StatefulWidget {
-  const TaskOverview({super.key, required this.api});
+  const TaskOverview({super.key, required this.queries});
 
-  final TaskApi api;
+  final TaskQueries queries;
 
   @override
   State<TaskOverview> createState() => _TaskOverviewState();
@@ -54,12 +53,9 @@ class _TaskOverviewState extends State<TaskOverview> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final filters = AppScope.of(context).filters;
-    final options = taskListQuery(_client, widget.api, filters);
+    final options = widget.queries.list(filters).options();
     if (_list == null) {
-      _list = QueryController<TaskListResponse, TaskListResponse>(
-        _client,
-        options,
-      );
+      _list = QueryController.create(_client, options);
     } else if (filters != _filters) {
       // A changed filter re-keys the list. The observer switches queries in
       // place; the previous entry stays cached and is garbage-collected on its
@@ -67,6 +63,17 @@ class _TaskOverviewState extends State<TaskOverview> {
       _list!.setOptions(options);
     }
     _filters = filters;
+  }
+
+  @override
+  void didUpdateWidget(TaskOverview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.queries != oldWidget.queries) {
+      // The app made its queries again, over another transport. The
+      // controller still holds the old fetch function, so it is handed the
+      // new list's options: the next refetch goes through the new transport.
+      _list!.setOptions(widget.queries.list(_filters!).options());
+    }
   }
 
   @override
@@ -147,7 +154,7 @@ class _TaskOverviewState extends State<TaskOverview> {
                     );
                   },
                 ),
-                _CreateTaskButton(api: widget.api),
+                _CreateTaskButton(queries: widget.queries),
               ],
             ),
           ),
@@ -163,7 +170,7 @@ class _TaskOverviewState extends State<TaskOverview> {
                   _ErrorPanel(error: error, onRetry: () => _list!.refetch()),
                 QuerySuccess(:final data) ||
                 QueryError(staleData: final data!) =>
-                  _TaskList(tasks: data.tasks, api: widget.api),
+                  _TaskList(tasks: data.tasks, queries: widget.queries),
               },
             ),
           ),
@@ -209,15 +216,15 @@ class _RoomFilter extends StatelessWidget {
 }
 
 class _TaskList extends StatelessWidget {
-  const _TaskList({required this.tasks, required this.api});
+  const _TaskList({required this.tasks, required this.queries});
 
   final List<Task> tasks;
-  final TaskApi api;
+  final TaskQueries queries;
 
   @override
   Widget build(BuildContext context) =>
       MutationBuilder<String, String, ListSnapshot>(
-        options: deleteTaskMutation(QueryClientProvider.of(context), api),
+        options: deleteTaskMutation(QueryClientProvider.of(context), queries),
         // The builder sits above the empty state on purpose: deleting the
         // last visible task empties the list optimistically, and if the
         // empty state replaced the builder, the rollback would still run but
@@ -240,7 +247,7 @@ class _TaskList extends StatelessWidget {
                       itemBuilder: (context, index) => TaskRow(
                         key: ValueKey<String>(tasks[index].id),
                         id: tasks[index].id,
-                        api: api,
+                        queries: queries,
                         onDelete: () => delete.mutate(tasks[index].id),
                       ),
                     ),
@@ -259,18 +266,18 @@ class TaskRow extends StatelessWidget {
   const TaskRow({
     super.key,
     required this.id,
-    required this.api,
+    required this.queries,
     required this.onDelete,
   });
 
   final String id;
-  final TaskApi api;
+  final TaskQueries queries;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final client = QueryClientProvider.of(context);
-    final task = context.query(taskQuery(client, api, id)).dataOrNull;
+    final task = context.query(taskQuery(client, queries, id)).dataOrNull;
     if (task == null) {
       return const SizedBox.shrink();
     }
@@ -366,14 +373,14 @@ class _Dot extends StatelessWidget {
 }
 
 class _CreateTaskButton extends StatelessWidget {
-  const _CreateTaskButton({required this.api});
+  const _CreateTaskButton({required this.queries});
 
-  final TaskApi api;
+  final TaskQueries queries;
 
   @override
   Widget build(BuildContext context) =>
       MutationBuilder<Task, CreateInput, void>(
-        options: createTaskMutation(QueryClientProvider.of(context), api),
+        options: createTaskMutation(QueryClientProvider.of(context), queries),
         builder: (context, create) => IconButton(
           tooltip: 'New task',
           onPressed: create.value.isPending

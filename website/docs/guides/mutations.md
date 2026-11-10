@@ -77,7 +77,27 @@ A mutation's options belong next to the queries it affects — a
 `lib/data/device_mutations.dart` beside `device_queries.dart` — as a function
 of what it needs. Here, the power switch of one device in a smart-home app:
 the server answers with the device as it now is, which goes straight into
-the cache, and the room lists refresh behind it.
+the cache, and the room lists refresh behind it. With
+[typed query definitions](typed-queries.md), the callback names the entries
+through their references, and the write is checked against the detail's
+type:
+
+```dart snippet="guides/mutations.md#typed-set-power"
+// lib/data/device_mutations.dart
+MutationOptions<Device, bool, void> setPowerMutation(
+  QueryClient client,
+  String id,
+) =>
+    MutationOptions.simple(
+      mutationFn: (bool on) => devices.setPower(id, on: on),
+      onSuccess: (device, _, __) {
+        deviceQueries.detail(id).write(client, device);
+        deviceQueries.list.invalidate(client).ignore();
+      },
+    );
+```
+
+With raw keys, the same mutation names the keys and the type at each call:
 
 ```dart snippet="guides/mutations.md#set-power"
 // lib/data/device_mutations.dart
@@ -202,7 +222,7 @@ Disposing a controller does not cancel the mutation — a write the user started
 should normally finish; call `cancel()` first when it should not. That has one
 practical consequence, and it bites everyone once:
 
-```dart snippet="excerpt: quick-start.md#mutation"
+```dart snippet="excerpt: quick-start.md#typed-mutation"
 @override
 Widget build(BuildContext context) {
   // Take the client HERE, not inside onSuccess. The callback can run after
@@ -211,11 +231,14 @@ Widget build(BuildContext context) {
   final client = QueryClientProvider.of(context);
   final add = context.mutation(MutationOptions.simple(
     mutationFn: api.addTask,
-    onSuccess: (_, __, ___) => client.invalidateQueries(/* … */),
+    onSuccess: (_, __, ___) => allTasks.invalidate(client),
   ));
   // …
 }
 ```
+
+`allTasks` is the [quick start](../quick-start.md)'s definition of the task
+list; its `invalidate` takes the client as an argument, which is the point.
 
 The cache work has to happen either way. The client is the right thing to close
 over; the `BuildContext` is not.

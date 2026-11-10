@@ -73,4 +73,55 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('0'), findsOneWidget);
   });
+
+  hookTest('a generic helper keeps the reference\'s data type',
+      (tester, client) async {
+    await tester.pumpApp(client, title);
+    await tester.pumpAndSettle();
+    expect(find.text('Draft the changelog'), findsOneWidget);
+    expect(
+      client.queryCache.find(filters: tasks.detail('1').filters())!.dataType,
+      Task,
+    );
+    expect(tasks.detail('1').read(client)?.name, 'Draft the changelog');
+  });
+
+  hookTest('a helper over QueryObserverOptions<Object> makes an Object entry',
+      (tester, client) async {
+    await tester.pumpApp(
+      client,
+      Loaded<Object>(tasks.detail('2').options(),
+          builder: (data) => Text('$data')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      client.queryCache.find(filters: tasks.detail('2').filters())!.dataType,
+      Object,
+    );
+    // The reference refuses the entry the widened helper made.
+    expect(() => tasks.detail('2').read(client),
+        throwsA(isA<QueryDataTypeError>()));
+  });
+
+  hookTest(
+      'the rename writes through the reference and settles with a '
+      'refetch', (tester, client) async {
+    await tester.pumpApp(
+      client,
+      Column(children: [const RenameTask('1'), title]),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Draft the changelog'), findsOneWidget);
+
+    await tester.tap(find.text('Rename'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    // The server's answer, refetched by the invalidation in `onSettled`.
+    expect(find.text('Draft the changelog'), findsOneWidget);
+    expect(
+      client.queryCache.find(filters: tasks.detail('1').filters())!.dataType,
+      Task,
+    );
+  });
 }

@@ -19,7 +19,6 @@ import 'package:query_kit_flutter/query_kit_flutter.dart';
 import 'package:task_manager/main.dart';
 import 'package:task_manager/src/api.dart';
 import 'package:task_manager/src/app_state.dart';
-import 'package:task_manager/src/models.dart';
 import 'package:task_manager/src/queries.dart';
 import 'package:task_manager/src/screens/detail.dart';
 import 'package:task_manager/src/theme.dart';
@@ -31,6 +30,10 @@ void main() {
   late QueryClient client;
   late TaskApi api;
 
+  /// The app's own query definitions, which is how the suite reads the
+  /// cache: the same keys and data types the screens use.
+  late TaskQueries tasks;
+
   setUp(() {
     backend = FakeBackend();
     // The app's own defaults, so the suite runs the policy that ships.
@@ -39,6 +42,7 @@ void main() {
       dio: Dio(BaseOptions(baseUrl: 'http://backend.test/api'))
         ..httpClientAdapter = backend,
     );
+    tasks = TaskQueries(api);
   });
 
   /// `testWidgets` plus the cleanup a `QueryClient` needs: it owns `gcTime`
@@ -99,7 +103,7 @@ void main() {
     // the list's queryFn seeded all three.
     expect(requestsFor('GET /tasks/'), 0);
     for (final id in <String>['1', '2', '3']) {
-      expect(client.getQueryData<Task>(TaskKeys.detail(id)), isNotNull);
+      expect(tasks.byId(id).read(client), isNotNull);
     }
   });
 
@@ -136,8 +140,7 @@ void main() {
     expect(requestsFor('GET /tasks?'), 0); // dio keeps params off the path
     expect(requestsFor('GET /tasks'), 2);
     expect(
-      client.queryCache
-          .findAll(filters: QueryFilters(queryKey: TaskKeys.lists)),
+      client.queryCache.findAll(filters: tasks.list.filters()),
       hasLength(2),
     );
   });
@@ -196,7 +199,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      client.getQueryData<Task>(TaskKeys.detail('1'))!.name,
+      tasks.byId('1').read(client)!.name,
       'Draft the changelog',
     );
     // The field follows the rollback.
@@ -215,17 +218,15 @@ void main() {
     await tester.enterText(field, 'Confirmed name');
     await tester.tap(find.text('Rename'));
     await tester.pumpAndSettle();
-    expect(client.getQueryData<Task>(TaskKeys.detail('1'))!.name,
-        'Confirmed name');
+    expect(tasks.byId('1').read(client)!.name, 'Confirmed name');
 
     await tester.enterText(field, 'fail');
     await tester.tap(find.text('Rename'));
     await tester.pump();
-    expect(client.getQueryData<Task>(TaskKeys.detail('1'))!.name, 'fail');
+    expect(tasks.byId('1').read(client)!.name, 'fail');
     await tester.pumpAndSettle();
     expect(find.text('The server refused the write'), findsOneWidget);
-    expect(client.getQueryData<Task>(TaskKeys.detail('1'))!.name,
-        'Confirmed name');
+    expect(tasks.byId('1').read(client)!.name, 'Confirmed name');
     expect(tester.widget<TextField>(field).controller!.text, 'Confirmed name');
     expect(backend.tasks['1']!['name'], 'Confirmed name');
   });
@@ -318,14 +319,14 @@ void main() {
       find.text('The server refused the delete — try again'),
       findsOneWidget,
     );
-    expect(removed, isNot(contains(TaskKeys.detail('1'))));
-    expect(client.getQueryData<Task>(TaskKeys.detail('1')), isNotNull);
+    expect(removed, isNot(contains(tasks.byId('1').key.rawKey)));
+    expect(tasks.byId('1').read(client), isNotNull);
 
     // The retry goes through, and only then does the entry go.
     await tester.tap(find.byTooltip('Delete Draft the changelog'));
     await tester.pumpAndSettle();
-    expect(removed, contains(TaskKeys.detail('1')));
-    expect(client.getQueryData<Task>(TaskKeys.detail('1')), isNull);
+    expect(removed, contains(tasks.byId('1').key.rawKey));
+    expect(tasks.byId('1').read(client), isNull);
     unsubscribe();
   });
 
@@ -397,7 +398,7 @@ void main() {
         client: client,
         child: AppScope(
           state: state,
-          child: MaterialApp(home: TaskDetail(id: id, api: api)),
+          child: MaterialApp(home: TaskDetail(id: id, queries: tasks)),
         ),
       ),
     );
@@ -415,7 +416,7 @@ void main() {
     expect(find.text('Rename'), findsNothing);
     expect(find.text('Draft the changelog'), findsNothing);
     expect(requestsFor('GET /tasks/1'), 1);
-    expect(client.getQueryData<Task>(TaskKeys.detail('1')), isNull);
+    expect(tasks.byId('1').read(client), isNull);
 
     // The latency is a timer, which `pumpAndSettle` does not wait for (no
     // frame is scheduled): step through it.
@@ -448,6 +449,71 @@ void main() {
   });
 
   // Regressions found by review, not checklist rows.
+
+  demoTest('a transport replaced under the running app serves the next refetch',
+      (tester) async {
+    await start(tester);
+    expect(backend.requests.where((r) => r == 'GET /tasks'), hasLength(1));
+
+    // The same app, the same client, another transport: the app makes its
+    // query definitions again over it, and the open list is refetched
+    // through the new one.
+    final replacement = FakeBackend();
+    final replacementApi = TaskApi(
+      dio: Dio(BaseOptions(baseUrl: 'http://backend.test/api'))
+        ..httpClientAdapter = replacement,
+    );
+    await tester.pumpWidget(
+      TaskManagerApp(api: replacementApi, client: client),
+    );
+    await tester.pumpAndSettle();
+    final refetch = tasks.list.invalidate(client);
+    await tester.pumpAndSettle();
+    await refetch;
+
+    expect(
+      replacement.requests.where((request) => request == 'GET /tasks'),
+      hasLength(1),
+    );
+    expect(backend.requests.where((r) => r == 'GET /tasks'), hasLength(1));
+  });
+
+  // The header reads the unfiltered list on every build, so the case above
+  // would pass on the header alone. With a search active the open list is a
+  // key only the overview's own controller observes, and that controller
+  // must be handed the new definitions' options, for an invalidation and for
+  // the reload button alike.
+  demoTest('a transport replaced under a filtered list serves its refetch',
+      (tester) async {
+    await start(tester);
+    await tester.enterText(find.byType(TextField).first, 'The');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    final before = backend.requests.where((r) => r == 'GET /tasks').length;
+
+    final replacement = FakeBackend();
+    final replacementApi = TaskApi(
+      dio: Dio(BaseOptions(baseUrl: 'http://backend.test/api'))
+        ..httpClientAdapter = replacement,
+    );
+    await tester.pumpWidget(
+      TaskManagerApp(api: replacementApi, client: client),
+    );
+    await tester.pumpAndSettle();
+    final refetch = tasks.list.invalidate(client);
+    await tester.pumpAndSettle();
+    await refetch;
+    await tester.tap(find.byTooltip('Reload'));
+    await tester.pumpAndSettle();
+
+    expect(backend.requests.where((r) => r == 'GET /tasks'), hasLength(before));
+    // The filtered list twice, through the new transport; the header's
+    // unfiltered list once, by the invalidation.
+    expect(
+      replacement.requests.where((request) => request == 'GET /tasks'),
+      hasLength(3),
+    );
+  });
 
   demoTest('a refused delete of the last visible task still shows its notice',
       (tester) async {

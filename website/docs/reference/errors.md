@@ -60,6 +60,7 @@ a subtype, a supertype, or the non-nullable form of a nullable one — throws
 | `client.updateQueriesData` | The same, for any matching entry. Every updater runs before anything is written, so a throw writes nothing. |
 | `client.query`, `client.infiniteQuery` | The key's entry holds another type. Thrown before any future exists, so it is not a rejected future. |
 | `QueryObserver` constructor, `setOptions`, `getOptimisticResult` | The options' type does not match the entry. This is what surfaces from `context.query`, `QueryController` and the other binding reads. |
+| A reference's or a typed key's `read`, `state`, `write`, `update`; a family's `readAll`, `updateAll` | The entry holds another type than the definition's. See [typed query definitions](#typed-query-definitions). |
 
 **Recorded as a fetch or mutation error** when a default registered for many
 keys returns a value of the wrong type:
@@ -91,6 +92,9 @@ any other failure.
 **Fix.** Give the options a `queryFn`, or register one for the key prefix
 with `client.setQueryDefaults`. See the
 [default query function](../guides/default-query-function.md) guide.
+
+An entry created by a typed key's `write` has no `queryFn` either: see [an
+entry a typed key created](#an-entry-a-typed-key-created).
 
 ## `MissingMutationFunctionError`
 
@@ -161,6 +165,10 @@ arguments cannot work. None of them is retried; none reaches a result.
 | `ArgumentError` | `InfiniteData.flatten<T>` | A page is not an `Iterable<T>`. | Name the element type the pages really hold, or flatten with your own `expand`. |
 | `ArgumentError` | `copyWith` on `InfiniteQueryOptions`, `InfiniteQueryObserverOptions`, `InfiniteQuerySelectOptions` | `queryFn:` passed — an infinite query's function is `pageFn`. On the two observer option types, also `pages:` — an observer refetches as many pages as the query holds. | Change `pageFn`; pass a page count to `client.infiniteQuery` instead. |
 | `UnsupportedError` | `InfiniteQueryObserver.setOptions`, `getOptimisticResult` | Plain observer options were passed. | Pass the `InfiniteQueryObserverOptions` or `InfiniteQuerySelectOptions` to `setInfiniteOptions` (`getOptimisticInfiniteResult`), or pass `setOptions` what `client.infiniteObserverOptions` makes of them. |
+| `StateError` | a definition's `options()`, and so every observer and fetch through it; a reference's `write` or `update` that creates the entry | Its `configure` returned options of another data type than the definition's. `read`, `state`, the lifecycle calls, a write into an entry that exists and a typed key's `write` do not make the options, and work. | Return the options `configure` is handed, or a `copyWith` of them. See [typed query definitions](#typed-query-definitions). |
+| `StateError` | an infinite definition's `options()` | Its first page param is `null`, and `configure` set one. | Set `initialPageParam` on the definition. |
+| `StateError` | a reference's or a typed key's `write`, `update`; a family's `updateAll` | A cache listener or the entry's own `structuralSharing` removed or replaced the entry in the middle of the write. Nothing was stored. | Change the cache after the write. See [typed query definitions](#from-a-write-whose-entry-left-the-cache). |
+| `ArgumentError` | calling a `QueryFamily` or an `InfiniteQueryFamily` | The input is not a `TInput`, which only a family held under a wider type argument lets through the analyzer. | Keep the family's own type. |
 | `ArgumentError` | `AppFocusManager` constructor | `refetchMinBackgroundDuration` is negative. | Pass zero or more. |
 
 ## Errors from callbacks and listeners
@@ -211,15 +219,89 @@ without the check, with the behaviour described.
 | `FlutterError` "This widget read the query … twice in one build with options that produce different results" (or "This State …") | `context.query`, `selectQuery`, `infiniteQuery`; `watchQuery`, `watchSelectQuery`, `watchInfiniteQuery` | One build reads the same key twice with options that would give different results — two `select`s, say. | The two reads share one reader, and the later options win. | Pass a distinct `id:` to each read. |
 | `FlutterError` for two different mutations | `context.mutation`, `watchMutation` | Two reads without `id` in the reader's own build differ in the function, a callback, `scope`, `retry`, `retryDelay`, `networkMode` or `gcTime`. `meta` is not compared; `RetryPolicy.when` and `RetryDelay.dynamic` are compared by kind only. | Both reads share one mutation observer with the later options. | Pass a distinct `id:` to each read. |
 | `AssertionError` on a top type | `QueryController`, `InfiniteQueryController`, `QueryController.observing` | The data type is `dynamic` or `Object?` — usually an inferred type argument. | The controller works, untyped. | Name the data type. |
+| `AssertionError` on a definition's type argument | `QueryDefinition`, `QueryFamily`, `InfiniteQueryDefinition`, `InfiniteQueryFamily` | A type argument is `dynamic`, `Object?` or `void`, usually because it was left to inference, or the data type is `Null`. | The definition works with the wider type. | Write the type arguments out. See [typed query definitions](#typed-query-definitions). |
 | `AssertionError` on the mutation function | `MutationOptions` | Both `mutationFn` and `mutationFnWithContext` are set. Resolving the options throws `ArgumentError` in every mode. | `ArgumentError` when the options are resolved. | Set one. |
 | `AssertionError` on a key part | `QueryKey` | A part of the key has no value equality — a class without `==` and `hashCode`, a closure — or a map in it is keyed by a collection. | The key compares by identity and a new instance per build misses the cache. | Use strings, numbers, records, lists, maps, or classes with value equality. See [query keys](../guides/query-keys.md). |
+
+## Typed query definitions
+
+A [typed query definition](../guides/typed-queries.md) moves most type
+mistakes to the analyzer. What remains for the runtime is below; the guide's
+[limits](../guides/typed-queries.md#limits) say what nothing checks.
+
+### From a typed write
+
+A reference's or a typed key's `write` or `update` into an entry that holds
+another data type throws `QueryDataTypeError` and writes nothing. The write
+is exact, so a wider entry is refused as well as a narrower one: an entry of
+`Device?`, made by a raw write or by another definition, refuses a write
+through a `QueryRef<Device>`, and the error's `actual` is `Device?`. A
+family's `readAll` and `updateAll` throw the same way when any entry under
+the family's prefix holds another type, before anything is written.
+
+**Fix.** One key, one data type: give the other entry another name, or
+declare its key under a name of its own beside the family rather than under
+it.
+
+### From a write whose entry left the cache
+
+A typed write stores its value in the entry the cache holds under the key.
+Two pieces of your code run before the value is stored: a cache listener
+hears `QueryAdded` for an entry the write creates, and the entry's
+`structuralSharing` is handed the value. If either removes that entry, the
+write throws a `StateError` that names the key ("… was removed or replaced
+by a … while a typed write was storing into it") and stores nothing. If an
+entry of another type is under the key by then, the write throws
+`QueryDataTypeError`. An entry of the same type that a listener put there is
+written. One that `structuralSharing` put there is not, and the write throws
+the `StateError`: the value was shared against the entry that is gone.
+
+**Fix.** Leave an entry alone in its own `structuralSharing` and in a
+listener's answer to its `QueryAdded`. Change the cache in answer to
+`QueryUpdated`, or once the write has returned.
+
+### From a widened reference
+
+A reference assigned to a wider type, a `QueryRef<Object?>` say, compiles a
+write of any value. The write throws before anything is written: a
+`TypeError` on the VM and in a dart2js build at the default level, and
+`QueryDataTypeError` at `-O3` and `-O4`, which drop Dart's own check. A
+widened family's input is refused the same way, with `ArgumentError` at
+those levels.
+
+**Fix.** Keep the reference's own type. A list of references of several
+types is declared as `<QueryTarget>[…]`, which has no write.
+
+### From `configure`
+
+A `configure` must return options of the definition's own type. One that
+builds options of a narrower data type satisfies the analyzer, and the
+definition's `options()` throws a `StateError` that names the key and both
+types.
+
+**Fix.** Return the options `configure` is handed, or a `copyWith` of them.
+
+### An entry a typed key created
+
+A typed key's `write` creates an entry from the key and its type alone, with
+no fetch function. A refetch of it before the definition's function is
+supplied fails with `MissingQueryFunctionError` and keeps the data.
+
+**Fix.** Write through the reference when the entry may not exist yet. For
+an entry that already exists, create an observer from the reference's
+`options()` (any call style that reads it does) before the refetch, or
+`await ref.fetch(client)`. A `fetch` supplies the function only when it
+fetches, which it does not while the data is fresh under the definition's
+`staleTime`. Reading through the reference (`read`, `state`) does not
+supply it: those only look at the cache.
 
 ## How this differs from TanStack Query
 
 - A missing query function is never retried; TanStack Query retries it.
 - The cache's `onError` takes the stack trace as its second argument.
 - Reading or writing a key with the wrong type throws `QueryDataTypeError`;
-  TypeScript's types vanish at runtime and nothing checks there.
+  TypeScript's types, those `queryOptions()` gives a key included, vanish at
+  runtime and nothing checks there.
 - A mutation can be cancelled, and fails with `CancelledError`; TanStack
   Query has no mutation cancel.
 

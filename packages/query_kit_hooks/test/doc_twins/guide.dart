@@ -257,3 +257,122 @@ class SelectedTask extends HookWidget {
     return Text(task.dataOrNull?.name ?? 'Nothing selected');
   }
 }
+
+// >>> packages/query_kit_hooks/README.md#use-query
+class TaskList extends HookWidget {
+  const TaskList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final result = useQuery(tasks.list.options()); // QueryResult<List<Task>>
+
+    return switch (result) {
+      QueryPending() => const Center(child: CircularProgressIndicator()),
+      QueryError(:final error) => Center(child: Text('$error')),
+      QuerySuccess(:final data) => ListView(
+          children: [for (final task in data) Text(task.name)],
+        ),
+    };
+  }
+}
+// <<<
+
+class TaskDetail extends HookWidget {
+  const TaskDetail(this.id, {super.key});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context) {
+    // >>> guides/hooks.md#typed-read
+    final task = useQuery(tasks.detail(id).options()); // QueryResult<Task>
+    final pages = useInfiniteQuery(tasks.pages.options());
+    // <<<
+    final more = pages.value.dataOrNull?.flatten<Task>() ?? const <Task>[];
+    return Text('${task.dataOrNull?.name ?? '…'} and ${more.length} more');
+  }
+}
+
+class TaskPager extends HookWidget {
+  const TaskPager(this.id, this.nextId, {super.key});
+
+  final String id;
+  final String nextId;
+
+  @override
+  Widget build(BuildContext context) {
+    // >>> guides/hooks.md#typed-key
+    final client = useQueryClient();
+    final next = tasks.detail(nextId);
+    // A new reference on every build, equal to the last one for an equal
+    // id: the prefetch runs again only when the next id changes.
+    useEffect(() {
+      next.fetch(client).ignore();
+      return null;
+    }, [next]);
+    // <<<
+    final task = useQuery(tasks.detail(id).options());
+    return Text(task.dataOrNull?.name ?? '…');
+  }
+}
+
+// >>> guides/hooks.md#typed-mutation
+class RenameTask extends HookWidget {
+  const RenameTask(this.id, {super.key});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context) {
+    final client = useQueryClient();
+    final task = tasks.detail(id); // QueryRef<Task>
+    final rename = useMutation(
+      MutationOptions<Task, String, Task?>(
+        mutationFn: (name) => api.rename(id, name),
+        onMutate: (name) async {
+          await task.cancel(client);
+          final previous = task.read(client);
+          task.update(client, (current) => current?.copyWith(name: name));
+          return previous;
+        },
+        onError: (_, __, ___, previous) {
+          if (previous != null) task.write(client, previous);
+        },
+        onSettled: (_, __, ___, ____, _____) => task.invalidate(client),
+      ),
+    );
+
+    return FilledButton(
+      onPressed: rename.value.isPending ? null : () => rename.mutate('Renamed'),
+      child: const Text('Rename'),
+    );
+  }
+}
+// <<<
+
+// >>> guides/hooks.md#typed-helper
+/// Shows what [builder] makes of the data, once [options] have some.
+class Loaded<T> extends HookWidget {
+  const Loaded(this.options, {required this.builder, super.key});
+
+  // `QueryObserverOptions<T>`, not `QueryObserverOptions<Object>`: the
+  // hook creates the entry for the type it is handed.
+  final QueryObserverOptions<T> options;
+  final Widget Function(T data) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (useQuery(options)) {
+      QueryPending() => const CircularProgressIndicator(),
+      QueryError(:final error) => Text('$error'),
+      QuerySuccess(:final data) => builder(data),
+    };
+  }
+}
+
+// A Loaded<Task>: the type comes from the reference.
+final title = Loaded(
+  tasks.detail('1').options(),
+  builder: (task) => Text(task.name),
+);
+// <<<

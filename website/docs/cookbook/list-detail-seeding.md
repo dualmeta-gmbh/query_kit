@@ -203,6 +203,11 @@ background fetch follows, because the seed is dated as old as its list.
 - **Another call style.** `context.query(productQuery(...))`, the mixin's
   `watchQuery` or a `QueryController` read the same options; nothing on this page
   depends on the `QueryBuilder`.
+- **Typed definitions.** With the list and the detail declared as
+  [typed query definitions](../guides/typed-queries.md), the pull side is a
+  `copyWith` of the detail reference's options, reading the list through its
+  reference; see [initial query
+  data](../guides/initial-query-data.md#seeding-a-detail-from-a-list).
 
 :::note[In React Query]
 The same two approaches, often called push and pull: `queryClient.setQueryData`

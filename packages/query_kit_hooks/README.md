@@ -53,7 +53,81 @@ Requires Flutter 3.27 or later.
 ## Reading a query
 
 Provide a `QueryClient` with a `QueryClientProvider`, exactly as for the
-binding. Then read a query from a `HookWidget`:
+binding. Declare each query once, as a typed definition with its type
+arguments written out:
+
+```dart twin="guides/hooks.md#typed-definitions"
+final class TaskQueries {
+  TaskQueries(this._api);
+
+  final Api _api;
+
+  static final QueryNamespace namespace = QueryNamespace(<Object?>['tasks']);
+
+  late final list = QueryDefinition<List<Task>>(
+    namespace: namespace,
+    name: 'list',
+    queryFn: (context) => _api.listTasks(signal: context.signal),
+  );
+
+  late final detail = QueryFamily<String, Task>(
+    namespace: namespace,
+    name: 'detail',
+    queryFn: (id, context) => _api.getTask(id, signal: context.signal),
+  );
+
+  late final pages = InfiniteQueryDefinition<List<Task>, int>(
+    namespace: namespace,
+    name: 'pages',
+    pageFn: (context) => _api.taskPage(cursor: context.pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (page, pages, pageParam, pageParams) =>
+        page.isEmpty ? null : pageParam + page.length,
+  );
+}
+
+final tasks = TaskQueries(api);
+```
+
+Then read it from a `HookWidget`. A reference's `options()` are what the
+hook takes:
+
+```dart twin="packages/query_kit_hooks/README.md#use-query"
+class TaskList extends HookWidget {
+  const TaskList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final result = useQuery(tasks.list.options()); // QueryResult<List<Task>>
+
+    return switch (result) {
+      QueryPending() => const Center(child: CircularProgressIndicator()),
+      QueryError(:final error) => Center(child: Text('$error')),
+      QuerySuccess(:final data) => ListView(
+          children: [for (final task in data) Text(task.name)],
+        ),
+    };
+  }
+}
+```
+
+The hook returns the same sealed `QueryResult` as `context.query`, with the
+data type the definition declared. Options of another key on a later
+build, `tasks.detail(id)` with a new `id` say, switch the same observer to
+the other query. Unmounting the widget lets the query go.
+
+`useInfiniteQuery(tasks.pages.options())` reads a paged definition the same
+way, and a mutation's callbacks write through a reference. Two things the
+analyzer lets through: a helper typed `QueryObserverOptions<Object>` makes
+the hook create an `Object` entry that the reference then refuses, so write
+the helper generic; and in `MutationOptions` without type arguments, an
+`onMutate` parameter without a type is an `Object?`. The [hooks guide](https://query-kit.dev/docs/guides/hooks#typed-query-definitions)
+shows both. Typed query definitions come with query_kit_hooks 0.1.3.
+
+### With raw keys
+
+Options written by hand, with a `QueryKey` and the type argument, work the
+same way:
 
 ```dart twin="guides/hooks.md#use-query"
 class TasksScreen extends HookWidget {
@@ -79,11 +153,7 @@ class TasksScreen extends HookWidget {
 }
 ```
 
-The hook takes the same options and returns the same sealed `QueryResult` as
-`context.query`. A different `queryKey` on a later build switches the same
-observer to the other query. Unmounting the widget lets the query go.
-
-## The hooks in 0.1.0
+## The hooks
 
 | Hook | Does what |
 |---|---|

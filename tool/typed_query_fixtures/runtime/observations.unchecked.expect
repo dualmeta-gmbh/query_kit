@@ -1,0 +1,152 @@
+O7-control-1 | a String into a Box<Device> held as Box<Object?> | no check: the Box holds a String
+O7-control-2 | naive write of a String, delegating to setQueryData<Device> | completed; cache: Query<Device> holding a String
+O7-control-3 | naive update returning an int, delegating to updateQueryData<Device> | completed; cache: Query<Device> holding an int
+O7-control-4 | naive bulk update returning a String, delegating to updateQueriesData<Device> | completed; cache: Query<Device> holding a Device
+O7-write-1 | write of a String through a QueryRef<Device> held as QueryRef<Object?>, no entry yet | QueryDataTypeError; cache: no entry
+O7-write-2 | the same with a Device cached | QueryDataTypeError; cache: Query<Device> holding a Device, kept: true
+O7-write-3 | write of an int through the same reference held as QueryEntryRef<Object?> | QueryDataTypeError; kept: true
+O7-write-4 | the valid write through the widened reference | completed; cache: Query<Device> holding a Device
+O7-write-5 | write of a String through a QueryRef<Device?> held as QueryRef<Object?> | QueryDataTypeError; cache: no entry
+O7-write-6 | write of null through the same widened reference | completed; cache: Query<Device?> holding null
+O7-update-1 | update returning an int through a widened QueryRef<Device>, no entry yet | QueryDataTypeError; cache: no entry
+O7-update-2 | the same with a Device cached | QueryDataTypeError; cache: Query<Device> holding a Device, kept: true
+O7-update-3 | an updater typed Object? Function(Object?) returning a String | QueryDataTypeError; kept: true
+O7-bulk-1 | updateAll returning a String through a QueryFamily<String, Device> held as QueryFamily<Object?, Object?>, two entries | QueryDataTypeError; kept: true
+O7-bulk-2 | the same, the updater valid for the first entry only | QueryDataTypeError; kept: true
+O7-infinite-1 | write of an InfiniteData<String, String> through an InfiniteQueryRef<List<Device>, int> held as InfiniteQueryRef<Object?, Object?> | QueryDataTypeError; cache: no entry
+O7-infinite-2 | updateAll returning a String through a widened InfiniteQueryFamily | QueryDataTypeError; cache: Query<InfiniteData<List<DeviceEvent>, int>> holding an InfiniteData<List<DeviceEvent>, int>
+O7-input-1 | binding an int to a QueryFamily<String, Device> held as QueryFamily<Object?, Object?> | ArgumentError; entries: 0
+O7-input-2 | binding an int to a widened InfiniteQueryFamily<String, …> | ArgumentError
+O7-input-3 | the valid input through the widened family | completed
+O7-key-1 | write of a String through a TypedQueryKey<Device> held as TypedQueryKey<Object?>, no entry yet | QueryDataTypeError; cache: no entry
+O7-key-2 | the valid write through the widened key, no entry yet | completed; cache: Query<Device> holding a Device
+O7-key-3 | write of a String through the widened key over that Device | QueryDataTypeError; cache: Query<Device> holding a Device, kept: true
+O7-key-4 | update returning an int through the widened key | QueryDataTypeError; cache: Query<Device> holding a Device, kept: true
+O7-key-5 | an updater typed Object? Function(Object?) returning a String | QueryDataTypeError; kept: true
+O7-key-6 | update returning an int through the widened key, no entry yet | QueryDataTypeError; cache: no entry
+O7-key-7 | a Thermostat written through a TypedQueryKey<Device>, no entry yet; and through setQueryData with no type argument | key: Query<Device> holding a Thermostat; raw: Query<Thermostat> holding a Thermostat
+O7-key-8 | a Device written through a TypedQueryKey<Device?>, no entry yet | Query<Device?> holding a Device
+O7-key-9 | null, then a String, through that key held as TypedQueryKey<Object?> | completed, QueryDataTypeError; cache: Query<Device?> holding null
+O7-key-10 | a Device written through a TypedQueryKey<Device> over a Query<Object>; then through setQueryData<Device> | QueryDataTypeError, completed; cache: Query<Object> holding a Device
+O7-key-11 | write of an InfiniteData<String, String> through the key of an InfiniteQueryDefinition<List<Device>, int> held as TypedQueryKey<Object?> | QueryDataTypeError; cache: no entry
+O7-key-12 | write of an InfiniteData<List<Thermostat>, int> through that key | Query<InfiniteData<List<Device>, int>> holding an InfiniteData<List<Device>, int>; the value given back is the given one: false
+O7-key-13 | the same value through the widened key, and an update returning it | completed, completed; cache: Query<InfiniteData<List<Device>, int>> holding an InfiniteData<List<Device>, int>
+O7-key-14 | an InfiniteData<List<Never>, int> written through a key from the readAll of an InfiniteQueryFamily<String, List<DeviceEvent>, int> | Query<InfiniteData<List<DeviceEvent>, int>> holding an InfiniteData<List<DeviceEvent>, int>
+O7-key-15 | the same value through the key of a plain QueryDefinition<InfiniteData<List<DeviceEvent>, int>> | Query<InfiniteData<List<DeviceEvent>, int>> holding an InfiniteData of other type arguments
+O7-key-16 | a readAll snapshot of two Devices, both changed, one removed, put back through its keys | kept after the change: false; kept after the restore: true, entries: 2, the removed one: Query<Device> holding a Device
+D2-setter-1 | setData(client, device.key, a String), which compiles with T = Object | completed; cache: Query<Object> holding a String
+D2-setter-2 | the reference reading its own key afterwards | QueryDataTypeError
+D2-setter-3 | the same setter over a Device entry that exists | QueryDataTypeError; cache: Query<Device> holding a Device
+D4-1 | two references from equal inputs of one family | == true, same hashCode true
+D4-2 | two references from equal inputs of a recreated family | == true, same hashCode true
+D4-3 | references from different inputs | == false
+D4-4 | their typed keys | equal inputs == true, different inputs == false
+D4-5 | a zero-input definition and its recreation | == true, identical false
+D4-6 | infinite references, zero-input and from a family | == true, == true, different inputs == false
+D4-7 | a value object and a record as equal inputs | == true, == true
+D4-8 | the same raw key declared as Device and as Device? | raw keys == true, typed keys == false, references == false
+D4-9 | a plain and an infinite definition of one key and one data type | typed keys == true, references == false
+D4-10 | a family-bound reference and a zero-input definition of the same key and type | == true, symmetric true, same hashCode true
+D4-11 | references and typed keys as set members and map keys | set true, map true
+D4-12 | the options of the reference of a family, asked for twice | identical false, same fetcher false, same key true
+D4-13 | binding references and asking for options, before any client is used | entries: 0 and 0
+D4-14 | one reference written through one client, read through two | first: a Device, second: null
+D4-15 | the same reference written through the second client | first holds its own: true, second holds its own: true
+D4-16 | the options of a zero-input definition, asked for twice | identical false, same fetcher true, equal once resolved by a client true; of the same definition made again: same fetcher false
+D4-17 | the paging functions of an infinite definition, and of the reference of an infinite family, asked for twice | definition: same page function true, same getNextPageParam true; family: same page function false
+D4-18 | an observer handed the options again: of a held zero-input definition, then of the reference of a family | options updates heard: 0, then 1
+D4-19 | the options of a zero-input infinite definition whose configure sets a top-level structuralSharing and a top-level computed seed, asked for twice and handed to an observer again | same structuralSharing true, equal seed true, equal once resolved by a client true, options updates heard: 0
+D4-20 | the same with both written as closures inside configure | same structuralSharing false, equal seed false, equal once resolved by a client false, options updates heard: 1
+D5-1 | first typed write of a Temperature under QueryFamily<String, Reading> | Query<Reading> holding a Temperature
+D5-2 | the raw setQueryData of the same value, no type argument | Query<Temperature> holding a Temperature
+D5-3 | first typed write of a List<Thermostat> under QueryDefinition<List<Device>> | Query<List<Device>> holding a List<Thermostat>
+D5-4 | first typed write of a Device under QueryFamily<String, Device?> | Query<Device?> holding a Device
+D5-5 | write(null) on a nullable definition | Query<Device?> holding null; read: null, state.hasData: true
+D5-6 | a reference nothing was written for | no entry; read: null, state: null
+D5-7 | update returning null, no entry yet | returned null; cache: no entry
+D5-8 | update returning a Device, no entry yet | returned a Device; cache: Query<Device> holding a Device
+D5-9 | update seeing the cached Device and switching it on | returned on: true, cached on: true
+D5-10 | write with updatedAt | state.dataUpdatedAt is it: true
+D5-11 | typed write of a Device over a raw Query<Device?> | QueryDataTypeError; cache: Query<Device?> holding a Device, unchanged: true
+D5-12 | typed update and typed read of the same entry | update: QueryDataTypeError, read: QueryDataTypeError
+D5-13 | the raw setQueryData<Device> over the same entry (lenient) | completed; cache: Query<Device?> holding a Device, written: true
+D5-14 | typed write of a Device over a raw Query<Thermostat> | QueryDataTypeError; cache: Query<Thermostat> holding a Thermostat
+D5-15 | gcTime of an entry created by a typed write, the definition configured with GcTime.never; and by a raw write | typed never: true, raw never: false
+D5-16 | a configure that returns another key and another fetcher | options keep the key: true
+D5-17 | declaring QueryDefinition<Null> | completed
+D5-infinite-1 | write of an InfiniteData<List<Thermostat>, int> under InfiniteQueryDefinition<List<Device>, int> | Query<InfiniteData<List<Device>, int>> holding an InfiniteData<List<Device>, int>; the value given back is the given one: false, pages kept: true
+D5-infinite-2 | adding a page of plain Devices to what is cached | completed
+D5-infinite-3 | the same on the narrower value itself, held as the declared type | completed
+D5-infinite-4 | write of an exact InfiniteData<List<Device>, int> | no entry before; the value given back is the given one: true; Query<InfiniteData<List<Device>, int>> holding an InfiniteData<List<Device>, int>
+D5-infinite-5 | update returning an InfiniteData<List<Never>, int> under InfiniteQueryFamily<String, List<DeviceEvent>, int> | Query<InfiniteData<List<DeviceEvent>, int>> holding an InfiniteData<List<DeviceEvent>, int>
+D5-infinite-6 | the same through the updateAll of the family | Query<InfiniteData<List<DeviceEvent>, int>> holding an InfiniteData<List<DeviceEvent>, int>
+D5-infinite-7 | write of an InfiniteData<List<Thermostat>, int> under a plain QueryDefinition<InfiniteData<List<Device>, int>> | Query<InfiniteData<List<Device>, int>> holding an InfiniteData of other type arguments; the value given back is the given one: true
+D5-infinite-8 | adding a page of plain Devices to what that definition reads | completed
+D6-1 | options() of a QueryDefinition<Device> whose configure returns QueryObserverOptions<Thermostat> | StateError
+D6-2 | a write and a read through that definition | write: StateError, read: completed; cache: no entry
+D6-3 | options() of a QueryFamily<String, Device> without a fetch function, the same configure | StateError
+D6-4 | options() of an InfiniteQueryDefinition<List<Device>, int> whose configure returns options of List<Thermostat> pages | StateError
+D6-5 | options() when configure returns new QueryObserverOptions<Device> | completed; keeps the key: true, the fetch function is back: true, gcTime never: true
+D7-1 | updateAll over a family with two inputs cached, a list and a lookup beside it | returned 2, all on: true, keys typed: true; list untouched: true, lookup untouched: true
+D7-2 | readAll over the same family | returned 2, all on: true
+D7-3 | what the filters of the family select, and those of the namespace | family 2, namespace 4, one reference 1
+D7-4 | invalidate on one reference, a nested key under it | invalidated: 1 of 5, the nested one: false
+D7-5 | invalidate on the family | invalidated: 3 of 5, the list: false
+D7-6 | invalidate on the namespace | invalidated: 5 of 5
+D7-7 | remove on the family | entries left: 2, the list: Query<List<Device>> holding a List<Device>
+D7-8 | typed updateAll, a Query<String> without data under the prefix | QueryDataTypeError; kept: true
+D7-9 | typed readAll over the same prefix | QueryDataTypeError
+D7-10 | the raw updateQueriesData<Device> over the same prefix (lenient) | completed; written: true
+D7-11 | typed updateAll, a raw Query<Device?> under the prefix | QueryDataTypeError; kept: true
+D7-12 | the raw updateQueriesData<Device> over the same prefix (lenient) | completed; the wider entry written: true
+D7-13 | updateAll whose updater throws for the second entry | StateError; kept: true
+D7-14 | updateAll over two entries, the structuralSharing of the second throws | StateError; the first written: true, the second kept: true
+D7-15 | the raw updateQueriesData<Device> over two entries, the structuralSharing of the second throws | StateError; the first written: true, the second kept: true
+D7-16 | updateAll over two entries; the updater removes the second, and a cache listener puts a Query<String> in its place when the write makes it again | QueryDataTypeError; the first written: true, the second: Query<String> holding a String
+D7-17 | the raw updateQueriesData<Device> over two entries; the updater removes the second, and a cache listener puts a Query<String> in its place when the write makes it again | completed; the first written: true, the second: Query<String> holding a String
+W-1 | a typed write that makes its entry; a cache listener puts a Query<String> in its place when it is added | ref.write QueryDataTypeError, Query<String> holding a String, the written value not stored; ref.update QueryDataTypeError, Query<String> holding a String, the written value not stored; key.write QueryDataTypeError, Query<String> holding a String, the written value not stored; key.update QueryDataTypeError, Query<String> holding a String, the written value not stored
+W-2 | the same, the listener puts a Query<Device> of its own there | ref.write completed, Query<Device> holding a Device, the written value stored; ref.update completed, Query<Device> holding a Device, the written value stored; key.write completed, Query<Device> holding a Device, the written value stored; key.update completed, Query<Device> holding a Device, the written value stored
+W-3 | the same, the listener removes the entry | ref.write StateError, no entry, the written value not stored; ref.update StateError, no entry, the written value not stored; key.write StateError, no entry, the written value not stored; key.update StateError, no entry, the written value not stored
+W-4 | the raw setQueryData<Device> under the first listener (the control) | completed, Query<String> holding a String, the written value not stored
+W-5 | a typed write into an entry whose structuralSharing puts a Query<String> in its place | ref.write QueryDataTypeError, Query<String> holding a String, the written value not stored; ref.update QueryDataTypeError, Query<String> holding a String, the written value not stored; key.write QueryDataTypeError, Query<String> holding a String, the written value not stored; key.update QueryDataTypeError, Query<String> holding a String, the written value not stored
+W-6 | the same, structuralSharing puts a Query<Device> of its own there | ref.write StateError, Query<Device> holding a Device, the written value not stored; ref.update StateError, Query<Device> holding a Device, the written value not stored; key.write StateError, Query<Device> holding a Device, the written value not stored; key.update StateError, Query<Device> holding a Device, the written value not stored
+W-7 | the same, structuralSharing removes its entry | ref.write StateError, no entry, the written value not stored; ref.update StateError, no entry, the written value not stored; key.write StateError, no entry, the written value not stored; key.update StateError, no entry, the written value not stored
+W-8 | the same, structuralSharing resets its entry (the control: the entry stays the one the cache holds) | ref.write completed, Query<Device> holding a Device, the written value stored; ref.update completed, Query<Device> holding a Device, the written value stored; key.write completed, Query<Device> holding a Device, the written value stored; key.update completed, Query<Device> holding a Device, the written value stored
+W-9 | a write through an InfiniteQueryDefinition<List<Device>, int> that makes its entry; a cache listener puts an entry of InfiniteData<List<Thermostat>, int> in its place when it is added | QueryDataTypeError; cache: Query<another type> holding an InfiniteData of other type arguments
+W-10 | an int written through a QueryRef<Device> held as QueryRef<Object?> and through its key held as TypedQueryKey<Object?>, over a Query<String> | QueryDataTypeError naming the entry's type, QueryDataTypeError naming the entry's type; cache: Query<String> holding a String
+D9-1 | a QueriesObserver over the options of a QueryRef<Device> and a QueryRef<List<Device>> | device: Query<Object> without data, list: Query<Object> without data
+D9-2 | the references over those entries | read: QueryDataTypeError, write: QueryDataTypeError, list read: QueryDataTypeError
+D9-3 | a QueriesObserver over two references of one data type | Query<Device> without data; read: completed
+D9-4 | a Temperature written through the first of [QueryRef<Device>, QueryRef<Reading>] | QueryDataTypeError; cache: no entry
+D9-5 | an update returning a Temperature through the same element | QueryDataTypeError; cache: no entry
+D9-6 | the value of each element through it: a Device, then a Temperature | completed, completed; cache: Query<Device> holding a Device, Query<Reading> holding a Temperature
+D9-7 | a read through the first element | a Device
+D9-8 | null written through the first of [QueryRef<Device>, QueryRef<Device?>] | QueryDataTypeError; cache: no entry
+D9-9 | an int written through the first of [QueryDefinition<List<Device>>, QueryDefinition<int>] | QueryDataTypeError; cache: no entry
+D9-10 | an InfiniteData<List<Object>, Object> written through the first of two infinite references of different page types | QueryDataTypeError; cache: no entry
+D9-11 | updateAll returning a Temperature through the first of [QueryFamily<String, Device>, QueryFamily<String, Reading>] | QueryDataTypeError; cache: Query<Device> holding a Device, kept: true
+D9-12 | a Temperature written through the first of [TypedQueryKey<Device>, TypedQueryKey<Reading>], then the last | QueryDataTypeError, completed; cache: no entry, Query<Reading> holding a Temperature
+D10-1 | a family without type arguments (inferred QueryFamily<Object?, …>) | completed
+D10-2 | the same in the factory form | completed
+D10-3 | QueryFamily<dynamic, dynamic>, a key-only family that names nothing | completed
+D10-4 | QueryFamily<void, Device> | completed
+D10-5 | QueryFamily<Object, Device> and QueryFamily<String?, Device> | completed, completed
+D10-6 | QueryDefinition<Object?> and QueryDefinition<Object> | completed, completed
+D10-7 | an infinite family without type arguments | completed
+D10-8 | InfiniteQueryDefinition<Object?, int> and <List<Device>, dynamic> | completed, completed
+D10-9 | an infinite definition without type arguments and with a configure (inferred InfiniteQueryDefinition<Object?, int>) | completed
+D10-10 | the same without the configure (inferred exactly), and with type arguments and the configure | completed, completed
+D10-11 | a key-only definition without type arguments and with a configure (inferred QueryDefinition<Object?>), and a plain one with a fetcher and a configure (inferred exactly) | completed, completed
+K-1 | a family without keyOf, a String input | raw key is [k, byId, d1]: true, == the family with keyOf: (id) => [id]: true
+K-2 | a value object as the input | equal inputs == true, different inputs == false
+K-3 | a list as the input, changed after binding | still == the binding of [a, b]: true, == the binding of the changed list: false
+K-4 | a map as the input, its entries in another order | == true
+K-5 | a record of scalars as the input, no keyOf | == true
+K-6 | a record holding a list as the input | no keyOf == false, keyOf: (input) => [input.ids] == true
+K-7 | null as the input of a QueryFamily<String?, Device> | raw key is [k, byNullable, null]: true
+K-8 | an input with identity equality | no keyOf: completed, keyOf: (input) => [input.id]: completed, == true
+F-1 | fetch through the reference of a family | a Device of the input: true; cache: Query<Device> holding a Device
+F-2 | fetch through a zero-input definition | two devices: true; cache: Query<List<Device>> holding a List<Device>
+F-3 | fetch through an infinite definition | one page: true, its param: true; cache: Query<InfiniteData<List<Device>, int>> holding an InfiniteData<List<Device>, int>
+F-4 | fetch through the reference of an infinite family | one page: true; cache: Query<InfiniteData<List<DeviceEvent>, int>> holding an InfiniteData<List<DeviceEvent>, int>
+F-5 | an observer made from the options of the reference | sees the fetched Device: true

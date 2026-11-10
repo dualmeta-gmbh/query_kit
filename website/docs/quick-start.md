@@ -1,12 +1,12 @@
 ---
 title: "Quick start: TanStack Query in a Flutter app"
 sidebar_label: Quick start
-description: TanStack Query in a Flutter app in four steps — a provider at the root, an options function, a widget that reads it, and the mutation that invalidates it.
+description: TanStack Query in a Flutter app in four steps — a provider at the root, a typed query definition, a widget that reads it, and the mutation that invalidates it.
 ---
 
 # Quick start
 
-Four pieces: a client at the root of the app, a function that describes the
+Four pieces: a client at the root of the app, a definition that describes the
 query, a widget that reads it, and a write that tells the cache what it made
 stale. Ten minutes, and every later page builds on them. If you have not seen
 what the library is for yet, the [overview](overview.md) comes first.
@@ -64,40 +64,46 @@ start an empty cache.
 
 ## 2. Describe the query once
 
-Put the options behind a function. Nothing forces this, but it is what makes
-the same query readable from several widgets without drift:
+Declare the query once, as a [typed query definition](guides/typed-queries.md).
+It is what makes the same query readable from several widgets without drift:
 
-```dart snippet="quick-start.md#key quick-start.md#options"
-final QueryKey tasksKey = QueryKey(<Object?>['tasks']);
-
-QueryObserverOptions<List<Task>> tasksQuery() => QueryObserverOptions(
-      queryKey: tasksKey,
-      queryFn: (context) => api.listTasks(signal: context.signal),
-      staleTime: const StaleTime.duration(Duration(seconds: 30)),
-    );
+```dart snippet="quick-start.md#definition"
+final allTasks = QueryDefinition<List<Task>>(
+  namespace: QueryNamespace(['tasks']),
+  name: 'all',
+  queryFn: (context) => api.listTasks(signal: context.signal),
+  configure: (options) => options.copyWith(
+    staleTime: const StaleTime.duration(Duration(seconds: 30)),
+  ),
+);
 ```
 
-- The **key** identifies the data in the cache. `QueryKey` is a value type:
-  two keys built from equal parts are the same key. See [query
-  keys](guides/query-keys.md).
+- The **namespace and the name** make the key, `['tasks', 'all']`, which
+  identifies the data in the cache. See [query keys](guides/query-keys.md).
 - The **function** fetches it, and must throw when it fails. `context.signal`
   lets it cancel its request. See [query functions](guides/query-functions.md).
-- The **one type argument** is the data type. A query that shows a projection
-  of its data uses the other shape, `QuerySelectOptions`. See [describing a
-  query once](guides/query-options.md).
-- **`StaleTime.duration(…)`** rather than a number: every option with a real
+- The **type argument** is the data type. Write it on every definition: a
+  definition that takes an input, a family, has nothing else to tell Dart its
+  input type. See [why the type arguments are
+  written](guides/typed-queries.md#why-the-type-arguments-are-written).
+- **`configure`** sets the options every use shares.
+  `StaleTime.duration(…)` rather than a number: every option with a real
   "off" value is a sealed value type. See [important
   defaults](important-defaults.md).
 
+The same query can be written as plain options behind a function, with a key
+written by hand; every page's samples take either. See [describing a query
+once](guides/query-options.md).
+
 ## 3. Read it
 
-```dart snippet="quick-start.md#screen"
+```dart snippet="quick-start.md#typed-screen"
 class TasksScreen extends StatelessWidget {
   const TasksScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final tasks = context.query(tasksQuery());
+    final tasks = context.query(allTasks.options());
 
     return Scaffold(
       appBar: AppBar(title: const Text('Tasks')),
@@ -115,6 +121,9 @@ class TasksScreen extends StatelessWidget {
 }
 ```
 
+`allTasks.options()` hands the definition's options to the widget; the
+result is typed from them, with no type argument at the call site.
+
 `QueryResult` is sealed, so the `switch` is exhaustive and there is no `data!`
 anywhere. `QueryError` also carries `staleData` — the last good value — which
 is what lets an error banner sit *above* the data that is still on screen
@@ -130,10 +139,10 @@ default. If your widgets are already `HookWidget`s, the optional add-on
 
 ## 4. Write something, and invalidate
 
-```dart snippet="quick-start.md#mutation"
+```dart snippet="quick-start.md#typed-mutation"
 @override
 Widget build(BuildContext context) {
-  // Take the client here, in build — not inside the callback. A mutation
+  // Take the client here, in build, not inside the callback. A mutation
   // outlives the widget that started it, so `onSuccess` can run after this
   // element is gone, and looking an ancestor up from a deactivated element
   // throws.
@@ -142,9 +151,7 @@ Widget build(BuildContext context) {
   final add = context.mutation(
     MutationOptions.simple(
       mutationFn: api.addTask,
-      onSuccess: (_, __, ___) => client.invalidateQueries(
-        filters: QueryFilters(queryKey: tasksKey),
-      ),
+      onSuccess: (_, __, ___) => allTasks.invalidate(client),
     ),
   );
 
@@ -157,16 +164,17 @@ Widget build(BuildContext context) {
 
 A mutation hands back a `MutationController` rather than a result, because you
 need `mutate` as well as the state: `add.value` is the `MutationResult`,
-`add.mutate(vars)` starts it. Invalidating the list marks it stale and
-refetches it while it is on screen. See [mutations](guides/mutations.md) and
+`add.mutate(vars)` starts it. `allTasks.invalidate(client)` marks the list
+stale and refetches it while it is on screen. See [mutations](guides/mutations.md) and
 [invalidation from mutations](guides/invalidations-from-mutations.md).
 
 :::note[In React Query]
 The same four steps as TanStack Query's quick start: `QueryClientProvider`
 at the root, `useQuery` (here `context.query`, or one of the other three
 call styles), `useMutation` (here `context.mutation`, which returns a
-controller) and `invalidateQueries` in `onSuccess`. The options are a value
-you name and reuse rather than an object literal at the call site. See
+controller) and an invalidation in `onSuccess`. The query is declared once,
+as `queryOptions()` would declare it, and every use goes through it rather
+than an object literal at the call site. See
 [differences from TanStack Query](reference/differences-from-tanstack.md).
 :::
 

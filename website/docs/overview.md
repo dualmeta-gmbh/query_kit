@@ -60,23 +60,25 @@ cache decides **when** to fetch it, how long to keep it, and who is told.
 
 ## What it looks like
 
-A smart-home app's device list, in full — the description of the data in one
-file, the screen that shows it in another:
+A smart-home app's device list, in full. The data is declared once, as a
+[typed query definition](guides/typed-queries.md), in one file; the screen
+that shows it is in another:
 
-```dart snippet="overview.md#example"
-// lib/data/device_queries.dart — what the data is, described once.
-QueryObserverOptions<List<Device>> allDevicesQuery() => QueryObserverOptions(
-      queryKey: QueryKey(<Object?>['devices']),
-      queryFn: (context) => repository.devices(signal: context.signal),
-    );
+```dart snippet="overview.md#typed-example"
+// lib/data/device_queries.dart: what the data is, declared once.
+final allDevices = QueryDefinition<List<Device>>(
+  namespace: QueryNamespace(['devices']),
+  name: 'all',
+  queryFn: (context) => repository.devices(signal: context.signal),
+);
 
-// lib/ui/device_list.dart — a widget that shows it.
+// lib/ui/device_list.dart: a widget that shows it.
 class DeviceList extends StatelessWidget {
   const DeviceList({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return switch (context.query(allDevicesQuery())) {
+    return switch (context.query(allDevices.options())) {
       QueryPending() => const Center(child: CircularProgressIndicator()),
       QueryError(:final error) => Center(child: Text('Could not load: $error')),
       QuerySuccess(:final data) => ListView(
@@ -90,7 +92,8 @@ class DeviceList extends StatelessWidget {
 ```
 
 There is no loading flag, no `initState`, no `StreamSubscription` and no
-`dispose`. The widget asks for the query in `build`; the cache fetches it,
+`dispose`, and no key or type argument at the call site: the definition
+carries both. The widget asks for the query in `build`; the cache fetches it,
 shares it with every other widget that asks for the same key, and rebuilds
 this one when the result changes.
 
@@ -102,12 +105,14 @@ screen keep showing the list above a "could not refresh" banner.
 `context.query` is one of [four equal ways](guides/reading-queries-in-widgets.md)
 to read a query: a builder widget, a `State` mixin and a plain
 `ValueListenable` are the other three, and this documentation names no
-default.
+default. The same query can also be written as plain options with a key
+written by hand; see [describing a query once](guides/query-options.md).
 
 :::note[In React Query]
-This is `useQuery({ queryKey, queryFn })`. The options become a
-`QueryObserverOptions` value you can name and reuse, and the result a sealed
-class instead of `status` strings with optional fields. See [differences from
+This is `useQuery(allDevicesOptions)`, with the options declared once by
+`queryOptions({ queryKey, queryFn })`. Here the declaration is a definition,
+whose `options()` every call style takes, and the result is a sealed class
+instead of `status` strings with optional fields. See [differences from
 TanStack Query](reference/differences-from-tanstack.md).
 :::
 

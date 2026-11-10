@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.3
+
+- Requires query_kit_flutter 1.2.0, which brings query_kit's typed query
+  definitions through this package's import. No hook changed: a
+  reference's `options()` go into `useQuery`, `useInfiniteQuery`,
+  `useQueries`, `useCombinedQueries` and the prefetch hooks as
+  hand-written options do, and into `useSelectQuery` through
+  `withSelect`. The result has the data type the definition declared.
+- The README and the hooks guide on the site declare their queries as typed
+  definitions and read them through the hooks. The guide says what the
+  analyzer still lets through: a helper typed `QueryObserverOptions<Object>`
+  creates an `Object` entry that the reference then refuses, and an
+  `onMutate` parameter written without a type is an `Object?`.
+- The example's todo list and its projects are typed definitions, and the
+  todo writes go through the list's reference. Their keys are now
+  `['todos', 'list']` and `['projects', 'list']` instead of `['todos']` and
+  `['projects']`. A raw call on the old prefix still covers them; code
+  copied from the example that names the old key exactly needs the new
+  one. The posts keep the raw form, so the example shows both.
+
 ## 0.1.2
 
 - Move the documentation to https://query-kit.dev/. Update homepage,

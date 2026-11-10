@@ -7426,3 +7426,754 @@ changed in this round; the work is wording, the site, and tests.
   read-only review found no introduced defects. Existing website tests passed
   (13/13); the generated sitemap's 120 URLs all use the new self-canonical host.
   Package publication still follows the release gates in `docs/releasing.md`.
+
+
+## Typed query definitions (map #129)
+
+[Map #129](https://github.com/dualmeta-gmbh/query_kit/issues/129) adds typed
+query definitions to the core: a definition names its input, its cache
+identity and its fetch function once, and the reference it produces carries
+the data type to every read, write and invalidation. Nothing upstream is
+ported for it (TanStack types its keys with `queryOptions()` and `DataTag`,
+which have no Dart counterpart), so it has no ported suite and no row in the
+tables above; what each ticket did is recorded here, one section per ticket.
+The plan is `docs/plans/typed-query-definitions.md`.
+
+### TQ0 — the API proven by analyzer fixtures, before the facade exists (#131)
+
+**What.** No package code: nothing under `packages/` changes but this file.
+The surface is written once as a prototype against the core's *exported*
+API (`tool/typed_query_fixtures/prototype/typed_queries.dart`), and 24
+fixture files analyze and run against it:
+
+- `positive/` (6 files) must analyze clean, and every inferred type is
+  pinned by `expectStaticType`, which fails for a wider and for a narrower
+  type;
+- `negative/` (7 files) carries 114 marked lines, 105 misuses and nine
+  self-tests of that helper, each of which must be refused **at that line
+  with that diagnostic code**, so a fixture cannot pass by failing for
+  another reason;
+- `boundary/` (4 files) must compile: the generic setter that widens, the
+  widened receivers, the definitions without type arguments, the list of
+  two data types. Five of their lines carry a diagnostic only this
+  repository's stricter options produce;
+- `runtime/observations.dart` prints 98 observations, compared with a
+  recorded file per runtime.
+
+`tool/check_typed_query_fixtures.dart` copies them into a temporary
+consumer package and analyzes it per language version (3.6, and the running
+SDK's own) under the analyzer's defaults and under this repository's
+options, then runs the observations on the VM with and without assertions
+and compiled by dart2js at its default level, `-O3` and `-O4` under node.
+The fixtures are excluded from the repository's own analysis
+(`analysis_options.yaml`) and are formatted by the gate like everything
+under `tool/`.
+
+**Verified.** The runner is green on Dart 3.6.2, 3.10.7 and 3.13.4: on
+each, 114 errors and 5 optional diagnostics where expected and none
+elsewhere, and 98 observations as recorded on each of the five runtimes.
+It is a step of CI's `gates` and `floors` jobs.
+
+**What it found**, each recorded under its decision in the plan and listed
+in the plan's review record (P0-1 to P0-16):
+
+- The covariance check a widened receiver relies on is omitted by dart2js
+  at `-O3` and `-O4`, and a typed write that merely delegates to
+  `setQueryData<Device>` then stores a `String` in a `Query<Device>`; an
+  update stores an `int`; a bulk update writes nothing and raises nothing.
+  The explicit check through `Object?` refuses all three with
+  `QueryDataTypeError` before anything is written. The same widening
+  reaches a family's input, so binding checks it too.
+- A generic `setData<T>(key, value)` compiles with `T = Object` for a
+  wrong value and creates a `Query<Object>` the reference then refuses to
+  read. A generic *updater* does not widen: the claim is narrower than the
+  plan had it.
+- A family without type arguments infers an `Object?` input on all three
+  SDKs, silently under strict options when its fetcher ignores the input;
+  the debug backstop is the only refusal, and it is absent without
+  assertions. A zero-input definition with a fetcher infers exactly.
+- A list of references of two data types infers `List<QueryTarget>`, the
+  one supertype without a data type, so it can be invalidated and cannot
+  be written. (**Wrong as stated**, and corrected by TQ2's S0-1: that is
+  the result for references of two *classes*, a family's reference and a
+  definition. Two of one class infer `List<QueryRef<Object>>`, and a
+  write through an element compiles.)
+- A record input holding a collection needs a `keyOf`; nothing detects
+  its absence.
+
+**Not proven here.** dart2wasm was not run. An AOT executable ran once by
+hand (Dart 3.10.7) and printed what the VM prints. The prototype does not
+wrap a definition's own `structuralSharing` and `initialData` for the
+infinite normalisation. Only the core's `QueriesObserver` was run over a
+mixed list; the binding and the hooks come with their tickets.
+
+**For TQ1.** The plan's "Final surface (TQ0)" is the signature list. The
+fixtures take the surface from one file, `surface.dart`, and deleting its
+second export line points all of them at the real exports.
+
+### TQ1 — the definitions in the core (#132)
+
+**What.** The ten types are one library,
+`lib/src/query_definition.dart`, exported whole from the barrel:
+`QueryTarget`, `QueryNamespace`, `TypedQueryKey`, `QueryEntryRef`,
+`QueryRef`, `InfiniteQueryRef`, `QueryDefinition`, `QueryFamily`,
+`InfiniteQueryDefinition`, `InfiniteQueryFamily`. No typedef, no
+top-level function, nothing added to `QueryClient`, and no other file
+under `lib/` changed but the barrel (the export and a section of the
+library documentation). The prototype is deleted, `surface.dart` exports
+the package alone, and the 23 remaining fixture files and the 98
+observations pass unedited. The shape a release makes permanent is
+[ADR-0007](../../../docs/adr/0007-typed-query-definitions-are-values-over-the-client.md).
+
+The suites are port-only, so they are new files and no ported file
+changes:
+
+| File | Cases | What it holds |
+|---|---|---|
+| `query_definition_test.dart` | 85 | keys and identity; that declaring and binding do no work; one entry for a reference and a plain key; the declared type on a first write; exact writes; absence and null; a write compared event for event with the client's; the entry a write creates; options, defaults and the re-pin; `fetch` beside `client.query`; exact and prefix targets; the lifecycle operations; the bulk operations; the debug checks |
+| `infinite_query_definition_test.dart` | 39 | the same for the infinite kinds, the normalisation of a written value, and the two wrappers |
+| `barrel_test.dart` | +1 | the library is exported without a `hide`, and its public declarations are the ten types and nothing else |
+
+**How a typed write differs from the client's**, which is the whole of
+what the library adds at runtime:
+
+- It looks the entry up with `queryCache.get<T>`, which is exact, where
+  `setQueryData` accepts any entry whose type can hold the value. A wider
+  entry (`Device?` for `Device`), a narrower one and an entry of another
+  type without data are all refused, with the raw call beside each as the
+  control that still writes.
+- The value, and an updater's result, is tested with `is T` through
+  `Object?`. On the VM that line cannot fail, see below.
+- A missing entry is built with the reference's own options, so it has the
+  definition's `gcTime`, `structuralSharing` and `initialData` from the
+  first write. A test compares the options of an entry a write created
+  with those of one an observer created and one `client.query` created.
+- An infinite value is rebuilt under the declared page types unless it
+  already has them, in which case it is the same instance.
+- Everything after that is `Query.setData(manual: true)`, the call
+  `setQueryData` ends in.
+
+**Decisions**, each with its options in the plan (D5, D6, D7 and the
+review record's P1-1 to P1-13):
+
+- *The bulk update is its own pass.* The plan had it delegate to
+  `updateQueriesData` with a wrapped updater. That method's first pass
+  lets an entry of another type through when it holds no data, its value
+  check passes on type alone, its second pass writes through the lenient
+  `setQueryData`, and a wrapped updater is not told its key. The typed
+  pass keeps the raw order (check all, capture all, run all, validate all,
+  write all in one batch) with the exact steps.
+- *An updater is user code.* `update` looks the entry up again after the
+  updater returned, so an updater that removed it gets it made again and
+  one that swapped it for a wider entry is refused. In a bulk update an
+  entry removed by an updater is re-created with the key alone (the raw
+  behaviour; a family cannot turn a key back into an input), an added one
+  is not part of the call, and a swapped one throws at its own write with
+  the earlier writes made. Four cases run the same updater through the
+  typed and the raw call and compare events and cache.
+- *Batching.* The bulk writes run inside one `NotifyManager.batch`, and a
+  cache listener or an observer still hears each as it is made; only a
+  subscriber that schedules through the notify manager waits. The test
+  was first written to expect the former and failed; it now asserts the
+  typed and the raw call log the same.
+- *The wrappers.* What `configure` returns passes through one function. A
+  custom `structuralSharing` is wrapped; the default (`null`) and the
+  `noStructuralSharing()` instance are not, the second because the
+  observer recognises it by identity. An exact `InitialData.value` keeps
+  its instance. A per-use `copyWith` and a `structuralSharing` from the
+  client's or a key's defaults are outside, each pinned by a test that
+  the narrower value is then what is stored.
+- *A first page param of `null`* that `configure` changes is a
+  `StateError` when the options are made: `copyWith` reads `null` as
+  "keep", so the re-pin cannot put it back.
+- *`QueryDataTypeError`* carries the declared type as `expected`, and as
+  `actual` the entry's type or, for a refused value, its `runtimeType`.
+  Every refusal of an entry in the two files asserts all three fields;
+  those through a widened receiver accept Dart's `TypeError` as well,
+  which is what the VM throws there.
+
+**Verified.** Core 1300 VM / 1295 browser (1175 / 1171 before; no
+existing case changed), on Dart 3.10.7; the VM suite also on 3.6.2 and
+3.13.4. The fixture runner on all three, each time 114 errors where
+expected and 98 observations as recorded on five runtimes. Line coverage
+3774 of 3780, 99.84 % against a floor of 99.8 %.
+
+**Two lines no VM test reaches.** The `throw` in the value check and the
+`throw` in a family's input check. Through a widened receiver Dart's own
+covariance check throws a `TypeError` at the call, before the library's
+line runs; through an exact receiver the value cannot be wrong. They run
+where that check is compiled out, dart2js `-O3` and `-O4`, and the proof
+is the fixture runner's `runtime/observations.unchecked.expect`
+(`O7-write-1` to `O7-input-2`), which CI runs on two SDKs. The VM cases assert the
+refusal and that nothing was written, accepting either error. Each check
+is one private function, so two lines are missed and not eight, and they
+are counted as missed, with no `coverage:ignore`.
+
+**Not proven here.** dart2wasm is still not run. `reset(cancelRefetch:)`
+is passed on to the client and has no case of its own: a reset cancels
+the fetch in flight whatever it is given, so no test could tell the
+values apart (**wrong**: TQ2 found the case, a seeded entry and a fetch
+started between the reset's cancel and its refetch, and added it).
+`QueryDataTypeError`'s message says the query "holds" the
+actual type, which reads loosely for a refused value; the message is the
+raw API's and is unchanged. Nothing in the binding or the hooks uses the
+new types yet; their suites were run over this core to show that the
+ten names clash with nothing they export.
+
+**For TQ2.** The infinite exit's remaining case is rollback: a cancel
+and an optimistic write with a request in flight, the stored type
+checked after each step, and the mutation recipes around it. The version
+and the CHANGELOG are Phase 4's.
+
+### TQ2 — a review of TQ0 worked off, rollback and the mutation recipes (#133)
+
+**What.** Two things in one ticket. GPT-6.1-Sol reviewed TQ0 (`9aad67b`)
+and reported five findings; each was reproduced against the code before
+anything changed, and all five reproduced. And the rest of Phase 2:
+rollback with a request in flight, the mutation recipes, and three
+points TQ1 had left open. No public signature changed. Two behaviours of
+`lib/src/query_definition.dart` did, both refusals that were silent or
+late before.
+
+**The review of TQ0.** The plan's review record has the same rows
+(S0-1 to S0-5) with the options weighed under D5, D6, D9 and Phase 0.
+
+| # | Finding | Reproduced | What became of it |
+|---|---|---|---|
+| S0-1 (P1) | A list of references of two data types infers `List<QueryRef<Object>>`, so a wrong write through an element compiles; TQ0 said such a list infers `List<QueryTarget>` | yes. Two references of **one class** meet at that class with the common supertype of their data; only two classes meet at the target. The same for a set, a map, a conditional expression, two definitions, two families, two typed keys. The write is refused at run time on all five runtimes and creates no entry | The claim is narrowed, no code changed. `boundary/mixed_list.dart` pins each inferred type; `positive/target_list.dart` shows the declared `<QueryTarget>[…]` with every lifecycle operation, and `negative/surface_limits.dart` refuses `write`, `update`, `read`, `state` and `key` on its elements; observations `D9-4` to `D9-11`; the barrel's limits list and `QueryTarget`'s dartdoc |
+| S0-2 (P2) | `configure` may return options of a narrower data type | yes. On the VM the re-pin's `copyWith` threw a `TypeError` about a function type, naming neither the definition nor `configure`. At dart2js `-O4` nothing threw: the narrower options were handed out | **Fixed.** `_ownOptions` compares the runtime type of what `configure` returned with the definition's options type, before any `copyWith`, and throws a `StateError` naming the key and both types. Both options classes are `final`, so the comparison is exact, and it is a `Type` comparison, which no optimisation level removes. 9 cases; observations `D6-1` to `D6-5`, identical on all five runtimes |
+| S0-3 (P2) | A plain definition typed `InfiniteData<P, Q>` bypasses the infinite normalisation | yes. The entry is exact; the value keeps its narrower type arguments; a `copyWith` typed for the entry throws a `TypeError` on the VM | The promise is narrowed, no code changed: only an infinite definition rebuilds a written value. 2 cases, the second the infinite definition's write of the same value as the control; observations `D5-infinite-7`, `-8`; dartdoc. A plain definition has one type argument and cannot name the page types a rebuilt value needs |
+| S0-4 (P2) | The re-pin does not restore a declared `null`: `configure` can supply a fetch function or a `getPreviousPageParam` the definition left out | yes, and TQ1 built it on purpose | Kept, no code changed. The rule is now stated where a user reads it: the definition pins what it declares; what it leaves unset, `configure` may set. One case added, the zero-input infinite definition, so both halves are held on all four kinds |
+| S0-5 (P2) | The fixture runner passes vacuously: the negative directory deleted, an observation program that prints nothing, re-recorded, green | yes, on a copy of the reviewer's tree: `OK: 1 fixture files, 0 misuses refused`, exit code 0 | **Fixed** in `tool/check_typed_query_fixtures.dart`: an inventory (`tool/typed_query_fixtures/inventory.txt`) the tree must match exactly in both directions; floors in the code that no inventory lowers; every runtime's output checked for itself; `--record` as the only way a pin moves, printing what moved and refusing a bad output; `--self-test`, 31 cases, in CI before the runner on both SDKs |
+
+**Rollback and the recipes.** A new port-only file,
+`query_definition_mutation_test.dart`, 22 cases. Its recipes are
+top-level functions that return ordinary `MutationOptions` over typed
+references, written to be lifted into a guide: an optimistic write of
+one entry; a snapshot of `state` that tells no entry, an entry without
+data and a cached `null` apart, with a `restore` that removes, resets or
+writes back with the old timestamp; the server's answer written into a
+detail and its row of a list; a list written and its family invalidated;
+every cached detail patched with `updateAll` and put back by id; and the
+first two over an infinite definition. The cases with a request in
+flight assert data, status, fetch status, timestamp and the entry's
+`dataType` after each step, count the backend's calls, and one records
+what an observer saw, change by change: the cancelled response never
+comes between the patch and the rollback. Its control drops the
+`cancel` from the recipe and the response in flight overwrites the
+patch. A last case runs every recipe against a refusing backend and
+compares entries, types and data before and after.
+
+**TQ1's open points, decided** (the plan's P2-2 to P2-4):
+
+- *A swap during a bulk update.* An updater that replaced a later entry
+  with one of another type was found at that entry's write, after the
+  earlier writes. `_updateAll` now looks every entry it is about to write
+  up once more, with the exact check, after the last updater and before
+  the batch: the swap is refused and **nothing** is written. TQ1's case
+  asserted the earlier writes stayed; its expectation is changed to the
+  new behaviour, which is the one assertion of an existing case this
+  ticket changed, and it is stricter. What cannot be closed the same way
+  is a cache listener that replaces an entry in answer to one of the
+  writes; a new case holds it beside the raw call, and the dartdoc of
+  `updateAll` says it.
+- *`reset(cancelRefetch:)`.* TQ1 wrote that no test could tell the
+  values apart. One can: a seeded entry keeps data across a reset, a
+  cache listener starts a fetch as it hears the reset, and the reset's
+  refetch then joins that fetch (`false`, one fetch) or replaces it
+  (`true` and the default, two). Three cases, the third the client's
+  `resetQueries` over the same filters. Against a copy of the library
+  that drops the argument the first fails.
+- *The two lines no VM test reaches* stay counted as missed. The
+  repository has no `coverage:ignore` anywhere and the floor holds
+  without one.
+
+**Counts.**
+
+| File | Cases | Before |
+|---|---|---|
+| `query_definition_test.dart` | 94 | 85 |
+| `infinite_query_definition_test.dart` | 46 | 39 |
+| `query_definition_mutation_test.dart` | 22 | new |
+
+The fixture tree: 24 files (23), 119 `error` markers (114) and 5
+`strict` ones, 113 observations per recorded output (98).
+
+**Verified.** Core 1338 VM / 1333 browser on Dart 3.10.7 (1300 / 1295
+before); the VM suite also on 3.6.2. The fixture runner and its
+self-test on 3.6.2, 3.10.7 and 3.13.4. Line coverage 3786 of 3792,
+99.84 % against a floor of 99.8 %; `query_definition.dart` 260 of 262,
+the two lines above.
+
+**Not proven here.** dart2wasm is still not run. The inventory pins
+counts, not content: a misuse replaced by another keeps its row. The
+recipes run against a fake backend in the core's suite and in no
+application; the binding, the hooks and the examples have their own
+tickets. A rollback of an entry that held no data restores it with
+`reset`, which is not the state it had when it held an error; the exact
+restore needs the raw cache, and no helper was added for it.
+
+### TQ3 — the binding, the hooks and the examples on definitions (#134)
+
+**What.** Four consumers, one commit each, and **nothing changed in this
+package**: a reference's `options()` returns the options the observers
+already take, so the binding and the hooks needed no library change
+either. This section records what they proved and what they reported,
+because two of the reports changed the core (the next section).
+
+| Consumer | Commit | What exists | Counts |
+|---|---|---|---|
+| `packages/query_kit_flutter` | `f357e6e` | `typed_parity_test.dart` (56), `typed_lifecycle_test.dart` (32), `typed_consumers_test.dart` (17) over `typed_support.dart`: every consumer and all four call styles on a reference's options, each parity case one script run over typed and raw sources and their traces compared | suite 546 → 651 |
+| `packages/query_kit_hooks` | `0d9fb87` | `typed_definitions_test.dart`, 21 cases; the example's todos and projects on `TodoQueries` and `ProjectQueries.list`, keys `['todos', 'list']` and `['projects', 'list']`; its own notes have the section | suite 335 → 356; example 61 and 10 skipped |
+| `examples/task_manager` | `6613558` | `TaskQueries`: `list = QueryFamily<TaskFilters, TaskListResponse>` with `keyOf: (f) => [f.toJson()]`, `byId = QueryFamily<String, Task>`; `taskQuery(client, queries, id)` adds the detail's seed per use | 44 and 14 skipped; 29 contract cases against the real server; Playwright 26 |
+| `examples/showcase` | `7a449a4`, `ba475cf` | the 31st screen `typed-queries` (9 widget cases, 8 Playwright), `load-more` and `max-pages` on infinite definitions | 342 and 25 skipped; contract 50; Playwright 214; native macOS green |
+
+Re-run when this was written, on Flutter 3.38.8: the binding 651, the
+hooks 356, the hooks example 61 and 10 skipped, the task manager 44 and
+14 skipped, the showcase 342 and 25 skipped. Not re-run: the floors, the
+Chrome runs, the showcase's and the hooks example's Playwright suites,
+the native suite; those counts are the implementers'.
+
+**What they measured about the core.**
+
+- *Options events.* An observer handed options again on a rebuild emits
+  `QueryObserverOptionsUpdated` once for inline raw options, for a
+  family's reference and for a definition recreated in `build`, and
+  **not at all** for a zero-input definition that is held. The plan and
+  the dartdoc said every `options()` call makes another fetcher closure.
+- *A list of options of two data types* given to a
+  `QueriesController<Object, Object>` creates `Object` entries, and the
+  references' typed reads and writes then throw `QueryDataTypeError`:
+  the documented boundary, now seen through two consumers.
+- *An infinite definition without type arguments* does not compile once
+  its `getNextPageParam` reads the page, and with a `configure` its page
+  type is `Object?` without a diagnostic. TQ0's fixture did neither.
+- *A bulk snapshot has no typed way back.* The task manager's delete
+  rollback wrote with `client.setQueryData(key.rawKey, …)`.
+
+### After TQ3 — a typed key writes, and every definition's type arguments (#134)
+
+**What.** The product owner's two decisions on those reports, a wording
+correction a measurement forced, and the record of the reports that were
+left. One compatible addition to `lib/src/query_definition.dart` and an
+internal refactor under it; no existing signature and no existing case
+changed. The plan's rows are T3-1 to T3-6 and L3-1 to L3-5.
+
+**1. `TypedQueryKey.write` and `update`.** Signatures and return types
+are `QueryEntryRef`'s. Both pairs now call one private pair,
+`_writeEntry` and `_updateEntry`, which differ by one argument: the
+options a missing entry is built with.
+
+| An entry created by | Type | Options | Fetch function |
+|---|---|---|---|
+| `ref.write`, `ref.update` | the declared one | the definition's `options()`, over the key's and the client's defaults | the definition's |
+| `key.write`, `key.update`, and `updateAll` for an entry an updater removed | the declared one | `QueryOptions<T>(queryKey: rawKey)`: the key's and the client's defaults only | none |
+| raw `setQueryData` without a type argument | the value's own | the same defaults | none |
+
+An entry that exists is written identically by all of them
+(`Query.setData(manual: true)`). The infinite normalisation moved from a
+method of the reference to a private method of the key,
+`TypedQueryKey._stored`, which `_InfiniteTypedQueryKey<P, Q>` overrides;
+an infinite reference's `key` and every key of an infinite family's
+`readAll` and `updateAll` are of that subclass. It adds no field, and
+`==`, `hashCode` and `toString` are the base's.
+
+*Options weighed for the carrier:* a function field on the key (a
+contravariant field read through a widened key can throw for a valid
+value, and it is a held closure); a type-erased function with casts
+(dart2js `-O4` omits casts); the subclass. *For a created entry:* carry
+the definition in the key (a value that is compared and kept in
+snapshots would keep a fetch function alive, and a family's bulk calls
+have no input to bind one with); refuse to create (the restore loop
+would fail for the entry a rollback most needs back); build it bare.
+
+*Blast radius.* The change is additive for the key and a refactor for
+the reference, so the fact it is safe because of is: **a reference's
+write and update do what they did.** Control: every case of the two
+typed files that existed before passes unedited, and the 113
+observations recorded before print the results they printed, in the
+three recorded outputs, on five runtimes of three SDKs (one of them,
+`D4-12`, was renamed to say that its reference is a family's; its
+result is the same). A new member has no "red
+before", so the new cases were checked by changing the library in a
+scratch copy; each of eight changes fails at least one case:
+
+| Change | Cases that fail |
+|---|---|
+| the key's `write` delegates to the lenient `setQueryData<T>` | 5 |
+| the infinite key does not normalise | 10 |
+| an infinite family's `readAll` returns plain keys | 1 |
+| an infinite family's `updateAll` returns plain keys | 2 |
+| `update` writes into the entry found before the updater ran | 4 |
+| the shared write takes any entry of a fitting type | 4 |
+| an infinite reference's `key` is a plain key | 9 |
+| a key-created entry takes the value's own type | 12 |
+
+*Self-review (no second agent read this; the ticket ends in a review).*
+Read against `ba475cf`: the value still reaches `_checked` as `Object?`
+on both paths; `key` is a covariant field read, so a widened reference
+reads it safely; `_bareOptions` and `_entryOptions` are passed as method
+tear-offs of an exactly typed receiver; the second lookup after an
+updater and the bulk update's second look are where they were. One
+thing found and recorded, not changed: the typed key of an infinite
+definition and of a plain definition typed `InfiniteData` on one raw key
+are `==` and write differently (T3-6).
+
+**What a key-created entry costs.** It has no fetch function until an
+observer or `ref.fetch` supplies the definition's. A refetch of every
+entry before then (`family.refetch(client)`) ends for that entry in
+`MissingQueryFunctionError`,
+status `error`, data kept; that is what the raw client does with an
+entry `setQueryData` made. One case holds it and its repair.
+
+**2. Every definition's type arguments are written out.** No code
+changed: dartdoc, the barrel's limits and fixtures. Measured, identical
+on Dart 3.6.2, 3.10.7 and 3.13.4:
+
+| Declaration without type arguments | Result |
+|---|---|
+| `InfiniteQueryDefinition`, page not read, no `configure` | exact |
+| its `getNextPageParam` reads `page` or `pages` | the declaration exact, `page` is `Object?`: `unchecked_use_of_nullable_value`. The same for an infinite family and for raw `InfiniteQueryObserverOptions` |
+| with a `configure` | `InfiniteQueryDefinition<Object?, int>`, no diagnostic under defaults or strict options; `AssertionError` in a debug build only |
+| an infinite family with a `configure` | `InfiniteQueryFamily<Object?, Object?, int>`, silently |
+| `QueryDefinition` with a fetcher and a `configure` | exact |
+| `QueryDefinition` with a `configure` and no fetcher | `QueryDefinition<Object?>`, silently |
+| `QueryFamily` with typed closure parameters and a `configure` | exact |
+
+| Cure | page read | `configure` |
+|---|---|---|
+| the type arguments; a declared field type | yes | yes |
+| the `pageFn` parameter typed; a named page function | yes | yes |
+| the page parameter typed where it is read | yes | **no**: `could_not_infer`, `argument_type_not_assignable` |
+| the `configure` parameter typed | not needed | yes |
+
+The hooks' notes name "a typed `page` parameter" as a cure; it is one
+for the first failure only.
+
+**3. Which options are equal.** `QueryDefinition.options()` and
+`InfiniteQueryDefinition.options()` pass on the functions the
+constructor was given; `QueryFamily` and `InfiniteQueryFamily` wrap each
+in a closure over the input, per call. Resolved options compare
+functions with `==`. So a held zero-input definition's options are equal
+from call to call and its observer hears no options event; a family
+reference's never are. Nothing was changed to align them (nothing gates
+on the equality, #84). Three cases and observations `D4-16` to `-18`.
+
+**4. The recipes and the task manager.** Recipe 5 keeps
+`(TypedQueryKey<Device>, Device)` pairs from `readAll` and rolls back
+with `key.write`; the id-based variant is gone, its three cases pass
+unchanged, and a fourth holds an entry removed in between being made
+again. The task manager's delete rollback does the same (its own
+commit).
+
+**Counts.**
+
+| File | Cases | Before |
+|---|---|---|
+| `query_definition_test.dart` | 114 | 94 |
+| `infinite_query_definition_test.dart` | 54 | 46 |
+| `query_definition_mutation_test.dart` | 23 | 22 |
+
+The fixture tree: 25 files (24), 144 `error` markers (119) and 5
+`strict` ones, 136 observations per recorded output (113). `barrel_test`
+still pins ten exported names.
+
+**Verified.** Core 1367 VM / 1362 browser on Dart 3.10.7 (1338 / 1333
+before), the VM suite also on 3.6.2. The fixture runner and its
+self-test on 3.6.2, 3.10.7 and 3.13.4. Line coverage 3796 of 3802,
+99.84 % against a floor of 99.8 %; `query_definition.dart` 270 of 272,
+the same two lines as before. The binding (651), the hooks (356), the
+hooks example, the showcase and the doc snippets pass over the changed
+core; the task manager's 44 widget and contract cases and its 26
+Playwright cases against the real server pass with the rollback on the
+typed key.
+
+**Not proven here.** dart2wasm is still not run. The typed key's writes
+are used by one application flow, the task manager's delete rollback;
+the binding's and the hooks' suites do not call them. No guide shows
+them yet (Phase 4).
+
+**Reported and left** (the plan's L3-1 to L3-5 have the options):
+`updateAll`'s updater takes `T?`; a definition whose fetcher needs a
+dependency is built with it for cache-only operations too, so one holder
+class per resource; `MutationOptions` without type arguments leaves an
+untyped `onMutate` parameter `Object?`; options handed through a wider
+parameter type create a wider entry; no typed single-entry snapshot and
+restore.
+
+### Review of the core (GPT-6.1-Sol, cd4bc21)
+
+**What.** An independent, read-only review of `lib/src/query_definition.dart`
+and its fixtures at `cd4bc21`, by another model, with probes of its own.
+Four findings and no P1. Each was reproduced first, by running the
+reviewer's probes against the library as it stood (`a95dcc0`, whose core
+is `cd4bc21`'s) on Dart 3.6.2, 3.10.7 and 3.13.4, on the VM and compiled
+with dart2js at `-O4`. One file of `lib/` changed besides a paragraph of
+the barrel's dartdoc; no signature, no existing case. The plan's rows are
+SC-1 to SC-4 and LC-1 to LC-3, and its D4, D5 and D7 hold the options
+weighed.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| SC-1 (P2) | A typed write reports success on an entry replaced under it. `_write` held the `Query` that `build` returned across the synchronous `QueryAdded`; a listener that removed it and put a `Query<String>` under the key left `write`, `update` and both key writes returning `42` with the cache holding the string | yes: `returned=42, cached=replacement` and `next typed read: QueryDataTypeError` for the four calls, three SDKs, VM and `-O4` | Fixed as a rule, below. `_write` takes the key, not a `Query`; `_created` looks the key up again after `build`; `setData`'s `canCommit` guards the entry's `structuralSharing` by identity; `_gone` throws `QueryDataTypeError` for another type in the entry's place and a `StateError` otherwise |
+| SC-2 (P2) | A bulk update's check before the first write does not cover a `structuralSharing` that throws while the batch commits; the dartdoc and the plan read as if only a listener's swap could leave earlier writes in place | yes: `Bad state: sharing rejected`, `a=11, b=2`, typed and raw alike | No code beyond SC-1 (the product owner's decision: no transaction machinery). The limit is stated exactly in the dartdoc of both `updateAll`s, the plan and the guide, and pinned beside the raw call |
+| SC-3 (P3) | A held zero-input infinite definition whose `configure` returns one top-level `structuralSharing` (or `InitialData.compute`) resolves unequal options per call, because the page-type wrapper was a new closure each time | yes: `sharing identical: false`, `observer options events: 1`, three SDKs, VM, `-O1`, `-O4` | Fixed: `_ExactWrappers`, two `Expando`s per zero-input infinite definition, made on first use, find the wrapper again by the callback it wraps. A family passes none. What stays unequal is stated |
+| SC-4 (P3) | The barrel's overview reads as if a typed key were a `QueryTarget` | yes: the analyzer refuses the reviewer's probe (`INVALID_ASSIGNMENT`, `UNDEFINED_METHOD`) | Wording. The guide has no such sentence |
+
+**SC-1, the rule.** *The value goes into the entry the cache holds under
+the key at the moment it is stored, or the write throws; a typed write
+never returns a value that went into an entry the cache had dropped.*
+Every point where a typed operation held a `Query` across the caller's
+code, and what the rule makes of it:
+
+| Point | The caller's code that runs | Before | Now |
+|---|---|---|---|
+| a write that builds its entry (`ref.write`, `ref.update`, `key.write`, `key.update`, a bulk write of an entry that was removed) | cache listeners, `QueryAdded` | wrote the detached entry and returned the value | looked up again: another type → `QueryDataTypeError`; the same type → that entry is written; removed → `StateError`. Nothing is written in the two refusals |
+| `setData`, before the value is stored | the entry's `structuralSharing`, or a `==`/`shareWith` under the default walk | wrote the detached entry | `canCommit`: removed or replaced by the same type → `StateError`; another type → `QueryDataTypeError`; a reset entry is still the cache's and is written |
+| `setData`, after the value is stored | listeners and observers of the write | returned what it stored | the same, pinned: what they do comes after the write |
+| `update`, between reading `previous` and writing | the updater | looked up again (since TQ1); removed → made again; another type → refused | the same through `_write`, and a same-type replacement is written (new case) |
+| `updateAll`, between its second lookup and each write | the listeners of the batch's earlier writes | each write looked its entry up by key; a re-created entry replaced at `QueryAdded` was written detached | each write is `_write`: removed → made again from the key; same type → written; replaced at `QueryAdded` by another type or removed → `QueryDataTypeError` / `StateError`, the earlier writes made |
+| the infinite path | all of the above | the same hole | the same function; the page types are in the check, the stored value normalised |
+
+Not changed, because they are the client's own and the raw API stays as it
+is: `ref.fetch` (the client's `query`) under such a listener ends in
+`CancelledError`, an observer made from `ref.options()` in
+`QueryDataTypeError`, and the raw `setQueryData` returns a value it did
+not store. Upstream at the pin does the same: `setQueryData` ends in
+`this.#queryCache.build(this, defaultedOptions).setData(data, …)`
+(`queryClient.ts:300-303`) and `QueryCache.add` notifies synchronously
+(`queryCache.ts:185`), so the raw behaviour is no divergence; a control
+test and `W-4` pin it.
+
+**The fact each fix is safe because of**, and how far it was proven.
+
+- *SC-1: for a caller whose listeners and sharing leave the cache alone,
+  the entry found by key is the entry held, so nothing changes.* `build`
+  returns the entry it added or found, and the lookup after it returns
+  the same object unless a listener intervened; `canCommit` is asked once
+  per write and answers `true`. Ran: the 191 typed cases that existed pass
+  unchanged, the core's 1367 unchanged, and each new refusal has a
+  control beside it in the same run (a listener that writes the new entry
+  itself; a sharing callback that resets its entry; a listener answering
+  the write). Red against the library before: 47 of the 61 single-write
+  cases and 2 of the 7 batch cases; the other 19 are the controls and the
+  pins of what was already so. VM on 3.6.2, 3.10.7, 3.13.4; Chrome on
+  3.10.7; `W-1` to `W-10` on the five runtimes of each SDK.
+- *SC-3: a wrapper found again is the wrapper that would have been made.*
+  It closes over its callback only, and the table is per definition, so
+  it cannot hand one definition another's wrapper or one callback
+  another's (a test for each). The table is weak: a wrapper holds its
+  callback, the options hold the wrapper, nothing else holds either. Ran:
+  eight cases, five red before; `D4-19`, `D4-20` on five runtimes.
+
+**Looked at where grep stops.** No timer, no microtask and no zone is
+added: every new step is synchronous inside the call. The extra lookups
+are one `get` after a `build` and one `peek` per write. `canCommit` was
+already `setData`'s parameter (the fetch path uses it), so `query.dart`
+is untouched. The throw path: a `structuralSharing` that throws still
+propagates as before (SC-2's tests). The re-entrant path is the finding
+itself. `clear()` inside a listener is the removed case. The binding and
+the hooks call the same public methods and were not edited (another
+agent is working in their tests; their suites were run read-only, below).
+The browser: one case is VM-only, a method torn off twice, which dart2js
+makes one object.
+
+**Mutations of the fix** (Dart 3.10.7, the three typed files; each
+applied to the library, run, restored byte for byte):
+
+| Mutation | Cases that fail |
+|---|---|
+| `_gone` without its exact lookup | 8 |
+| `canCommit` by presence, not identity | 12 |
+| no `canCommit` | 21 |
+| `_created` returns what `build` returned | 9 |
+| the sharing wrapper not kept | 4 |
+| the computed seed's wrapper not kept | 2 |
+| the definition passes no table | 5 |
+| `_writeEntry` without its leading lookup | 0, and the fixture runner exits 1 on `W-10`. The order of two mismatches (an entry of another type and a value of the wrong type) is visible only where Dart's own covariance check is compiled out, so no VM or default-dart2js test can see it; the observation was added for it |
+
+**Self-review** (a labelled self-review: the rules of this round forbid
+a sub-agent, so the diff was read again against the parent and upstream
+with the question "what did this introduce"). Nothing found that changes
+a result for an undisturbed cache. Noted and left: a same-type entry a
+listener put in place of a new one is written although it carries the
+listener's options (LC-3); `_writeEntry` looks the key up twice, once to
+report the entry's mismatch before the value's and once in `_write`.
+
+**The reviewer's "checked and sound" list** had nothing that needed a
+new test beyond the above; the plan's section lists it item by item. Its
+method of mutating the library was applied to the new code (the table
+above), and that found the one gap, closed by `W-10`.
+
+**Verified.** Core 1443 VM / 1437 browser on Dart 3.10.7 (1367 / 1362
+before; `query_definition_test.dart` 114 → 160,
+`infinite_query_definition_test.dart` 54 → 84), the VM suite also on
+3.6.2 and 3.13.4. The fixture runner (152 observations, 136 before) and
+its self-test (31 cases) on the three SDKs. Line coverage 3808 of 3814,
+99.84 % against a floor of 99.8 %; `query_definition.dart` 282 of 284,
+the same two lines. Over the changed core, on Flutter 3.38.8: the
+binding (659), the hooks (361), the task manager (45, its 14 server
+cases skipped), the showcase (345, 25 skipped) and the doc snippets (80)
+pass; the site builds.
+
+**Not proven here.** dart2wasm is not run. The examples' Playwright and
+contract runs against a real server were not run for this change. No application meets the new
+`StateError`: it needs a cache listener or a sharing callback that
+removes or replaces the entry it is told about, and no example has one.
+That the weak tables release their entries is argued from `Expando`'s
+contract and not measured (the VM gives a test no way to force a
+collection).
+
+### Review of the consumers (GPT-6.1-Sol, cd4bc21) and the documentation (#134, #135)
+
+The binding has no notes file of its own, so its rows are here; the plan's
+review record has the same table with the reviewer's numbers.
+
+| # | What it was | Regression |
+|---|---|---|
+| SX-1 | Three showcase screens (load-more, max-pages, typed-queries) held definitions over an api read once; an api replaced under the open screen kept the old fetcher | one widget case per screen ("an api replaced under the open screen …"), red before; the task manager's and the hooks example's remake each got a case that is red with the remake removed |
+| SX-2 | No consumer case held #84 with equal resolved options | eight cases in `typed_parity_test.dart` (four call styles, plain and infinite, a held definition and a held `Enabled.when`) and two in the hooks' `typed_definitions_test.dart`; red against `if (nextOptions == prevOptions) return;` on a scratch copy (`+105 -8`, `+21 -2`), green without it |
+| SX-3 | The stale-timer parity case proved the deadline, not that no timer is made | the case counts the timers a rebuild creates (0); red against a re-arm on every mounted `setOptions` (four cases) |
+
+Reproduced first, all three; no library code changed (`a95dcc0`). Binding
+659, hooks 361, hooks example 62 (+10 with the server), showcase 345
+(+25), task manager 45 (+14), doc snippets 80; the showcase's Playwright
+suite 214.
+
+The documentation (TQ4) changed no code under `lib/`. What it holds: a
+compiled twin for every sample, the type arguments written on every
+definition shown, the limits in one section of the typed-queries guide,
+and the raw API second and not deprecated. The plan's "Phase 4" record
+lists the pages.
+
+### Whole-feature review (TQ5)
+
+Reviewer: Opus 5.5 (second reviewer; the first, Fable 5.2, was cut off by
+a usage limit and its probes were reused), over `320e922`. Seven P3s and
+one wording point, all reproduced before anything changed; no code under
+`lib/` changed apart from dartdoc. The plan's review record has the
+evidence per row.
+
+| # | What it was | Reproduced | Outcome |
+|---|---|---|---|
+| F1 | `prefetching.md`: a typed prime's entry "holds the data and nothing else" | yes | corrected: the reference's write builds it with the definition's options; only the raw write's entry holds the data alone |
+| F2 | `typed-queries.md`: `rawKey` "on a reference" | yes (`undefined_getter`) | `ref.key.rawKey`; no other instance in the site, READMEs or dartdoc |
+| F3 | a narrower `configure` said to make "every read and fetch" throw | yes | the two reference pages name `options()` and a creating `write`/`update`; reads, `state`, lifecycle calls, a write into an existing entry and `key.write` work |
+| F4 | a typed key's entry said to fail "at the next invalidation" | yes | "at a refetch that reaches it" (`refetch`, or `refetchType` `all`/`inactive`); a default invalidation only marks it stale. Site, dartdoc, plan limit 21 |
+| F5 | a nullable family's `readAll` cannot tell a cached `null` from no data, so the documented rollback misses it | yes | dartdoc and one sentence beside each shown rollback: for a nullable `T` snapshot each key's `state` and write back where `hasData`. Regression: "a nullable family's snapshot is put back from each key's state" in `query_definition_test.dart` |
+| F6 | the task manager's list controller kept a replaced api's fetcher under a search filter | yes (old backend refetched) | `didUpdateWidget` re-applies the list options for new `queries`; acceptance case "a transport replaced under a filtered list serves its refetch", red before |
+| F7 | `updateAll` did not say what an entry it makes again is built with | yes (no fetch function, refetch fails) | dartdoc: the key's bare options, no fetch function (no paging functions on the infinite side) |
+| F8 | a held definition's options "equal from call to call" | yes (`==` false, defaulted equal) | "equal once defaulted", with the family caveat, in the guide and four dartdoc places |
+
+Core 1444 VM / 1438 browser, task manager 46 (+14), doc snippets 80.
+
+#### GPT-6.1-Sol, over `320e922`
+
+A second whole-feature review of the same commit, by another model. No P1,
+one P2, two P3, each reproduced against `0d83afc` with the reviewer's
+probes before anything changed. The plan's review record has the probe
+output per row.
+
+| # | What it was | Reproduced | Outcome |
+|---|---|---|---|
+| R1 (P2) | the typed write's rule ("into the entry the cache holds when it is stored, or it throws") broken by a `Clock`: `setData` asked `canCommit`, then the success reducer read `clock.now()`, so a clock that removed the entry saw `ref.write`, `ref.update`, `key.write`, `key.update` and `updateAll` store into the removed object and return the value | yes: `removedByClock=true returned=42 error=none cached=null` for all five | `Query.setData` reads `updatedAt ?? clock.now()` after sharing and before `canCommit`, and passes it to `_reduce` through `_dispatch(…, storedAt:)`; the reducer takes that time (`storedAt!`, since `setData` is the one place the action is made) and reads no clock. `QuerySuccessAction.dataUpdatedAt` stays the caller's (`null` for "now"), so cache listeners see what upstream's do. `_gone`'s message names "structuralSharing or clock". Between the guard and the store nothing of the caller's runs now: the action, `_reduce`, `QueryState.copyWith`. Regressions, `query_definition_test.dart`, "a clock that removes the entry while the write dates it (R1)": the five calls throw `StateError`, nothing stored, only `removed` heard; the controls `setQueryData stores into the removed object` (upstream's behaviour, unchanged) and `what a listener hears is the caller's timestamp, or none`; the neighbour `a fetched result is not stored in the entry the clock removed`. `infinite_query_definition_test.dart`, SC-1 group, four calls × (removed → `StateError`, narrower pages put there → `QueryDataTypeError`). All red against `0d83afc`'s `query.dart` (run in a scratch copy of `lib/`: "Expected: <Instance of 'StateError'> Actual: <null>"; the fetch neighbour "Expected: ['removed'] Actual: ['removed', 'updated']"), green after; the two controls green on both |
+| R2 (P3) | the guide's infinite normalisation and limits omitted limit 15 (outside sharing and per-use seeds are stored as built; a later `copyWith` can throw `TypeError`) | yes, for client defaults, key defaults and a per-use `initialData` | guide paragraph and a "What nothing checks" item; `InfiniteQueryRef.options` states the consequence |
+| R3 (P3) | `errors.md`: "read it through the reference before it is refetched" cures nothing | yes; and `ref.fetch` cures only when it fetches (not under `StaleTime.infinite`); an observer of `ref.options()` cures at any stale time | corrected on the error page, the troubleshooting page, both guides, `TypedQueryKey.write`, `updateAll`, the library overview and limit 21 |
+
+What R1 changes beyond the typed write, and why it is safe:
+
+- **The raw `setQueryData`** passes no guard. The clock is read a few
+  synchronous steps earlier: after sharing, as before, and before the
+  action, `_reduce` and `copyWith`, none of which runs user code. Same
+  time under a fake clock, one read, the same events in the same order
+  (the control above). Upstream's reducer takes `dataUpdatedAt ??
+  Date.now()` at the same point relative to user code.
+- **The fetch path** (`_settle`) passes an ownership guard. A clock that
+  removes the entry while a result is dated now drops it (the caller still
+  gets the data; the cache neither stores nor notifies after `removed`),
+  where it used to store into the removed object. The clock is also read
+  once when sharing itself took the run's ownership away and the result
+  is dropped, where it was not read before; only a clock that counts or
+  acts on reads can see that. Upstream has no guard here at all; this is
+  the existing ownership divergence, applied to one more piece of user
+  code.
+- **A clock that writes the same entry re-entrantly** used to run inside
+  `_reduce`, whose result then overwrote the inner write's state. Now the
+  inner write completes before the outer dispatch. Not tested: no one
+  writes a cache from a clock.
+
+The proof matrix: five typed calls plus the infinite four, removed or
+replaced; the raw write and a fetch beside them; VM (`dart test`) and
+compiled JavaScript (`--platform chrome`), 3.38.8 and the floor. Self-review
+of the diff against the parent and upstream's `query.ts` (no sub-agent: the
+round's rules forbid them) found nothing more.
+
+Core 1456 VM / 1450 browser (+12 each), 1456 on the floor, line coverage
+99.84 %; every consumer suite unchanged and green (binding 659, hooks 361,
+hooks example 62, showcase 345, task manager 46, doc snippets 80).
+
+The list above describes the first fix, in `c480ef8`. The verification
+pass below moved it out of `query.dart`: the raw write and the fetch path
+are upstream's again.
+
+#### Verification pass (GPT-6.1-Sol, over `447e5dc`)
+
+A fresh pass over the R1 to R3 fixes. Two P2s, both introduced by R1's fix
+in `query.dart`; R2 and R3 confirmed. Each reproduced with the reviewer's
+probes against `447e5dc` before anything changed.
+
+| # | What it was | Reproduced | Outcome |
+|---|---|---|---|
+| R4 (P2) | the raw `setQueryData` under a clock that writes or resets the same entry: the clock ran before the reducer read the state, so `dataUpdateCount` and what a listener heard left the parent's and upstream's | yes: `inner-write … count=3`, `reset … count=1`; parent and upstream at the pin `count=2` for both | `query.dart` reverted to `0d83afc` byte for byte. "the client's write reads the clock where upstream does (R4)" holds the reviewer's six rows as upstream prints them; red against `447e5dc` (`inner-write … count=3`), green after |
+| R5 (P2) | a fetch whose `structuralSharing` removes the entry read the clock after losing ownership; a clock that throws then failed a fetch that used to return its result | yes: `sharing-removes-clock-throws result=null error=StateError`; parent `result=42`, no clock read | the same revert. "a fetch whose sharing removes the entry never reads the clock (R5)", with a counting and a throwing clock; red against `447e5dc` (`Expected: <0> Actual: <1>`), green after |
+
+**R1's fix moved to the typed write.** The product owner's reasoning: the
+raw path's fidelity to upstream is worth more than holding a pathological
+clock to the rule inside the code every path shares. `_write` reads
+`updatedAt ?? clock.now()` before `setData` and passes it as the caller's
+time, so the clock runs before sharing and the existing `canCommit` guard
+catches what it did to the entry. Measured and dropped: a check after
+`setData` that the cache still holds the same `Query` (identity cannot
+tell a pre-store removal by the clock from a `QueryUpdated` listener's
+removal after the store; in a scratch copy all four "what a listener does
+in answer to the write comes after it" cases threw, and the five R1 cases
+heard `updated` for the removed entry before the throw). Visible on the
+typed path only: a listener hears the read time in a typed write's
+`QuerySuccessAction` where the raw write's carries `null` (the entry's
+`dataUpdatedAt` is the same while the clock stands still during sharing,
+and earlier by the time sharing took when it moves; R6 of the final
+pass, measured at 25 ms), and a clock that writes the entry itself is
+counted (`dataUpdateCount` 3, not the parent's 2).
+
+Tests: R1's typed cases unchanged, red against the reverted `query.dart`
+with `447e5dc`'s `query_definition.dart` (`Expected: <Instance of
+'StateError'> Actual: <null>`, five calls and the infinite four), green
+after. Changed back, because they pinned the regression: the fetch
+neighbour, now "a fetched result is stored in the object the clock
+removed" expecting the parent's `['removed', 'updated']`; and "what a
+listener hears", whose typed half now expects the typed write's time. New:
+R4, R5, and "a clock that replaces the entry, or writes it itself"
+(replacement red without the fix). The reviewer's `raw_clock.dart` prints
+upstream's six rows on the checkout, `fetch_clock.dart` the parent's lines,
+and the original R1 probe `error=threw cached=null` for all five calls.
+
+Core 1459 VM / 1453 browser (+3 each), 1459 on the floor, line coverage
+99.84 %; every consumer suite unchanged and green (binding 659, hooks 361,
+hooks example 62, showcase 345, task manager 46, doc snippets 80).
+
+#### Final verification pass (GPT-6.1-Sol, over `899c7b3`, scoped to `447e5dc..899c7b3`)
+
+The third pass, bounded to the diff before it. No P1 or P2: `query.dart`
+is byte for byte `0d83afc`, the raw and fetch probes print the parent's
+lines (and upstream's six raw lines at the pin), R1 throws for all five
+typed writes on Dart 3.6.2, 3.10.7 and 3.13.4, VM and dart2js `-O4`
+(30 of 30), forty ordinary raw/typed timestamp scenarios per SDK agree
+(plain, infinite, `updateAll`, a standing clock, an explicit
+`updatedAt`), and each changed or new test fails for the mutation it
+names. One P3, R6, reproduced: the statements that a typed write stores
+the same `dataUpdatedAt` as the raw write held only while the clock
+stands still during `structuralSharing`; under a moving clock and a
+25 ms sharing callback the typed value was dated 25 ms earlier, because
+it reads the clock before sharing. Fixed in wording (`_write`'s and
+`QueryEntryRef.write`'s dartdoc, this record); no code changed. The
+review round ends here.

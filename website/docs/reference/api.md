@@ -19,6 +19,28 @@ dartdoc, which has the full signature and the longer explanation.
 | [Caches and observers](caches-and-observers.md) | `QueryCache` and `MutationCache` with their events, `Query` and `Mutation`, the observers, the filters, and the focus, online and notify managers. |
 | [Errors](errors.md) | Every error either package throws or records, and every check a debug build runs. |
 
+## Typed query definitions
+
+Ten types of the core, all exported by both packages, make up [typed query
+definitions](../guides/typed-queries.md). They arrive in `query_kit` 1.1.0
+and `query_kit_flutter` 1.2.0.
+
+| Type | What it is |
+|---|---|
+| `QueryDefinition<T>` | A query with no input, declared once: a namespace, a name, a fetch function, an optional `configure`. It is its own reference. |
+| `QueryFamily<TInput, T>` | One query per input. Calling it gives a `QueryRef<T>`; `readAll` and `updateAll` reach every cached entry of the family. |
+| `InfiniteQueryDefinition<TPageData, TPageParam>` | A paged query with no input: a page function and the paging functions. It is its own reference. |
+| `InfiniteQueryFamily<TInput, TPageData, TPageParam>` | One paged query per input. Calling it gives an `InfiniteQueryRef`. |
+| `QueryRef<T>` | A reference to one entry: `options()` for any reader, `fetch`, and the reads and writes of `QueryEntryRef`. |
+| `InfiniteQueryRef<TPageData, TPageParam>` | The same for a paged entry, whose data is `InfiniteData<TPageData, TPageParam>`. |
+| `QueryEntryRef<T>` | What both references share: `key`, `read`, `state`, `write`, `update`. Sealed. |
+| `TypedQueryKey<T>` | The reference's handle on its entry's data: `rawKey`, `read`, `state`, `write`, `update`. A value, and what a rollback snapshot holds. |
+| `QueryNamespace` | A key prefix with no data type, under which definitions are declared. |
+| `QueryTarget` | Anything that can be invalidated, refetched, cancelled, reset or removed: a namespace, a family, a reference. `filters()` gives the matching `QueryFilters`. Sealed. |
+
+The dartdoc of each is under
+[pub.dev/documentation/query_kit](https://pub.dev/documentation/query_kit/latest/).
+
 A typical app touches them in that order: it builds a [client](query-client.md)
 with some defaults, describes its queries with [options](query-options.md),
 reads [results](results.md) through [a widget or a
@@ -52,6 +74,7 @@ open `doc/api/index.html`. For a package in your pub cache, run it there.
 |---|---|
 | the whole imperative surface | [`QueryClient`](query-client.md) |
 | what a widget is handed | [`QueryResult`](results.md#queryresult), and its `QueryPending` / `QuerySuccess` / `QueryError` cases |
+| a query declared once, with its key and its type | [typed query definitions](#typed-query-definitions), then [the guide](../guides/typed-queries.md) |
 | every option and what unset means | [the options](query-options.md), then [the option values](query-options.md#option-values) |
 | paging | [the infinite fields](query-options.md#infinite-query-fields), [`InfiniteData`](results.md#infinitedata), [`InfiniteQueryObserver`](caches-and-observers.md#infinitequeryobserver) |
 | writes | [the mutation fields](query-options.md#mutation-fields), [`MutationResult`](results.md#mutationresult), [`MutationController`](widgets-and-controllers.md#mutationcontroller) |

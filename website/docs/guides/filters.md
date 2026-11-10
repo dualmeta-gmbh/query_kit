@@ -46,8 +46,47 @@ operations that take them: `invalidateQueries`, `refetchQueries`,
 always counts queries that are fetching right now, so a `fetchStatus` passed
 to it is ignored rather than combined.
 
-In an app, the key factory does most of the work, and the other fields cut
-the set down:
+In an app, the key and `exact` come from a target — a namespace, a family or
+a reference of the [typed query definitions](typed-queries.md) — and the
+other fields cut the set down. A target's own methods cover the common
+cases, and its `filters()` hands the rest to any call that takes filters:
+
+```dart snippet="guides/filters.md#typed-query-filters"
+// Every device query, lists and details alike.
+await DeviceQueries.namespace.invalidate(client);
+
+// The kitchen's list only: a reference matches its own key exactly.
+await deviceQueries.list('kitchen').refetch(client);
+
+// Device details nobody is showing: dropped, not refetched.
+client.removeQueries(
+  filters: deviceQueries.detail.filters(type: QueryTypeFilter.inactive),
+);
+
+// Only what has gone stale, for a pull-to-refresh that skips fresh data.
+await client.refetchQueries(
+  filters: DeviceQueries.namespace.filters(stale: true),
+);
+
+// How many device requests are out right now — for a spinner.
+final loading = client.isFetching(
+  filters: DeviceQueries.namespace.filters(),
+);
+```
+
+| Target | `queryKey` | `exact` |
+|---|---|---|
+| a reference, `deviceQueries.list('kitchen')` | its key, `['devices', 'list', 'kitchen']` | `true` |
+| a family, `deviceQueries.list` | `['devices', 'list']` | `false`: every room |
+| a namespace, `DeviceQueries.namespace` | `['devices']` | `false`: everything under it |
+
+The declarations are on the [query invalidation](query-invalidation.md#keys-decide-what-an-invalidation-reaches)
+page. A filter without a key — every query in the error state, say — needs
+no target.
+
+### With raw keys
+
+A key factory does the same work by hand:
 
 ```dart snippet="guides/filters.md#query-filters"
 // Every device query, lists and details alike.
@@ -160,7 +199,9 @@ void Function() logKitchen(QueryClient client) =>
     });
 ```
 
-`MutationFilters` has the same `matches(mutation)`.
+A target's `filters()` is such a value too, so
+`deviceQueries.list.filters().matches(event.query)` asks the same of every
+room's list. `MutationFilters` has the same `matches(mutation)`.
 
 The [`invalidation-and-filters` screen](../examples/invalidation-and-filters.mdx) runs these fields against a small
 cache. Tick *Fail post 2 next*, press *Refetch post 2*, then *Predicate:

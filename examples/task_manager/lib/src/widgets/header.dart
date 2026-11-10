@@ -9,22 +9,19 @@ library;
 import 'package:flutter/material.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
-import '../api.dart';
-import '../models.dart';
 import '../queries.dart';
 import '../theme.dart';
 
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
-  const AppHeader({super.key, required this.api});
+  const AppHeader({super.key, required this.queries});
 
-  final TaskApi api;
+  final TaskQueries queries;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
   @override
   Widget build(BuildContext context) {
-    final client = QueryClientProvider.of(context);
     return AppBar(
       shape: Border(bottom: BorderSide(color: AppColors.border)),
       title: Row(
@@ -50,9 +47,8 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
         Padding(
           padding: const EdgeInsets.only(right: 20),
           child: Center(
-            child:
-                QuerySelectBuilder<TaskListResponse, ({int synced, int total})>(
-              options: syncedTasksQuery(client, api),
+            child: QuerySelectBuilder(
+              options: syncedTasks(queries),
               builder: (context, result) => switch (result) {
                 QuerySuccess(:final data) => StatusPill(
                     label: '${data.synced} of ${data.total} synced',

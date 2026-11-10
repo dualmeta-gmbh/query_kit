@@ -3,8 +3,9 @@
 // human maintainer set the goals and reviews releases, but did not write the
 // code.
 //
-// A one-file tour: a provider, a query read two ways, and a mutation that
-// invalidates it. No server — the "API" is a delay and a list.
+// A one-file tour: a query declared once as a typed definition, a provider,
+// the query read two ways, and a mutation that invalidates it. No server:
+// the "API" is a delay and a list.
 //
 //   flutter run
 import 'package:flutter/material.dart';
@@ -26,27 +27,37 @@ class Api {
 }
 
 final api = Api();
-final tasksKey = QueryKey(<Object?>['tasks']);
 
-Future<List<String>> fetchTasks(QueryFunctionContext context) => api.list();
+/// Every query of the app, declared once: its key, its fetch function and
+/// its data type, with the type arguments written out.
+final class TaskQueries {
+  TaskQueries(this._api);
 
-QueryObserverOptions<List<String>> tasksQuery() => QueryObserverOptions(
-      queryKey: tasksKey,
-      queryFn: fetchTasks,
+  final Api _api;
+
+  /// Every key below starts with 'tasks'.
+  static final QueryNamespace namespace = QueryNamespace(<Object?>['tasks']);
+
+  /// The task names, under the key ['tasks', 'list'].
+  late final list = QueryDefinition<List<String>>(
+    namespace: namespace,
+    name: 'list',
+    queryFn: (context) => _api.list(),
+    configure: (base) => base.copyWith(
       staleTime: const StaleTime.duration(Duration(seconds: 30)),
-    );
+    ),
+  );
+}
+
+final tasks = TaskQueries(api);
 
 /// The same entry, reduced to one flag. A `select` shares the cache entry;
 /// its reader still rebuilds whenever the *result* changes — `fetchStatus`
 /// and `dataUpdatedAt` are part of it, so every refetch is a rebuild, which
 /// is exactly what a spinner needs. `select` keeps `data` stable, and
 /// `buildWhen` on a builder is what would skip the rebuild.
-QuerySelectOptions<List<String>, bool> fetchingQuery() => QuerySelectOptions(
-      queryKey: tasksKey,
-      queryFn: fetchTasks,
-      staleTime: const StaleTime.duration(Duration(seconds: 30)),
-      select: (_) => true,
-    );
+QuerySelectOptions<List<String>, bool> fetchingQuery() =>
+    tasks.list.options().withSelect((_) => true);
 
 void main() {
   runApp(
@@ -63,8 +74,10 @@ class TasksScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // One of the four equal call styles: read in build. The widget rebuilds
-    // when the result changes.
-    final tasks = context.query(tasksQuery());
+    // when the result changes. A reference's `options()` are the options
+    // every call style takes, and the result's data type, `List<String>`,
+    // comes from the definition.
+    final list = context.query(tasks.list.options());
     // The client, taken here in `build` rather than inside the callback
     // below. A mutation outlives the widget that started it — disposing its
     // controller does not cancel it — so `onSuccess` can run after this
@@ -77,9 +90,7 @@ class TasksScreen extends StatelessWidget {
     final add = context.mutation(
       MutationOptions.simple(
         mutationFn: api.add,
-        onSuccess: (_, __, ___) => client.invalidateQueries(
-          filters: QueryFilters(queryKey: tasksKey),
-        ),
+        onSuccess: (_, __, ___) => tasks.list.invalidate(client),
       ),
     );
 
@@ -106,7 +117,7 @@ class TasksScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: switch (tasks) {
+      body: switch (list) {
         QueryPending() => const Center(child: CircularProgressIndicator()),
         QueryError(:final error, staleData: null) =>
           Center(child: Text('$error')),

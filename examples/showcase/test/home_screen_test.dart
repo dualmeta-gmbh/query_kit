@@ -18,7 +18,7 @@ import 'package:showcase/routes.dart';
 
 import 'harness.dart';
 
-/// Thirty tiles of two lines each are taller than the default window, and the
+/// Thirty-one tiles of two lines each are taller than the default window, and the
 /// lazy list builds only what is in view. The size is a fact about this
 /// screen and stays here (see the README's "Writing a screen").
 void tall(WidgetTester tester) {

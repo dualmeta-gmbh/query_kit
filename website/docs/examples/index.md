@@ -45,6 +45,7 @@ promises can therefore be one higher if you clicked away in between.
     'combine',
     'initial-and-placeholder',
     'select-and-sharing',
+    'typed-queries',
   ]}
 />
 

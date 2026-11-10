@@ -34,26 +34,30 @@ log viewer jumped to a timestamp, a long timeline of sensor readings.
 
 ## The code
 
-Both directions read their cursor off the page the backend sent, and
-`maxPages` caps the window. The page function's context carries `pageParam`,
-`signal` and `direction`:
+The query is declared once, as an [infinite
+definition](../guides/typed-queries.md#infinite-definitions). Both directions
+read their cursor off the page the backend sent, and `maxPages`, set in its
+`configure`, caps the window. The page function's context carries
+`pageParam`, `signal` and `direction`:
 
 <DartSource
   source={screen}
   path="examples/showcase/lib/features/max_pages/max_pages_screen.dart"
-  from="InfiniteQueryObserverOptions<ProjectSlice, int> projectsWindowQuery("
-  end="    );"
+  from="late final window = InfiniteQueryDefinition<ProjectSlice, int>("
+  end="  );"
 />
 
-The screen holds the query as an `InfiniteQueryController`, created in
-`initState` and disposed with the state, and rebuilds through a
-`ListenableBuilder`:
+The screen hands the definition's `options()` to an
+`InfiniteQueryController`, created the first time the state meets the api
+and disposed with the state, and rebuilds through a `ListenableBuilder`. An
+api replaced above the screen makes the definition again, and the same
+controller takes its options:
 
 <DartSource
   source={screen}
   path="examples/showcase/lib/features/max_pages/max_pages_screen.dart"
-  from="_window = InfiniteQueryController<ProjectSlice, int, ProjectWindow>("
-  end="    );"
+  from="void didChangeDependencies() {"
+  end="  }"
 />
 
 Which end is loading is on the controller, not on the sealed result, so the

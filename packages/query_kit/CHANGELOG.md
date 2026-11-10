@@ -1,5 +1,84 @@
 # Changelog
 
+## 1.1.0
+
+Typed query definitions. A definition declares a query once, with its key,
+its input, its data type and its options. Calling it gives a reference to one
+cache entry, and the reference reads, writes, fetches and invalidates that
+entry with the declared type, so a call site names no key and no type
+argument.
+
+**The new types**
+
+- `QueryDefinition` and `QueryFamily` declare a query without and with an
+  input. `InfiniteQueryDefinition` and `InfiniteQueryFamily` do the same for
+  a paged query.
+- `QueryRef` and `InfiniteQueryRef` are references to one entry. A family
+  gives one when it is called with an input, and a definition without an
+  input is its own reference. `QueryEntryRef` is what the two have in
+  common, for a function that needs only the cache.
+- `TypedQueryKey` is a reference's key together with its data type.
+- `QueryNamespace` is a key prefix with no data type, and `QueryTarget` is
+  anything that can be invalidated, refetched, cancelled, reset or removed:
+  a namespace, a family or a reference.
+
+A reference's `options()` are ordinary observer options, so they go
+wherever options went before. References and typed keys are values: two
+are equal when they address the same entry with the same data type.
+
+**What is checked, and when**
+
+- The analyzer refuses a misspelled definition, an input of the wrong type,
+  a written value or an updater result of the wrong type, and a read
+  assigned to the wrong type. A namespace and a target have no write.
+- Some mistakes are found only when the code runs. Write every
+  definition's type arguments out: left to inference, a family's input or
+  an infinite definition's page type can become `Object?`, or a key-only
+  definition's data type `dynamic`, and the analyzer does not always say
+  so. A debug build refuses such a definition with an `AssertionError`; a
+  release build does not check. A reference assigned to a wider type, a
+  cast, or a list literal of references of different data types compiles
+  a write of the wrong type, and the write throws when it runs, before
+  anything is stored. A typed write into an entry of another
+  type throws `QueryDataTypeError`.
+- Nothing checks a raw call on a definition's key, or two definitions of
+  one key and one data type with different fetch functions, which are one
+  entry. A record input that holds a list, a map or a set needs a `keyOf`,
+  or every call is a new entry.
+
+The [typed queries guide](https://query-kit.dev/docs/guides/typed-queries)
+lists every limit, with what each one costs and how to avoid it.
+
+**Writes**
+
+A typed write stores into the entry the cache holds when the value is
+stored, or throws. It throws `QueryDataTypeError` when an entry of another
+type has taken that entry's place, and `StateError` when a cache listener or
+the entry's own `structuralSharing` removed the entry during the write. It
+never reports a value it did not store. A bulk `updateAll` checks every
+updater's result and every entry's type before the first write, but it is
+not a transaction: a write that fails after others leaves those in place.
+
+**Equal options**
+
+The options of a definition without an input, held in a field, are equal
+from one `options()` call to the next once the client has applied its
+defaults, so an observer handed them again does not report a change. That
+holds as long as `configure` builds nothing new per call. For an infinite
+definition it holds when `configure` returns the same `structuralSharing`
+function or the same `InitialData.compute` function each time; a closure
+written inside `configure` is a new function on every call. A family
+declared with a fetch function wraps it anew for every reference's
+`options()`, so those options are never equal.
+
+**Unchanged**
+
+The raw `QueryKey` API is unchanged and not deprecated. A reference and a
+raw key with the same parts are the same cache entry, so an app can move
+one query at a time, and both forms can read the same entry. The README's
+quick start now leads with a typed definition, and shows the raw form after
+it.
+
 ## 1.0.4
 
 - Move the documentation to https://query-kit.dev/. Update homepage,

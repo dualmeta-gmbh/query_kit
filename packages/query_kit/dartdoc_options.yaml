@@ -28,6 +28,8 @@ dartdoc:
       markdown: doc/categories/errors.md
     "Managers":
       markdown: doc/categories/managers.md
+    "Typed queries":
+      markdown: doc/categories/typed-queries.md
     "Advanced":
       markdown: doc/categories/advanced.md
   categoryOrder:
@@ -45,4 +47,5 @@ dartdoc:
     - "Structural sharing"
     - "Errors"
     - "Managers"
+    - "Typed queries"
     - "Advanced"

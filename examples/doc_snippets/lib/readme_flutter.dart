@@ -12,7 +12,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
-import 'doc_snippets.dart' show MyApp, Task, api;
+import 'doc_snippets.dart' show Api, MyApp, Task, api;
 
 /// One client, above everything that reads it.
 void readmeSetup() {
@@ -28,9 +28,30 @@ void readmeSetup() {
   // <<<
 }
 
+// >>> packages/query_kit_flutter/README.md#definitions
+final class TaskQueries {
+  TaskQueries(this._api);
+
+  final Api _api;
+
+  static final QueryNamespace namespace = QueryNamespace(<Object?>['tasks']);
+
+  late final list = QueryDefinition<List<Task>>(
+    namespace: namespace,
+    name: 'list',
+    queryFn: (context) => _api.listTasks(signal: context.signal),
+    configure: (base) => base.copyWith(
+      staleTime: const StaleTime.duration(Duration(seconds: 30)),
+    ),
+  );
+}
+
+final tasks = TaskQueries(api);
+// <<<
+
 // >>> packages/query_kit_flutter/README.md#query-options
 QueryObserverOptions<List<Task>> tasksQuery() => QueryObserverOptions(
-      queryKey: QueryKey(<Object?>['tasks']),
+      queryKey: QueryKey(<Object?>['tasks', 'list']),
       queryFn: (context) => api.listTasks(signal: context.signal),
       staleTime: const StaleTime.duration(Duration(seconds: 30)),
     );
@@ -42,9 +63,9 @@ class TasksScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tasks = context.query(tasksQuery());
+    final result = context.query(tasks.list.options());
 
-    return switch (tasks) {
+    return switch (result) {
       QueryPending() => const Center(child: CircularProgressIndicator()),
       QueryError(:final error) => Center(child: Text('$error')),
       QuerySuccess(:final data) => ListView(
@@ -59,7 +80,7 @@ class TasksScreen extends StatelessWidget {
 Widget readmeBuilder() =>
     // >>> packages/query_kit_flutter/README.md#builder
     QueryBuilder<List<Task>>(
-      options: tasksQuery(),
+      options: tasks.list.options(),
       builder: (context, result) => switch (result) {
         QueryPending() => const Center(child: CircularProgressIndicator()),
         QueryError(:final error) => Center(child: Text('$error')),
@@ -81,18 +102,18 @@ class TasksPage extends StatefulWidget {
 class _TasksPageState extends State<TasksPage> with QueryMixin {
   @override
   Widget build(BuildContext context) {
-    final tasks = watchQuery(tasksQuery());
+    final result = watchQuery(tasks.list.options());
 
-    return Text('${tasks.dataOrNull?.length ?? 0} tasks');
+    return Text('${result.dataOrNull?.length ?? 0} tasks');
   }
 }
 // <<<
 
 void readmeController(QueryClient client) {
   // >>> packages/query_kit_flutter/README.md#controller
-  final tasks = QueryController.create(client, tasksQuery());
-  // … tasks.value, tasks.addListener, tasks.refetch() …
-  tasks.dispose();
+  final list = QueryController.create(client, tasks.list.options());
+  // … list.value, list.addListener, list.refetch() …
+  list.dispose();
   // <<<
 }
 
@@ -110,9 +131,7 @@ class AddTaskButton extends StatelessWidget {
       MutationOptions.simple(
         mutationFn: api.addTask,
         // Mark the list stale; everyone reading it refetches.
-        onSuccess: (_, __, ___) => client.invalidateQueries(
-          filters: QueryFilters(queryKey: QueryKey(<Object?>['tasks'])),
-        ),
+        onSuccess: (_, __, ___) => tasks.list.invalidate(client),
       ),
     );
 

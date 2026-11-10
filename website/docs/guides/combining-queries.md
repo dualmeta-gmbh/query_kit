@@ -135,7 +135,10 @@ A source the screen can do without is `optional()`: it never blocks and never
 fails the combination — its value is `null` until there is one — while
 `isFetching` still sees it and `retry()` still refetches it when the query
 behind it failed. And a **list** of results of one type, a
-`QueriesController`'s value, combines by the same rules:
+`QueriesController`'s value, combines by the same rules. One type is the
+point: references of two data types belong in a record, as above, not in one
+list, which would infer `Object` (see the
+[typed definitions' limits](typed-queries.md#limits)):
 
 ```dart snippet="guides/combining-queries.md#combine-optional-and-lists"
 CombinedResult<String> taskWithOptionalComments(

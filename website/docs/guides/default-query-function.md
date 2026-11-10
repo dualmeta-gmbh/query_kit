@@ -83,7 +83,32 @@ class ApiClient {
 ```
 
 A query is then nothing but its key — and, because the function hands back
-raw JSON, a `select` that parses it:
+raw JSON, a `select` that parses it. As a
+[typed query definition](typed-queries.md), it is a family without a fetch
+function, whose `keyOf` spells the request:
+
+```dart snippet="guides/default-query-function.md#typed-keyed-queries"
+// lib/data/device_queries.dart — no queryFn: the default for ['api'] serves
+// it. `Object` says "some JSON", not which JSON: `select` checks the shape.
+final QueryFamily<String, Object> roomDevicesJson = QueryFamily<String, Object>(
+  namespace: QueryNamespace(<Object?>['api']),
+  name: '/devices',
+  // ['api', '/devices', {'room': room}]
+  keyOf: (room) => <Object?>[
+    <String, Object?>{'room': room},
+  ],
+);
+
+QuerySelectOptions<Object, List<Device>> apiRoomDevices(String room) =>
+    roomDevicesJson(room).options().withSelect(parseDevicesJson);
+
+List<Device> parseDevicesJson(Object json) => <Device>[
+      for (final item in json as List<Object?>)
+        Device.fromJson(item! as Map<String, Object?>),
+    ];
+```
+
+With raw keys, the options write the key out:
 
 ```dart snippet="guides/default-query-function.md#keyed-queries"
 // lib/data/device_queries.dart — no queryFn: the key is the request.
@@ -125,6 +150,11 @@ data type fails the fetch with a `QueryDataTypeError`.
   `QuerySelectOptions<Object?, List<Device>>`. The cache holds the JSON,
   every reader gets the typed list, and a top-level `select` function parses
   once per fetch rather than once per build.
+- A **definition without a fetch function** names its type all the same:
+  `QueryFamily<String, Object>` above. `Object` rather than `Object?`, which
+  a definition refuses in debug builds — so a JSON `null` answer fails the
+  fetch. `Object` says "some JSON", not which: the `select` is still what
+  checks the shape.
 
 ## Mutations too
 

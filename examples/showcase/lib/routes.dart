@@ -38,6 +38,7 @@ import 'features/retry/retry_screen.dart';
 import 'features/select_and_sharing/select_and_sharing_screen.dart';
 import 'features/simple/simple_screen.dart';
 import 'features/stale_and_gc/stale_and_gc_screen.dart';
+import 'features/typed_queries/typed_queries_screen.dart';
 import 'home_screen.dart';
 import 'shared/feature.dart';
 
@@ -57,6 +58,7 @@ final List<FeatureEntry> featureEntries = <FeatureEntry>[
   FeatureEntry(parallelQueriesFeature, (_) => const ParallelQueriesScreen()),
   FeatureEntry(queryCollectionsFeature, (_) => const QueryCollectionsScreen()),
   FeatureEntry(combineFeature, (_) => const CombineScreen()),
+  FeatureEntry(typedQueriesFeature, (_) => const TypedQueriesScreen()),
   FeatureEntry(prefetchingFeature, (_) => const PrefetchingScreen()),
   FeatureEntry(selectAndSharingFeature, (_) => const SelectAndSharingScreen()),
   FeatureEntry(buildWhenFeature, (_) => const BuildWhenScreen()),

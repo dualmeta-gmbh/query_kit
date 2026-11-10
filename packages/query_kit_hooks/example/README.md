@@ -19,9 +19,14 @@ calls every hook the package exports, each where an app would call it:
 | `useMutationState` | the shell | the todo writes that failed, and the last reason |
 | `useTypedMutationState` | Todos tab | the text of every todo still being added, shown as a pending row; the todos with a tick in flight, whose boxes take no other |
 
-`lib/src/queries.dart` holds every key, query and mutation in one place; the
+`lib/src/queries.dart` holds every query and mutation in one place; the
 widgets in `posts.dart`, `todos.dart` and `projects.dart` say which hook reads
-what.
+what. Todos and projects are typed query definitions: `TodoQueries` and
+`ProjectQueries` each hold a namespace and its queries, and a widget reads one
+through its reference, `useQuery(todos.list.options())`, with no key and no
+type argument; the todo writes cancel, update and invalidate the list through
+the same reference. Posts keep the raw form, a `QueryKey` and an options
+function per query, so the app shows both, reading one cache.
 
 ## Run it
 

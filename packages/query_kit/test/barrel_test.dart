@@ -56,4 +56,62 @@ void main() {
   test('R3-1 the set walk\'s bucket function stays hidden', () {
     expect(hidden('structural_sharing'), {'sharingBucketOf'});
   });
+
+  // The typed query definitions add ten types and nothing else: no typedef,
+  // no top-level function, no extension (the plan's "Final surface").
+  test('the typed query library exports ten types, and only types', () {
+    expect(hidden('query_definition'), isEmpty);
+    expect(
+      <Type>[
+        QueryTarget,
+        QueryNamespace,
+        TypedQueryKey,
+        QueryEntryRef,
+        QueryRef,
+        InfiniteQueryRef,
+        QueryDefinition,
+        QueryFamily,
+        InfiniteQueryDefinition,
+        InfiniteQueryFamily,
+      ],
+      hasLength(10),
+    );
+
+    final lines = File('lib/src/query_definition.dart').readAsLinesSync();
+    final classes = <String>{};
+    final others = <String>[];
+    final classPattern = RegExp(r'^(?:[a-z]+ )*class (\w+)');
+    final namePattern = RegExp(r'(\w+)(?:<[\w, ]*>)?\(');
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      // A declaration starts in the first column.
+      if (!line.startsWith(RegExp('[A-Za-z]')) ||
+          line.startsWith('import ') ||
+          line.startsWith('library')) {
+        continue;
+      }
+      final declared = classPattern.firstMatch(line);
+      if (declared != null) {
+        classes.add(declared.group(1)!);
+        continue;
+      }
+      // A function, whose name may be on the line after its return type.
+      final name = namePattern.firstMatch('$line ${lines[i + 1]}')?.group(1);
+      others.add(name ?? line);
+    }
+    expect(classes.where((name) => !name.startsWith('_')), {
+      'QueryTarget',
+      'QueryNamespace',
+      'TypedQueryKey',
+      'QueryEntryRef',
+      'QueryRef',
+      'InfiniteQueryRef',
+      'QueryDefinition',
+      'QueryFamily',
+      'InfiniteQueryDefinition',
+      'InfiniteQueryFamily',
+    });
+    expect(others, isNotEmpty);
+    expect(others.where((name) => !name.startsWith('_')), isEmpty);
+  });
 }

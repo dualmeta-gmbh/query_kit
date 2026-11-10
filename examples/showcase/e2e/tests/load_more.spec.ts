@@ -12,7 +12,7 @@ test.use({ viewport: { width: 1280, height: 1100 } })
 const listFact = (page: Page, text: string) => factIn(page, 'projects facts', text)
 
 
-// The About view's facts, read off the cache with `getInfiniteQueryData`.
+// The About view's facts, read off the cache with the definition's `read`.
 const aboutFact = (page: Page, text: string) => factIn(page, 'about facts', text)
 
 /// How many project requests asked for `cursor` — the path is the same for
@@ -147,7 +147,7 @@ test('going to About and back shows the pages from the cache, no request', async
   expect(await scenario.count('GET', /^\/api\/projects$/)).toBe(2)
 })
 
-test('About reads the pages off the cache with getInfiniteQueryData, no observer and no request', async ({
+test('About reads the pages off the cache through the definition, no observer and no request', async ({
   page,
   open,
   scenario,

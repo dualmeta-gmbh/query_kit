@@ -37,7 +37,7 @@ Or by hand, in `pubspec.yaml`:
 dependencies:
   flutter:
     sdk: flutter
-  query_kit_flutter: ^1.0.0
+  query_kit_flutter: ^1.2.0
 ```
 
 The binding re-exports the core, so one import gives you the whole surface —

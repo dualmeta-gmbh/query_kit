@@ -5,8 +5,13 @@
 /// paging back slides it again; a refetch re-requests exactly the pages the
 /// window holds, first to last, and every row's `fetched` stamp moves.
 ///
-/// The query is an `InfiniteQueryController` created in `initState` and read
-/// through a `ListenableBuilder`; the paging half — `hasNextPage`,
+/// The query is declared once, as an `InfiniteQueryDefinition` that starts
+/// from a cursor and sets `maxPages` in its `configure`. Its `options()` go
+/// to an `InfiniteQueryController` the screen's state holds, read through a
+/// `ListenableBuilder`, and the debug strip takes its key: no key is
+/// written anywhere else. The definition's two type arguments are written
+/// out, because the paging functions read the page and Dart cannot infer
+/// the page type from them. The paging half — `hasNextPage`,
 /// `isFetchingPreviousPage`, `fetchNextPage` — lives on the controller, not
 /// on the sealed result. The page function receives an `InfinitePageContext`,
 /// whose `direction` says which end of the window a fetch extends: the screen
@@ -24,7 +29,8 @@
 /// direction (`hasNextPage=false`, button disabled) and cursor 0 the backward
 /// one; and `lastPage` says `40 forward` after `Load next`, `20 backward`
 /// after `Load previous`, and the window's last cursor `forward` after a
-/// refetch.
+/// refetch; and after the api is replaced above the screen, the next refetch
+/// goes to the new one and not to the old.
 library;
 
 import 'package:flutter/material.dart';
@@ -46,11 +52,6 @@ const Feature maxPagesFeature = Feature(
   upstream: 'infinite-query-with-max-pages',
 );
 
-/// The window's cache entry — its own key, so the pagination and load-more
-/// screens' project entries are untouched by what happens here.
-QueryKey get projectsWindowKey =>
-    QueryKey(const <Object?>['projects', 'window']);
-
 /// Ten rows per page; the backend has a hundred, ids 0 to 99.
 const int pageSize = 10;
 
@@ -63,30 +64,45 @@ const int windowSize = 3;
 
 typedef ProjectWindow = InfiniteData<ProjectSlice, int>;
 
-/// The window's options. The cursors come back with every slice, so the
-/// paging functions read them off the page rather than counting. [onPage]
-/// hears each page fetch with what the page function was told about it: the
-/// cursor and the direction — `forward` for `fetchNextPage`, the first page
-/// and every page of a refetch, `backward` for `fetchPreviousPage`.
-InfiniteQueryObserverOptions<ProjectSlice, int> projectsWindowQuery(
-  ShowcaseApi api, {
-  void Function(int cursor, FetchDirection direction)? onPage,
-}) =>
-    InfiniteQueryObserverOptions<ProjectSlice, int>(
-      queryKey: projectsWindowKey,
-      initialPageParam: startCursor,
-      pageFn: (context) {
-        onPage?.call(context.pageParam, context.direction);
-        return api.projectsFrom(
-          context.pageParam,
-          limit: pageSize,
-          signal: context.signal,
-        );
-      },
-      getNextPageParam: (page, _, __, ___) => page.nextId,
-      getPreviousPageParam: (page, _, __, ___) => page.previousId,
-      maxPages: windowSize,
-    );
+/// The screen's query, declared once with what it fetches with: the api,
+/// and [onPage], which hears each page fetch with what the page function was
+/// told about it — the cursor and the direction, `forward` for
+/// `fetchNextPage`, the first page and every page of a refetch, `backward`
+/// for `fetchPreviousPage`.
+final class MaxPagesQueries {
+  MaxPagesQueries(this._api, {this.onPage});
+
+  final ShowcaseApi _api;
+
+  final void Function(int cursor, FetchDirection direction)? onPage;
+
+  /// Everything about projects. A namespace claims no data type; it is the
+  /// prefix the definition below is declared under.
+  static final QueryNamespace namespace =
+      QueryNamespace(const <Object?>['projects']);
+
+  /// The window, under `['projects', 'window']` — its own entry, so the
+  /// pagination and load-more screens' project entries are untouched by
+  /// what happens here. It starts from [startCursor]; the cursors come back
+  /// with every slice, so the paging functions read them off the page
+  /// rather than counting.
+  late final window = InfiniteQueryDefinition<ProjectSlice, int>(
+    namespace: namespace,
+    name: 'window',
+    initialPageParam: startCursor,
+    pageFn: (context) {
+      onPage?.call(context.pageParam, context.direction);
+      return _api.projectsFrom(
+        context.pageParam,
+        limit: pageSize,
+        signal: context.signal,
+      );
+    },
+    getNextPageParam: (page, _, __, ___) => page.nextId,
+    getPreviousPageParam: (page, _, __, ___) => page.previousId,
+    configure: (base) => base.copyWith(maxPages: windowSize),
+  );
+}
 
 class MaxPagesScreen extends StatefulWidget {
   const MaxPagesScreen({super.key});
@@ -96,6 +112,11 @@ class MaxPagesScreen extends StatefulWidget {
 }
 
 class _MaxPagesScreenState extends State<MaxPagesScreen> {
+  /// The api [_definition] was declared over.
+  ShowcaseApi? _api;
+
+  late InfiniteQueryRef<ProjectSlice, int> _definition;
+
   late final InfiniteQueryController<ProjectSlice, int, ProjectWindow> _window;
 
   /// The last page fetch the page function was asked for, as
@@ -104,19 +125,32 @@ class _MaxPagesScreenState extends State<MaxPagesScreen> {
   /// `setState` is needed for it.
   String _lastPage = 'none';
 
+  /// The client lookup does not subscribe: the client is fixed for the life
+  /// of the app. The api lookup does, so an api replaced above the screen
+  /// reaches it: the definition is made again over the new one — the same
+  /// key, the same entry — and handed to the controller, whose next fetch
+  /// goes through the new api.
   @override
-  void initState() {
-    super.initState();
-    // Neither lookup subscribes: the api and the client are fixed for the
-    // life of the app, and a subscribing lookup is not allowed here anyway.
-    final api = context.getInheritedWidgetOfExactType<ShowcaseScope>()!.api;
-    _window = InfiniteQueryController<ProjectSlice, int, ProjectWindow>(
-      QueryClientProvider.read(context),
-      projectsWindowQuery(
-        api,
-        onPage: (cursor, direction) => _lastPage = '$cursor ${direction.name}',
-      ),
-    );
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final api = ShowcaseScope.apiOf(context);
+    if (identical(api, _api)) {
+      return;
+    }
+    final first = _api == null;
+    _api = api;
+    _definition = MaxPagesQueries(
+      api,
+      onPage: (cursor, direction) => _lastPage = '$cursor ${direction.name}',
+    ).window;
+    if (first) {
+      _window = InfiniteQueryController<ProjectSlice, int, ProjectWindow>(
+        QueryClientProvider.read(context),
+        _definition.options(),
+      );
+    } else {
+      _window.setInfiniteOptions(_definition.options());
+    }
   }
 
   @override
@@ -134,7 +168,7 @@ class _MaxPagesScreenState extends State<MaxPagesScreen> {
             builder: (context, _) =>
                 _WindowCard(window: _window, lastPage: _lastPage),
           ),
-          QueryDebugStrip(queryKey: projectsWindowKey, label: 'projects'),
+          QueryDebugStrip(queryKey: _definition.key.rawKey, label: 'projects'),
         ],
       );
 }

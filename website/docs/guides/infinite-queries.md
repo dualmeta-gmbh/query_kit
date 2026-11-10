@@ -8,7 +8,32 @@ description: "Build an infinite scrolling list in Flutter with query_kit. Fetch 
 
 A query whose data is a *list of pages*. Same four call styles; the difference
 is that the function is `pageFn` rather than `queryFn`, and it receives a typed
-page context.
+page context. Declared once, as an
+[infinite definition](typed-queries.md), with both type arguments written out
+— the page and the page parameter:
+
+```dart snippet="guides/infinite-queries.md#feed-definition"
+final QueryNamespace posts = QueryNamespace(<Object?>['posts']);
+
+/// ['posts', 'feed']
+final InfiniteQueryDefinition<List<Post>, int> feed =
+    InfiniteQueryDefinition<List<Post>, int>(
+  namespace: posts,
+  name: 'feed',
+  pageFn: (context) => api.feed(cursor: context.pageParam),
+  initialPageParam: 0,
+  getNextPageParam: (page, pages, pageParam, pageParams) =>
+      page.isEmpty ? null : pageParam + page.length,
+);
+```
+
+`feed` is a reference to its one entry: `feed.options()` is what a reader
+takes, and the entry holds an `InfiniteData<List<Post>, int>`. Without the
+type arguments the page type is lost: a `getNextPageParam` that reads its
+page does not compile, and with a `configure` the pages silently become
+`Object?`, which a debug build refuses when the definition is made.
+
+With raw keys, the same query is options with a key:
 
 ```dart snippet="guides/infinite-queries.md#options"
 InfiniteQueryObserverOptions<List<Post>, int> feedQuery() =>
@@ -62,7 +87,8 @@ if (feed.hasNextPage && !feed.isFetchingNextPage) {
 }
 ```
 
-On the controller: `hasNextPage`, `hasPreviousPage`, `fetchNextPage()`,
+With the definition, the read is `context.infiniteQuery(feed.options())`;
+nothing else changes. On the controller: `hasNextPage`, `hasPreviousPage`, `fetchNextPage()`,
 `fetchPreviousPage()`, `isFetchingNextPage`, `isFetchingPreviousPage`,
 `isFetchNextPageError`, `isFetchPreviousPageError`, `isRefetching`,
 `isRefetchError`.
@@ -85,9 +111,39 @@ Pages are structurally shared **page by page**, so a refetch that returns an
 unchanged page keeps the same instances and the rows built from it do not
 rebuild.
 
-From the client, the typed read is `getInfiniteQueryData<TPageData,
-TPageParam>(key)` rather than `getQueryData` with an `InfiniteData` type
-argument.
+Through the reference, the whole `InfiniteData` is read and written with its
+page types, and `copyWith` replaces its pages:
+
+```dart snippet="guides/infinite-queries.md#typed-data"
+// The whole InfiniteData, typed: no type argument at the call.
+final List<List<Post>>? pages = feed.read(client)?.pages;
+
+// The user's own post, first in the first page. A feed nobody has opened
+// stays empty: returning null writes nothing.
+feed.update(
+  client,
+  (data) => data == null || data.pages.isEmpty
+      ? null
+      : data.copyWith(
+          pages: <List<Post>>[
+            <Post>[post, ...data.pages.first],
+            ...data.pages.skip(1),
+          ],
+        ),
+);
+```
+
+A written value is stored under the declared page types, so a later
+`copyWith` on the cached value takes a page of the declared type. That is
+the infinite definition's doing: a plain `QueryDefinition` whose data type
+is an `InfiniteData` stores what it is given, so declare paged data as an
+infinite definition. A family of feeds, one per input, is an
+`InfiniteQueryFamily<TInput, TPageData, TPageParam>`, three type arguments
+written out.
+
+With raw keys, the typed read from the client is
+`getInfiniteQueryData<TPageData, TPageParam>(key)` rather than `getQueryData`
+with an `InfiniteData` type argument.
 
 ## Scroll-triggered loading
 
