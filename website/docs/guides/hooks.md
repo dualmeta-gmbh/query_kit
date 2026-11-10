@@ -316,8 +316,8 @@ widget. There is no Suspense: each reader shows its own pending state. See
 ## Typed query definitions \{#typed-query-definitions\}
 
 A [typed query definition](typed-queries.md) declares a query's key, its
-input and its data type once. A reference's `options()` are the options the
-hooks take, so the hooks need nothing of their own for it. The samples in
+input and its data type once. A reference's `options()` are ordinary
+options, and every hook takes them as it takes any others. The samples in
 this section read these definitions, with the type arguments written out on
 each:
 
@@ -428,10 +428,10 @@ class RenameTask extends HookWidget {
 }
 ```
 
-Write the type arguments of `MutationOptions`, as here. Without them, Dart
-takes the variables' type from `mutationFn`'s parameter, but not into
-`onMutate`: an `onMutate` parameter without a type is an `Object?`. Type it,
-`onMutate: (String name) async { … }`, or write the type arguments.
+Write the type arguments of `MutationOptions`, as here. Without them, an
+`onMutate` parameter without a type is an `Object?`, even beside a typed
+`mutationFn`. Type it, `onMutate: (String name) async { … }`, or write the
+type arguments.
 
 ### A helper over options is generic
 
