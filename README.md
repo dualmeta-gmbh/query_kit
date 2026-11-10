@@ -52,6 +52,10 @@ ported case by case.
 - **Results the compiler checks.** A query result is a sealed type, so a
   `switch` over pending, error and success is exhaustive and there is no
   `data!`. A failed refetch keeps the data already on screen.
+- **Typed query definitions.** A query's key, input and data type are
+  declared once, and a reference fetches, reads, writes and invalidates its
+  entry with no key and no type argument at the call.
+  [Typed queries](https://query-kit.dev/docs/guides/typed-queries).
 - **A pure-Dart core.** A server or a command-line tool uses the same cache
   without Flutter, and the core's suite also runs compiled to JavaScript.
 - **Built to be tested.** A client is an object, not a global, and time goes

@@ -20,6 +20,9 @@ class Task {
   final String name;
   final bool done;
 
+  Task copyWith({String? name}) =>
+      Task(id: id, name: name ?? this.name, done: done);
+
   @override
   bool operator ==(Object other) =>
       other is Task &&
@@ -52,6 +55,8 @@ class Api {
   Future<void> addTask(String name) async {}
 
   Future<List<Post>> feed({required int cursor}) async => const <Post>[];
+
+  Future<List<Task>> taskPage({required int cursor}) async => const <Task>[];
 }
 
 final Api api = Api();
@@ -82,3 +87,36 @@ InfiniteQueryObserverOptions<List<Post>, int> feedQuery() =>
       getNextPageParam: (page, pages, pageParam, pageParams) =>
           page.isEmpty ? null : pageParam + page.length,
     );
+
+// >>> guides/hooks.md#typed-definitions
+final class TaskQueries {
+  TaskQueries(this._api);
+
+  final Api _api;
+
+  static final QueryNamespace namespace = QueryNamespace(<Object?>['tasks']);
+
+  late final list = QueryDefinition<List<Task>>(
+    namespace: namespace,
+    name: 'list',
+    queryFn: (context) => _api.listTasks(signal: context.signal),
+  );
+
+  late final detail = QueryFamily<String, Task>(
+    namespace: namespace,
+    name: 'detail',
+    queryFn: (id, context) => _api.getTask(id, signal: context.signal),
+  );
+
+  late final pages = InfiniteQueryDefinition<List<Task>, int>(
+    namespace: namespace,
+    name: 'pages',
+    pageFn: (context) => _api.taskPage(cursor: context.pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (page, pages, pageParam, pageParams) =>
+        page.isEmpty ? null : pageParam + page.length,
+  );
+}
+
+final tasks = TaskQueries(api);
+// <<<
