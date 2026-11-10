@@ -3014,3 +3014,45 @@ pin and is pinned as the control.
 | LC-1 | The raw `setQueryData` returns a value it did not store when a `QueryAdded` listener replaces the entry it built; `ref.fetch` under the same listener ends in `CancelledError` and an observer in `QueryDataTypeError` | Left: the raw API does not change, and upstream's `setQueryData` is `build(...).setData(...)` with listeners called synchronously. The typed fetch and observer paths are the client's own and say so by failing loudly. Pinned as the control (`W-4`, one test) |
 | LC-2 | A method torn off inside `configure` gives unequal options on the VM, although two such tear-offs are `==` | Left and stated. Catching it needs a table keyed by equality, which is a strong reference to the last callback, or a `WeakReference` with a callable wrapper class (D4, options (b) and (d)). The cure is one line in the application: tear the method off once, into a field |
 | LC-3 | A same-type entry a listener put in place of the one a write built is written although it carries the listener's options, not the definition's | Left: it is the entry the cache holds, of exactly the declared type, and an entry that exists is written as it is, whoever writes (D5). Refusing it would make a typed write fail in a cache where the raw one succeeds for no type reason |
+
+### Review of the consumers (GPT-6.1-Sol, cd4bc21)
+
+An independent review of the binding's and the hooks' typed suites and of
+the migrated examples at `cd4bc21`, read-only, with probes of its own.
+Three findings, no P1, each reproduced before anything changed; fixed in
+`a95dcc0`. No library code changed.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| SX-1 (P2) | The showcase's load-more screen built its definitions once through a lookup that does not subscribe, so an api replaced under the open screen kept the old fetcher (the raw screen before it read the api again): api A replaced by B, invalidate, raw `A=1, B=1`, typed `A=2, B=0` | yes; the three new widget cases failed with `Expected: <1> Actual: <0>` on the replacement backend | The load-more, max-pages and typed-queries screens read the api in `didChangeDependencies` through the subscribing lookup and make their definitions again when the api object is another one (not on every notification: the scope also notifies for stats and flags, and a definition made again is unequal). One widget case per screen. The task manager (`didUpdateWidget`) and the hooks example (`ApiScope`) were correct; each got a test that is red with the remake removed. The binding's shipped example holds a top-level api, nothing injected |
+| SX-2 (P2) | No consumer case held #84 when the resolved options are equal: every gate case made a new `Enabled.when` per rebuild, so `if (nextOptions == prevOptions) return;` in the observer's `setOptions` left all 126 consumer cases green | yes, on a scratch copy of the library | Ten cases with a held definition and a held `Enabled.when` over outside state: plain and infinite for each of the four call styles, `useQuery` and `useInfiniteQuery`. Each asserts the options really were equal. Under the mutant exactly these fail (binding typed suites `+105 -8`, hooks typed file `+21 -2`) |
+| SX-3 (P3) | The stale-timer parity case could not see a timer made again: re-arming uses the absolute deadline `dataUpdatedAt + staleTime`, so the flip comes at the same instant | yes; calling `_updateStaleTimeout()` on every mounted `setOptions` left the four cases green | The case counts the timers a rebuild creates (a zone that hands each timer on to the fake clock) and expects 0; under the re-arm mutant exactly those four fail. What Phase 3 claims is therefore: a rebuild with an equal reference arms no timer, so the stale timer armed at the fetch is the one that runs |
+
+With them, from the documentation pass: the typed-queries screen and the
+hooks example's todo list wrote two definitions without type arguments,
+and the screen's card said only a family needs them. Every definition in
+app code now writes them (D10); the one test definition left without pins
+inference on purpose and says so. The mutation guide shows the quick
+start's typed mutation.
+
+### Phase 4 (TQ4, 2026-11-10)
+
+**Done.** The site leads with typed definitions where keys, cache reads
+and writes or invalidation are the subject, and the raw `QueryKey` API
+stays, second, under "With raw keys"; it is not deprecated. A new guide
+(`guides/typed-queries.md`) introduces the five words (definition,
+reference, typed key, namespace, target), states once why every definition
+writes its type arguments, and holds every limit in one section, what the
+analyzer refuses apart from what only the runtime refuses. The query-keys,
+query-options, type-safety, quick-start, overview and
+coming-from-React-Query pages, seventeen guides, two cookbook pages, the
+reference pages (API, feature matrix, differences, errors,
+troubleshooting), the hooks guide, the three package READMEs and the root
+README follow; an example page documents the showcase's typed-queries
+screen. Existing URLs and anchors stay. The statements about TanStack's
+key typing name `queryOptions()`, `DataTag` and the global registration.
+Every Dart sample has a compiled twin (`examples/doc_snippets`, 80 cases;
+the hooks' fence test for its guide and README), and the mutation recipes
+are the functions `query_definition_mutation_test.dart` runs. The four
+call styles stay equal: a reference's `options()` goes into the style a
+page already shows. Site build, fence tests and the jargon scan are green.

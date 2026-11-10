@@ -8023,3 +8023,25 @@ removes or replaces the entry it is told about, and no example has one.
 That the weak tables release their entries is argued from `Expando`'s
 contract and not measured (the VM gives a test no way to force a
 collection).
+
+### Review of the consumers (GPT-6.1-Sol, cd4bc21) and the documentation (#134, #135)
+
+The binding has no notes file of its own, so its rows are here; the plan's
+review record has the same table with the reviewer's numbers.
+
+| # | What it was | Regression |
+|---|---|---|
+| SX-1 | Three showcase screens (load-more, max-pages, typed-queries) held definitions over an api read once; an api replaced under the open screen kept the old fetcher | one widget case per screen ("an api replaced under the open screen …"), red before; the task manager's and the hooks example's remake each got a case that is red with the remake removed |
+| SX-2 | No consumer case held #84 with equal resolved options | eight cases in `typed_parity_test.dart` (four call styles, plain and infinite, a held definition and a held `Enabled.when`) and two in the hooks' `typed_definitions_test.dart`; red against `if (nextOptions == prevOptions) return;` on a scratch copy (`+105 -8`, `+21 -2`), green without it |
+| SX-3 | The stale-timer parity case proved the deadline, not that no timer is made | the case counts the timers a rebuild creates (0); red against a re-arm on every mounted `setOptions` (four cases) |
+
+Reproduced first, all three; no library code changed (`a95dcc0`). Binding
+659, hooks 361, hooks example 62 (+10 with the server), showcase 345
+(+25), task manager 45 (+14), doc snippets 80; the showcase's Playwright
+suite 214.
+
+The documentation (TQ4) changed no code under `lib/`. What it holds: a
+compiled twin for every sample, the type arguments written on every
+definition shown, the limits in one section of the typed-queries guide,
+and the raw API second and not deprecated. The plan's "Phase 4" record
+lists the pages.
