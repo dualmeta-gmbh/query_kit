@@ -212,8 +212,10 @@ options that were weighed, and its limits 4, 14 and 21 the wording.
   knows the entry's key and its data type and **not the definition**. So
   an entry its write creates is built from those two alone, with the
   client's and the key's defaults, none of the definition's options and
-  no fetch function, until an observer or a fetch through the reference
-  brings them. Carrying the definition in the key was the alternative,
+  no fetch function, until an observer of the reference's options, or a
+  fetch through the reference that does fetch, brings them (a fetch over
+  data still fresh under the definition's stale time returns that data
+  and supplies nothing). Carrying the definition in the key was the alternative,
   and was declined: the key is a value that is compared, hashed and kept
   in snapshots, it would keep a fetch function and what that closes over
   alive, and a family's bulk calls have keys and no inputs to bind a
