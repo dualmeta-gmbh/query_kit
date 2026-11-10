@@ -447,6 +447,9 @@ sealed class QueryEntryRef<T> extends QueryTarget {
   /// removed or replaced is treated as one `structuralSharing` removed or
   /// replaced. The `QuerySuccessAction` a cache listener hears then
   /// carries that time, where the client's `setQueryData` leaves it `null`.
+  /// The stored `dataUpdatedAt` is therefore the time the write began, not
+  /// the time sharing ended; the two differ only when time moves while
+  /// `structuralSharing` runs.
   /// What a listener does once the value is stored, in answer to the
   /// write, comes after it: the call returns what it stored.
   T write(QueryClient client, T value, {DateTime? updatedAt}) =>
@@ -1447,8 +1450,11 @@ T? _updateEntry<T>(
 /// caller's own, because `setData` reads it after its guard, in the
 /// reducer, where the client's `setQueryData` and a fetch read it as
 /// upstream's do. A cache listener therefore hears the time in the action
-/// where it hears `null` for a client's write without one; the entry's
-/// `dataUpdatedAt` is the same either way.
+/// where it hears `null` for a client's write without one. The entry's
+/// `dataUpdatedAt` is the raw write's when the clock stands still during
+/// `structuralSharing` (a fake clock, or `updatedAt` given); when time
+/// moves while sharing runs, the typed write's is earlier by that much,
+/// because it is read before sharing and the raw write's after.
 T _write<T>(
   QueryClient client,
   QueryKey rawKey,

@@ -3228,7 +3228,11 @@ reading the clock one step earlier and none stops that `updated` event.
 Reading it in the typed write has two visible effects, both on the typed
 path only. A cache listener hears the time in the `QuerySuccessAction` of
 a typed write without `updatedAt`, where the raw write's action carries
-`null`; the entry's `dataUpdatedAt` is the same. And a clock that writes
+`null`; the entry's `dataUpdatedAt` is the same while the clock stands
+still during `structuralSharing`, and earlier by the time sharing took
+when it does not, because the typed write reads it before sharing (R6,
+the final verification pass: a 25 ms sharing callback under a moving
+clock stored the typed value 25 ms before the raw one). And a clock that writes
 the same entry itself is counted (`dataUpdateCount` 3, where the parent
 gave 2 as upstream's raw write does).
 
@@ -3262,3 +3266,20 @@ touches the clock); analyzer and formatter clean; jargon scan clean;
 build (no page changed), the Playwright and native end-to-end suites.
 The core 1.1.0 changelog's "The raw `QueryKey` API is unchanged" is true
 again; it never mentioned the clock, so it needs no edit.
+
+#### Final verification pass (GPT-6.1-Sol, over `899c7b3`, scoped to `447e5dc..899c7b3`)
+
+The third pass, bounded to the diff before it. No P1 or P2: `query.dart`
+is byte for byte `0d83afc`, the raw and fetch probes print the parent's
+lines (and upstream's six raw lines at the pin), R1 throws for all five
+typed writes on Dart 3.6.2, 3.10.7 and 3.13.4, VM and dart2js `-O4`
+(30 of 30), forty ordinary raw/typed timestamp scenarios per SDK agree
+(plain, infinite, `updateAll`, a standing clock, an explicit
+`updatedAt`), and each changed or new test fails for the mutation it
+names. One P3, R6, reproduced: the statements that a typed write stores
+the same `dataUpdatedAt` as the raw write held only while the clock
+stands still during `structuralSharing`; under a moving clock and a
+25 ms sharing callback the typed value was dated 25 ms earlier, because
+it reads the clock before sharing. Fixed in wording (`_write`'s and
+`QueryEntryRef.write`'s dartdoc, this record); no code changed. The
+review round ends here.
