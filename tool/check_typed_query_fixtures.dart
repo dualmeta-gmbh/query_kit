@@ -27,7 +27,7 @@
 // matches, so a fixture cannot fail for the wrong reason (a missing import)
 // or at the wrong place. The directory says what a file may hold:
 //
-//   positive/ support/ prototype/ runtime/   no marker: clean everywhere
+//   positive/ support/ runtime/              no marker: clean everywhere
 //   boundary/                                compiles; `strict` markers only
 //   negative/                                at least one `error` marker
 //
@@ -62,7 +62,6 @@ enum _Kind {
 const _kinds = {
   'positive': _Kind.clean,
   'support': _Kind.clean,
-  'prototype': _Kind.clean,
   'runtime': _Kind.clean,
   'boundary': _Kind.boundary,
   'negative': _Kind.negative,

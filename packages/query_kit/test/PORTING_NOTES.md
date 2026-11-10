@@ -7507,3 +7507,115 @@ mixed list; the binding and the hooks come with their tickets.
 **For TQ1.** The plan's "Final surface (TQ0)" is the signature list. The
 fixtures take the surface from one file, `surface.dart`, and deleting its
 second export line points all of them at the real exports.
+
+### TQ1 — the definitions in the core (#132)
+
+**What.** The ten types are one library,
+`lib/src/query_definition.dart`, exported whole from the barrel:
+`QueryTarget`, `QueryNamespace`, `TypedQueryKey`, `QueryEntryRef`,
+`QueryRef`, `InfiniteQueryRef`, `QueryDefinition`, `QueryFamily`,
+`InfiniteQueryDefinition`, `InfiniteQueryFamily`. No typedef, no
+top-level function, nothing added to `QueryClient`, and no other file
+under `lib/` changed but the barrel (the export and a section of the
+library documentation). The prototype is deleted, `surface.dart` exports
+the package alone, and the 23 remaining fixture files and the 98
+observations pass unedited. The shape a release makes permanent is
+[ADR-0007](../../../docs/adr/0007-typed-query-definitions-are-values-over-the-client.md).
+
+The suites are port-only, so they are new files and no ported file
+changes:
+
+| File | Cases | What it holds |
+|---|---|---|
+| `query_definition_test.dart` | 85 | keys and identity; that declaring and binding do no work; one entry for a reference and a plain key; the declared type on a first write; exact writes; absence and null; a write compared event for event with the client's; the entry a write creates; options, defaults and the re-pin; `fetch` beside `client.query`; exact and prefix targets; the lifecycle operations; the bulk operations; the debug checks |
+| `infinite_query_definition_test.dart` | 39 | the same for the infinite kinds, the normalisation of a written value, and the two wrappers |
+| `barrel_test.dart` | +1 | the library is exported without a `hide`, and its public declarations are the ten types and nothing else |
+
+**How a typed write differs from the client's**, which is the whole of
+what the library adds at runtime:
+
+- It looks the entry up with `queryCache.get<T>`, which is exact, where
+  `setQueryData` accepts any entry whose type can hold the value. A wider
+  entry (`Device?` for `Device`), a narrower one and an entry of another
+  type without data are all refused, with the raw call beside each as the
+  control that still writes.
+- The value, and an updater's result, is tested with `is T` through
+  `Object?`. On the VM that line cannot fail, see below.
+- A missing entry is built with the reference's own options, so it has the
+  definition's `gcTime`, `structuralSharing` and `initialData` from the
+  first write. A test compares the options of an entry a write created
+  with those of one an observer created and one `client.query` created.
+- An infinite value is rebuilt under the declared page types unless it
+  already has them, in which case it is the same instance.
+- Everything after that is `Query.setData(manual: true)`, the call
+  `setQueryData` ends in.
+
+**Decisions**, each with its options in the plan (D5, D6, D7 and the
+review record's P1-1 to P1-13):
+
+- *The bulk update is its own pass.* The plan had it delegate to
+  `updateQueriesData` with a wrapped updater. That method's first pass
+  lets an entry of another type through when it holds no data, its value
+  check passes on type alone, its second pass writes through the lenient
+  `setQueryData`, and a wrapped updater is not told its key. The typed
+  pass keeps the raw order (check all, capture all, run all, validate all,
+  write all in one batch) with the exact steps.
+- *An updater is user code.* `update` looks the entry up again after the
+  updater returned, so an updater that removed it gets it made again and
+  one that swapped it for a wider entry is refused. In a bulk update an
+  entry removed by an updater is re-created with the key alone (the raw
+  behaviour; a family cannot turn a key back into an input), an added one
+  is not part of the call, and a swapped one throws at its own write with
+  the earlier writes made. Four cases run the same updater through the
+  typed and the raw call and compare events and cache.
+- *Batching.* The bulk writes run inside one `NotifyManager.batch`, and a
+  cache listener or an observer still hears each as it is made; only a
+  subscriber that schedules through the notify manager waits. The test
+  was first written to expect the former and failed; it now asserts the
+  typed and the raw call log the same.
+- *The wrappers.* What `configure` returns passes through one function. A
+  custom `structuralSharing` is wrapped; the default (`null`) and the
+  `noStructuralSharing()` instance are not, the second because the
+  observer recognises it by identity. An exact `InitialData.value` keeps
+  its instance. A per-use `copyWith` and a `structuralSharing` from the
+  client's or a key's defaults are outside, each pinned by a test that
+  the narrower value is then what is stored.
+- *A first page param of `null`* that `configure` changes is a
+  `StateError` when the options are made: `copyWith` reads `null` as
+  "keep", so the re-pin cannot put it back.
+- *`QueryDataTypeError`* carries the declared type as `expected`, and as
+  `actual` the entry's type or, for a refused value, its `runtimeType`.
+  Every refusal of an entry in the two files asserts all three fields;
+  those through a widened receiver accept Dart's `TypeError` as well,
+  which is what the VM throws there.
+
+**Verified.** Core 1300 VM / 1295 browser (1175 / 1171 before; no
+existing case changed), on Dart 3.10.7; the VM suite also on 3.6.2 and
+3.13.4. The fixture runner on all three, each time 114 errors where
+expected and 98 observations as recorded on five runtimes. Line coverage
+3774 of 3780, 99.84 % against a floor of 99.8 %.
+
+**Two lines no VM test reaches.** The `throw` in the value check and the
+`throw` in a family's input check. Through a widened receiver Dart's own
+covariance check throws a `TypeError` at the call, before the library's
+line runs; through an exact receiver the value cannot be wrong. They run
+where that check is compiled out, dart2js `-O3` and `-O4`, and the proof
+is the fixture runner's `runtime/observations.unchecked.expect`
+(`O7-write-1` to `O7-input-2`), which CI runs on two SDKs. The VM cases assert the
+refusal and that nothing was written, accepting either error. Each check
+is one private function, so two lines are missed and not eight, and they
+are counted as missed, with no `coverage:ignore`.
+
+**Not proven here.** dart2wasm is still not run. `reset(cancelRefetch:)`
+is passed on to the client and has no case of its own: a reset cancels
+the fetch in flight whatever it is given, so no test could tell the
+values apart. `QueryDataTypeError`'s message says the query "holds" the
+actual type, which reads loosely for a refused value; the message is the
+raw API's and is unchanged. Nothing in the binding or the hooks uses the
+new types yet; their suites were run over this core to show that the
+ten names clash with nothing they export.
+
+**For TQ2.** The infinite exit's remaining case is rollback: a cancel
+and an optimistic write with a request in flight, the stored type
+checked after each step, and the mutation recipes around it. The version
+and the CHANGELOG are Phase 4's.

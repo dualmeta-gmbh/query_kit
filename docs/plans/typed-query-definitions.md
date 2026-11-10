@@ -14,8 +14,19 @@ the surface are in `tool/` ([Phase 0](#phase-0--prove-the-dart-api-before-implem
 says how to run them). Open-1, Open-2 and Open-7 are answered under their
 decisions, each answer marked **Phase 0**; [Final surface (TQ0)](#final-surface-tq0)
 is what Phase 1 implements; the [review record](#phase-0-tq0-2026-11-10)
-lists every change Phase 0 made to this plan and why. No package code has
-changed: nothing under `packages/` is touched but PORTING_NOTES.
+lists every change Phase 0 made to this plan and why. Phase 0 changed no
+package code: it touched nothing under `packages/` but PORTING_NOTES.
+
+**Phase 1 is done (TQ1, [#132](https://github.com/dualmeta-gmbh/query_kit/issues/132),
+2026-11-10).** The ten types are the core's
+`packages/query_kit/lib/src/query_definition.dart`, exported from the
+barrel; the prototype is deleted and the fixtures analyze and run against
+the package alone. The lasting part of the shape is
+[ADR-0007](../adr/0007-typed-query-definitions-are-values-over-the-client.md).
+[Phase 1](#phase-1--ordinary-definitions-and-cache-operations) has a
+"Done" block, and the [review record](#phase-1-tq1-2026-11-10) lists where
+the implementation left this plan and why. Nothing is released: the
+version bumps are Phase 4's (D11).
 
 Date: 2026-10-18. Repository baseline: `a5afe7d` (`main`). Phase 0 ran over
 `51ab8ad`.
@@ -665,6 +676,43 @@ builds it only when the entry is absent and writes through
 `Query.setData(manual: true)` directly; the observable result is the one
 above.
 
+**Phase 1 (TQ1) does both**, and settles what the shape above left open.
+
+- *One write path.* `write`, `update` and each write of `updateAll` end in
+  one private function: the entry `queryCache.get<T>` found, or one built
+  with the reference's own defaulted options, then
+  `Query.setData(manual: true)`.
+- *`update` looks the entry up twice.* Once to hand the updater what is
+  cached, once after it returned. An updater is user code and may remove
+  the entry or write the key itself. Options: (a) write into the `Query`
+  found first, which after a `remove` is an object no longer in the cache,
+  so the write is lost; (b) look it up again with the exact check. Answer:
+  (b): a removed entry is made again with the definition's options, and a
+  wider entry put there in the meantime is refused like any other.
+- *The error's fields.* `QueryDataTypeError.expected` is the declared type.
+  `actual` is the entry's `dataType` when the entry is the mismatch, and
+  the value's `runtimeType` when the value is, which is what the client's
+  own value check reports. The message says "holds"; for a value that
+  reads loosely, and it is reachable only where the VM's own `TypeError`
+  is not (dart2js `-O3`/`-O4`). Left as it is: the raw API is unchanged.
+- *What is wrapped.* What `configure` returns passes through one function
+  that re-pins key and paging functions and holds `structuralSharing` and
+  `initialData` to the declared page types. A custom sharing function is
+  wrapped. `null` (the default sharing) and the `noStructuralSharing()`
+  instance are left as they are: the default cannot return a value of
+  other type arguments than the one it was given, and the opt-out is
+  recognised by identity, which a wrapper would break. An
+  `InitialData.value` that is already exact stays the same instance; a
+  narrower one is rebuilt once per `options()` call; an
+  `InitialData.compute` is wrapped and a `null` seed passes through.
+- *Outside it, each a test:* a per-use `copyWith(structuralSharing: …)` or
+  `copyWith(initialData: …)` (limit 15), and a `structuralSharing` that
+  arrives through the client's or a key's defaults, whose callbacks are
+  typed `Object?` and not the definition's to wrap.
+- *`update` on a missing entry passes `null`*, also when the definition's
+  `initialData` would seed the entry it then creates. The raw call does
+  the same, and the entry is seeded and then written.
+
 ### D6. Options, defaults and execution are reused, not rebuilt
 
 **Options:** (a) a second options type for definitions; (b) `ref.options()`
@@ -746,6 +794,24 @@ subscriptions, and ADR-0001's two shapes already anchor the output type.
 - No `isFetching` on a target: `client.isFetching(filters: x.filters())` is
   one call, and `filters()` (D7) is what every count and listener takes.
 
+**Phase 1 (TQ1):** the re-pin is a `copyWith` over what `configure`
+returned, and `copyWith` reads `null` as "keep". Two edges follow, both
+tested.
+
+- *`configure` may supply what the definition lacks*: a key-only
+  definition's fetch function, an infinite definition's missing
+  `getPreviousPageParam`. The definition has nothing there to pin, and the
+  alternative is rebuilding the options field by field.
+- *A first page param of `null`* (a cursor that starts at `null`) cannot
+  be put back by a `copyWith`. Options: (a) let `configure`'s value stand,
+  which silently breaks "the paging functions are the definition's"; (b)
+  an assertion, absent from a release build; (c) rebuild the options field
+  by field, one more place every option has to be written; (d) throw a
+  `StateError` when the options are made, naming the key. Answer: (d). It
+  is one comparison, the message says where the value belongs, and a
+  `configure` that leaves the first page param alone is unaffected
+  (limit 17).
+
 ### D7. Exact for a reference, prefix for a family or namespace; bulk keeps the cache's check
 
 **Options:** (a) typed family bulk reads and updates need a membership
@@ -819,6 +885,39 @@ list write).
   entry leaves the first unwritten.
 - The nested key in that run is invalidated and removed with the family,
   as the decision says: an authoring rule, not a check.
+
+**Phase 1 (TQ1): the typed bulk update is its own pass, not the raw one
+with a wrapped updater.** The answer above said "then delegates", and
+Phase 1's list said to reuse the raw update's two passes. Reading
+`updateQueriesData` against the exact shape showed three places where
+delegating would let the leniency back in: its first pass accepts an entry
+of another type that holds no data, its value check passes on type alone
+once the entry is exact, and its second pass writes through the lenient
+`setQueryData` into whatever entry the key has by then. A wrapped updater
+also is not told which key it is called for, so the error could not name
+it. Options: (a) delegate and accept the three; (b) add a key to the raw
+updater's signature, which changes the raw API; (c) run the same order in
+the typed library with the exact steps. Answer: (c). The order is the raw
+one: every entry checked, every held value captured, every updater run,
+every result checked and normalised, and only then the writes, inside one
+`NotifyManager.batch`.
+
+What that means for an updater that itself touches the cache, each line a
+test:
+
+- Every updater sees the data captured before the first one ran.
+- An entry an updater removed is written again, **bare**: with the key
+  alone, as the raw path does it. The family could build it with the
+  input's options only by turning a key back into an input, which a
+  `keyOf` does not allow.
+- An entry an updater added is not part of the call.
+- An entry swapped for one of a wider type makes its own write throw, and
+  the writes made before it stay. The raw path writes into the wider
+  entry. This is limit 16.
+- A cache listener and an observer hear each write as it is made; only a
+  subscriber that schedules through the notify manager waits for the end
+  of the batch. The raw call behaves the same, and the test compares the
+  two event lists.
 
 ### D8. Infinite queries keep all three types
 
@@ -1104,9 +1203,11 @@ which already fit `[namespace, name, ...input]` and need no adapter.
 
 ## Final surface (TQ0)
 
-What Phase 1 implements. These are the public signatures of
-`tool/typed_query_fixtures/prototype/typed_queries.dart`, which every
-fixture analyzes against; a signature that changes fails a fixture. Ten
+What Phase 1 implemented. These were the public signatures of the
+prototype (`tool/typed_query_fixtures/prototype/typed_queries.dart`,
+deleted by TQ1) and are now those of
+`packages/query_kit/lib/src/query_definition.dart`, which every fixture
+analyzes against; a signature that changes fails a fixture. Ten
 types, no new typedef, no new top-level function, nothing added to
 `QueryClient`. The names of the type parameters are not part of the
 contract.
@@ -1312,12 +1413,15 @@ introduced.
 14. *Options carry no equality*, and each `options()` call makes a new
     fetcher closure (D4).
 15. *A narrower `InfiniteData` supplied through a per-use `copyWith`* is
-    outside the normalisation. The definition's own `structuralSharing`
-    and `initialData` are inside it by decision and **not in the
-    prototype**: Phase 2 builds and tests that (D5).
+    outside the normalisation, and so is a `structuralSharing` from the
+    client's or a key's defaults. The definition's own `structuralSharing`
+    and `initialData` are inside it, built and tested by TQ1 (D5).
 16. *A bulk update is not a transaction:* every result is validated before
     the first write, but a callback that writes re-entrantly is not rolled
-    back (D7).
+    back. An updater that swaps an entry for one of a wider type makes that
+    entry's write throw after earlier ones were made (D7).
+17. *A definition whose first page param is `null`* cannot have it changed
+    by `configure`: making the options throws a `StateError` (D6, TQ1).
 
 ## Implementation map
 
@@ -1329,7 +1433,8 @@ Paths are the baseline integration points; new file names are provisional.
   Phase 0: it is **one library**. `QueryTarget` and `QueryEntryRef` are
   sealed and `QueryRef` and `InfiniteQueryRef` are `abstract final`, and
   Dart wants every direct subtype of those in the library that declares
-  them, so all ten types live together (the prototype is some 770 lines).
+  them, so all ten types live together (the prototype was some 770 lines;
+  since TQ1 it is `query_definition.dart`, some 1,350 with its dartdoc).
   Integrate with `query_client.dart`, `query_cache.dart`, `filters.dart`,
   `query_options.dart`, `query_state.dart` and `infinite_query.dart`.
   Inspect `query.dart`, both observer implementations and `queries_observer.dart`
@@ -1435,7 +1540,9 @@ does not run it yet.
 
 **Phase 1 points the fixtures at the real exports by deleting one line:**
 `surface.dart`'s `export 'prototype/typed_queries.dart';`. Nothing else
-imports the prototype.
+imports the prototype. (Done by TQ1: `surface.dart` exports the package
+and nothing else, `prototype/` is gone, and the runner no longer lists the
+directory. The two table rows above describe TQ0's state.)
 
 ### Phase 1 — Ordinary definitions and cache operations
 
@@ -1482,6 +1589,53 @@ inputs (D4), defaults, exact/prefix isolation and no extra
 fetch/subscription merely from binding.
 All Phase 0 fixtures run against the real public exports.
 
+**Done (TQ1, 2026-11-10).** What exists:
+
+| Path | What it is |
+|---|---|
+| `packages/query_kit/lib/src/query_definition.dart` | the ten types, one library, exported whole from the barrel; no `ignore_for_file`, no typedef, no top-level function, nothing added to `QueryClient` |
+| `packages/query_kit/lib/query_kit.dart` | the export, and a "Typed query definitions" section in the library documentation with the five limits a user meets first |
+| `packages/query_kit/dartdoc_options.yaml`, `doc/categories/typed-queries.md` | a "Typed queries" category in the API reference |
+| `packages/query_kit/test/query_definition_test.dart` | 85 cases: the plain definitions, families, namespaces, lifecycle and bulk operations |
+| `packages/query_kit/test/infinite_query_definition_test.dart` | 39 cases: the infinite definitions, the normalisation and the two wrappers |
+| `packages/query_kit/test/barrel_test.dart` | one more case: the library exports ten types and nothing else public |
+| `tool/typed_query_fixtures/surface.dart` | exports the package and nothing else; `prototype/` is deleted |
+| [ADR-0007](../adr/0007-typed-query-definitions-are-values-over-the-client.md) | the parts of the shape a release makes permanent |
+
+The surface is the [Final surface](#final-surface-tq0) with no signature
+changed: the 23 fixture files and the 98 observations pass unedited
+against the real exports on Dart 3.6.2, 3.10.7 and 3.13.4. The core's
+suite went from 1175 to 1300 VM cases and from 1171 to 1295 in Chrome, no
+existing case touched; line coverage is 3774 of 3780 (99.84 %, floor
+99.8 %).
+
+Where the implementation left the list above, each with its reason in the
+[review record](#phase-1-tq1-2026-11-10):
+
+- The bulk update is the typed library's own pass in the raw update's
+  order, not the raw update with a wrapped updater (D7).
+- The definition's own `structuralSharing` and `initialData` are wrapped
+  here, not in Phase 2 (D5). The brief for the ticket asked for it, and
+  the normalisation is not finished without it: a custom sharing function
+  returning the narrower value undoes a normalised write.
+- `update` looks the entry up a second time after the updater ran (D5).
+- A definition with a `null` first page param refuses a `configure` that
+  sets one (D6, limit 17).
+- Two lines of the library cannot be reached on the VM: the `throw` of
+  the value check and the `throw` of the input check. Dart's own
+  covariance check throws a `TypeError` at the call before either runs,
+  so they execute only where that check is compiled out. The proof that
+  they work is the fixture runner's `-O3` and `-O4` runs
+  (`runtime/observations.unchecked.expect`), which CI runs on two SDKs.
+  Both checks go through one private function each, so the cost to the
+  coverage floor is two lines, and no `coverage:ignore` hides them.
+
+Left for Phase 2, beyond its own list: the infinite exit's runtime cases
+that go further than Phase 1's tests (rollback with a request in flight),
+and the mutation recipes. Nothing in `packages/query_kit_flutter` or
+`packages/query_kit_hooks` changed; both suites run green over the new
+core because the binding re-exports it and a name clash would fail them.
+
 ### Phase 2 — Families, infinite queries and mutation workflows
 
 Implement family bulk operations as D7 says, infinite definitions,
@@ -1495,6 +1649,16 @@ Phase 2 is their depth: the definition's own `structuralSharing` and
 `initialData` wrapped for the infinite normalisation (D5, which the
 prototype does not do), the mutation recipes, and the runtime tests of
 this exit, every one of which still applies.
+
+**Amended by Phase 1:** the wrapping is done and tested (TQ1, D5). Of
+this exit's cases TQ1's two test files already hold: the two kinds on one
+key with different types and with the same `InfiniteData` type, sibling
+and descendant isolation, the nested key of another type and the wider
+raw entry each making the bulk call throw before any write, the narrower
+`InfiniteData` normalised on write, stored null and absence. What remains
+is rollback: cancellation and an optimistic write with a request in
+flight, the stored type and state checked after each step, and the
+mutation recipes around it.
 
 **Exit:** page and input type fixtures pass; runtime tests cover an ordinary
 and an infinite definition on one key with different types (the cache's own
@@ -1552,7 +1716,9 @@ The following is future implementation acceptance, not results of writing this
 plan. Phase 0 has since run the compile-time row, the widened receivers of
 the runtime row and parts of the identity and filtering rows against the
 prototype; they are acceptance again for the real module, and the same
-fixtures are what checks them.
+fixtures are what checks them. Phase 1 has run them against the real
+module, and its core tests cover the cache, identity, options and
+filtering rows as far as the core alone can.
 
 - **Compile-time:** wrong namespace/member, input shape, fetch return type,
   read assignment, write value, updater parameter/return, selector, page data
@@ -1815,3 +1981,28 @@ with timers as it is (it ends silently, exit code 0, after the first
 timer, because the compiled code reaches for `self`; the runner defines
 it, and an empty run would have compared as a failure against the
 recorded file either way).
+
+### Phase 1 (TQ1, 2026-11-10)
+
+Where the implementation left this plan, or settled what it had not said.
+Each row was a choice between named options; the options are under the
+decision the last column names. "Test" means a case in
+`packages/query_kit/test/query_definition_test.dart` or
+`infinite_query_definition_test.dart`. No second reviewer has read this
+phase: the rows are the implementer's own.
+
+| # | What changed or was settled | Evidence | Where |
+|---|---|---|---|
+| P1-1 | The typed bulk update is its own pass in the raw update's order, not the raw update with a wrapped updater | reading `updateQueriesData`: an empty entry of another type passes its first pass, `_holds` passes on type alone, the second pass writes leniently; tests with the raw call as the control | D7, Phase 1 |
+| P1-2 | What an updater that touches the cache does to a bulk update: captured data, a removed entry re-created bare, an added entry ignored, a swapped wider entry refused at its write | tests, each beside the raw call | D7, limit 16 |
+| P1-3 | A bulk update's writes are not held back for a cache listener or an observer; only a notify-manager subscriber waits for the batch. The dartdoc first said otherwise | a test that failed as first written, then rewritten as parity with the raw call | D7 |
+| P1-4 | `update` resolves the entry again after the updater ran | tests: an updater that removes the entry, and one that swaps it | D5 |
+| P1-5 | The definition's own `structuralSharing` and `initialData` are wrapped in Phase 1, not Phase 2; the default sharing and the opt-out instance are not wrapped; an exact `InitialData.value` keeps its instance | tests, with a raw definition as the control that the narrower value is otherwise stored | D5, limit 15, Phase 2 |
+| P1-6 | A key's or the client's default `structuralSharing` is outside the normalisation | `QueryDefaults` types its callback `Object?`, and the client's check on what it returns is a subtype test, which a narrower `InfiniteData` passes; a test for both levels | D5, limit 15 |
+| P1-7 | A `null` first page param cannot be changed by `configure`: `StateError` when the options are made. Options: silently keep the definition's (a `copyWith` reads `null` as "keep", so it would silently take `configure`'s instead); an assertion (absent in release); rebuild the options field by field (a tenth place per option); throw. Answer: throw | test | D6, limit 17 |
+| P1-8 | `configure` may supply what a definition lacks: a key-only definition's fetch function, a missing `getPreviousPageParam` | tests | D6 |
+| P1-9 | `QueryDataTypeError.actual` is the entry's type for an entry mismatch and the value's `runtimeType` for a value mismatch | tests for the first; the observations at `-O3`/`-O4` for the second | D5 |
+| P1-10 | Two lines are unreachable on the VM (the two `throw`s behind Dart's covariance check) and are proven by the `-O3`/`-O4` observations; coverage 99.84 % with them counted as missed | `tool/check_coverage.dart` | Phase 1 |
+| P1-11 | `reset`'s `cancelRefetch` is passed on and cannot be observed: a reset cancels the fetch in flight whatever it is given | a test that could not be written to fail | D7 |
+| P1-12 | The decision record is ADR-0007 and the ticket's "ADR-0005" is noted in it | `docs/adr/` | Phase 1 |
+| P1-13 | No version or CHANGELOG change in Phase 1 | D11 puts the bumps in Phase 4 | D11 |
