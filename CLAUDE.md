@@ -195,7 +195,7 @@ away from upstream (R4, R5, found by Sol's verification pass) and was
 reverted. R2 and R3 corrected the guide's normalisation limits and the
 cure for a typed key's entry without a fetch function. TQ6
 prepared core **1.1.0**, binding **1.2.0** (`query_kit: ^1.1.0`) and hooks
-**0.1.3** (`query_kit_flutter: ^1.2.0`), **all three published on 2026-11-10** from the merge `2ac8668` (tags `query_kit-v1.1.0`, `query_kit_flutter-v1.2.0`, `query_kit_hooks-v0.1.3`); the native run before the tags had the showcase's four WebKit Playwright failures that `main` already had, and Christian approved releasing with them. Core
+**0.1.3** (`query_kit_flutter: ^1.2.0`), **all three published on 2026-11-10** from the merge `2ac8668` (tags `query_kit-v1.1.0`, `query_kit_flutter-v1.2.0`, `query_kit_hooks-v0.1.3`); the native run before the tags had the showcase's four WebKit Playwright failures that `main` already had, and Christian approved releasing with them. They were the runner's software-painted WebKit at `Desktop Safari`'s pixel ratio 2, and a second press folded into the first by Flutter web's click debounce, not the library: WebKit now runs at ratio 1 and two presses on one button are two waited-out steps (the showcase README's end-to-end section), 642 of 642 in three browsers in 25 minutes (native-e2e run 42860326353). Core
 **1459 VM / 1453 browser**, binding **659**, hooks **361**, hooks example
 **62** (+10 skipped), showcase **345** (+25 skipped), task manager **46**
 (+14 skipped), doc snippets **80**.
