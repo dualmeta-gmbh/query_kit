@@ -3,7 +3,7 @@ description: >-
   TanStack Query for Flutter: cached server data, background refetching,
   retries, mutations and infinite queries, read in four equal styles.
   AI-coded, not affiliated with TanStack.
-version: 1.1.4
+version: 1.2.0
 homepage: https://query-kit.dev/
 documentation: https://query-kit.dev/docs/overview
 repository: https://github.com/dualmeta-gmbh/query_kit
@@ -30,7 +30,7 @@ dependencies:
   flutter:
     sdk: flutter
   meta: ^1.15.0
-  query_kit: ^1.0.0
+  query_kit: ^1.1.0
 
 dev_dependencies:
   clock: ^1.1.1

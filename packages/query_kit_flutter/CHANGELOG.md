@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.2.0
+
+- Requires query_kit 1.1.0, and so brings its typed query definitions
+  through this package's import: `QueryDefinition`, `QueryFamily`, their
+  infinite twins, the references they give and the rest. What they are and
+  what is checked when is in query_kit's changelog and in the typed queries
+  guide on the site.
+- A reference's `options()` are plain `QueryObserverOptions`, and they go
+  into each of the four call styles unchanged: `QueryBuilder`,
+  `context.query`, `watchQuery` in a `QueryMixin`, and `QueryController`.
+  An infinite reference's go into `InfiniteQueryBuilder`,
+  `context.infiniteQuery`, `watchInfiniteQuery` and
+  `InfiniteQueryController`. None of the four is
+  preferred, and nothing in the binding changed to take them: a call style
+  applies them on every build as it applies hand-written options.
+- The README's quick start declares its query as a typed definition and
+  reads it through `tasks.list.options()`; the hand-written options follow
+  it, as the same query.
+- The example declares its task list as a typed definition. Its key is now
+  `['tasks', 'list']` instead of `['tasks']`; code copied from the example
+  that names the old key by hand needs the new one.
+
 ## 1.1.4
 
 - Move the documentation to https://query-kit.dev/. Update homepage,

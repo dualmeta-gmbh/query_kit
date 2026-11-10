@@ -153,7 +153,7 @@ class TasksScreen extends HookWidget {
 }
 ```
 
-## The hooks in 0.1.0
+## The hooks
 
 | Hook | Does what |
 |---|---|
