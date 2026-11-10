@@ -150,6 +150,74 @@ moves into the mutation's callbacks:
 
 ### Adding to a list
 
+`deviceQueries.list(room)` is the room's list as a reference, from the
+[typed query definitions](typed-queries.md) declared on the
+[query invalidation](query-invalidation.md#keys-decide-what-an-invalidation-reaches)
+page. It reads, writes, cancels and invalidates that one entry, with its type:
+
+```dart snippet="guides/optimistic-updates.md#typed-via-cache"
+int _temporaryIds = 0;
+
+MutationOptions<Device, String, String> addDeviceOptimistically(
+  QueryClient client,
+  String room,
+) {
+  final list = deviceQueries.list(room); // QueryRef<List<Device>>
+  return MutationOptions<Device, String, String>(
+    mutationFn: (name) => devices.add(name: name, room: room),
+    onMutate: (String name) async {
+      // A refetch already in flight would land after the patch and undo it.
+      await list.cancel(client);
+      // Until the server names the device, a temporary id marks the row.
+      final temporaryId = 'pending-${_temporaryIds++}';
+      list.update(
+        client,
+        (devices) => <Device>[
+          ...?devices,
+          Device(id: temporaryId, name: name, room: room),
+        ],
+      );
+      return temporaryId; // what onSuccess and onError need to find the row
+    },
+    onSuccess: (device, _, temporaryId) {
+      // Swap in the server's device at once; the refetch below confirms it.
+      list.update(
+        client,
+        (devices) => devices == null
+            ? null
+            : <Device>[
+                for (final row in devices) row.id == temporaryId ? device : row,
+              ],
+      );
+    },
+    onError: (error, stackTrace, name, temporaryId) {
+      // Take out this row only: another add may be in flight beside it.
+      list.update(
+        client,
+        (devices) => devices?.where((row) => row.id != temporaryId).toList(),
+      );
+    },
+    onSettled: (_, __, ___, ____, _____) => list.invalidate(client),
+  );
+}
+```
+
+The **`cancel` first is not optional.** A refetch already in flight
+left before the write; if it lands after the patch, it writes the old list
+over it and the new row vanishes until the next fetch. Cancelling it (with
+its default `revert: true`) puts the query back as it was before that fetch,
+so the patch is the last word until `onSettled`'s invalidation fetches again.
+
+The rollback here removes the one row this mutation added rather than
+restoring a snapshot of the whole list. That matters as soon as two adds can
+be in flight: restoring the first one's snapshot when it fails would also
+erase the second one's row.
+
+#### With raw keys
+
+The same mutation over a key, with `cancelQueries`, `updateQueryData` and
+`invalidateQueries`:
+
 ```dart snippet="guides/optimistic-updates.md#via-cache"
 int _temporaryIds = 0;
 
@@ -198,21 +266,41 @@ MutationOptions<Device, String, String> addDeviceOptimistically(
 }
 ```
 
-The **`cancelQueries` first is not optional.** A refetch already in flight
-left before the write; if it lands after the patch, it writes the old list
-over it and the new row vanishes until the next fetch. Cancelling it (with
-its default `revert: true`) puts the query back as it was before that fetch,
-so the patch is the last word until `onSettled`'s invalidation fetches again.
-
-The rollback here removes the one row this mutation added rather than
-restoring a snapshot of the whole list. That matters as soon as two adds can
-be in flight: restoring the first one's snapshot when it fails would also
-erase the second one's row.
-
 ### Updating one item
 
 For a change to one entry, the classic shape — snapshot, patch, restore — is
-exactly right, because nothing else writes that entry in the meantime:
+exactly right, because nothing else writes that entry in the meantime. Here
+`taskQueries.detail` is a `QueryFamily<String, Task>`:
+
+```dart snippet="guides/optimistic-updates.md#typed-optimistic"
+MutationOptions<Task, String, Task?> renameOptimistically(
+  QueryClient client,
+  String id,
+) {
+  final task = taskQueries.detail(id); // QueryRef<Task>
+  return MutationOptions<Task, String, Task?>(
+    mutationFn: (name) => api.rename(id, name),
+    onMutate: (String name) async {
+      await task.cancel(client);
+      final previous = task.read(client);
+      // Nothing cached, nothing to patch: returning null writes nothing.
+      task.update(client, (current) => current?.copyWith(name: name));
+      return previous; // the rollback handle
+    },
+    onError: (error, stack, name, previous) {
+      if (previous != null) task.write(client, previous);
+    },
+    onSettled: (_, __, ___, ____, _____) => task.invalidate(client),
+  );
+}
+```
+
+Whatever `onMutate` returns reaches `onSuccess`, `onError` and `onSettled` as
+their last argument, typed by the options' third type argument. If `onMutate`
+itself throws, the mutation fails without running its function, and that
+argument is `null`.
+
+#### With raw keys
 
 ```dart snippet="guides/optimistic-updates.md#optimistic"
 MutationOptions<Task, String, Task?> renameOptimistically(
@@ -241,10 +329,123 @@ MutationOptions<Task, String, Task?> renameOptimistically(
     );
 ```
 
-Whatever `onMutate` returns reaches `onSuccess`, `onError` and `onSettled` as
-their last argument, typed by the options' third type argument. If `onMutate`
-itself throws, the mutation fails without running its function, and that
-argument is `null`.
+### No entry, an entry without data, and data
+
+`read` returns `null` for three different things: no entry, an entry whose
+first fetch is still running or failed, and — under a nullable type — a
+cached `null`. A rollback that has to tell them apart snapshots `state`
+instead, and puts each back in its own way:
+
+```dart snippet="guides/optimistic-updates.md#restore"
+/// What was cached before the write: no entry (`null`), an entry without
+/// data, or data, which under a nullable type may be a cached `null`.
+typedef Snapshot<T> = ({QueryState<T>? before});
+
+/// Puts [entry] back to what [before] says it was.
+void restore<T>(
+  QueryClient client,
+  QueryEntryRef<T> entry,
+  QueryState<T>? before,
+) {
+  if (before == null) {
+    // Nothing was cached: remove the entry the optimistic write created.
+    entry.remove(client);
+  } else if (!before.hasData) {
+    // An entry without data yet: take the optimistic value out, refetch.
+    entry.reset(client).ignore();
+  } else {
+    // The data, dated as it was, so the rollback does not look fresh.
+    entry.write(client, before.data as T, updatedAt: before.dataUpdatedAt);
+  }
+}
+```
+
+The snapshot travels in a record because `onError` receives `null` when
+`onMutate` never returned, and "no entry" is a `null` state too: the record
+keeps the two apart. A write that replaces the whole value — it does not
+depend on what is cached — is where this matters, because it creates an
+entry when there was none:
+
+```dart snippet="guides/optimistic-updates.md#save-device"
+/// Writes the edited device as a whole, cached or not.
+MutationOptions<Device, Device, Snapshot<Device>> saveDevice(
+  QueryClient client,
+) =>
+    MutationOptions<Device, Device, Snapshot<Device>>(
+      mutationFn: (edited) => devices.setPower(edited.id, on: edited.isOn),
+      onMutate: (Device edited) async {
+        final device = deviceQueries.detail(edited.id);
+        await device.cancel(client);
+        final before = device.state(client);
+        device.write(client, edited);
+        return (before: before);
+      },
+      onError: (error, stackTrace, edited, snapshot) {
+        if (snapshot != null) {
+          restore(client, deviceQueries.detail(edited.id), snapshot.before);
+        }
+      },
+      onSettled: (_, __, ___, edited, ____) =>
+          deviceQueries.detail(edited.id).invalidate(client),
+    );
+```
+
+This rollback keeps the entry's age: it writes the old data with
+`updatedAt: before.dataUpdatedAt`, so old data does not come back looking
+freshly fetched. The rollbacks above write with the time of the rollback,
+which is harmless when `onSettled` refetches anyway.
+
+### Every cached detail at once
+
+A scene switches off every light in a room, and each cached detail should
+show it at once. A family's `readAll` returns every cached input with its
+typed key, which is the snapshot; `updateAll` patches them in one call; the
+rollback writes each device back through the key it was read with:
+
+```dart snippet="guides/optimistic-updates.md#room-off"
+typedef SwitchedOff = List<(TypedQueryKey<Device>, Device)>;
+
+/// Every light in a room off at once, in every cached detail.
+MutationOptions<void, String, SwitchedOff> roomOff(QueryClient client) =>
+    MutationOptions<void, String, SwitchedOff>(
+      mutationFn: scenes.allOff,
+      onMutate: (String room) async {
+        await deviceQueries.detail.cancel(client);
+        // The snapshot: each detail this write changes, with its typed key.
+        final switchedOff = <(TypedQueryKey<Device>, Device)>[
+          for (final (key, device) in deviceQueries.detail.readAll(client))
+            if (device != null && device.room == room && device.isOn)
+              (key, device),
+        ];
+        deviceQueries.detail.updateAll(
+          client,
+          (device) => device != null && device.room == room && device.isOn
+              ? device.copyWith(isOn: false)
+              : null, // null leaves the entry alone
+        );
+        return switchedOff;
+      },
+      onError: (error, stackTrace, room, switchedOff) {
+        if (switchedOff == null) return; // onMutate itself failed
+        // Put back what this write changed, and nothing else.
+        for (final (key, device) in switchedOff) {
+          key.write(client, device);
+        }
+      },
+      onSettled: (_, __, ___, ____, _____) =>
+          DeviceQueries.namespace.invalidate(client),
+    );
+```
+
+The rollback puts back what this write changed and nothing else, because
+another write may have touched a neighbour in the meantime. A detail removed
+while the request was out is made again by its typed key — with the right
+type, but from the key alone: the client's defaults, none of the
+definition's options, and no fetch function until a screen or a `fetch`
+through the reference uses the query again. A refetch of everything before
+that fails that one entry with `MissingQueryFunctionError` and keeps its
+data. See [typed queries](typed-queries.md) for the rest of what a typed key
+knows.
 
 The [`optimistic-updates` screen](../examples/optimistic-updates.mdx) shows both shapes on one todo list. Pick *Via
 variables* or *Via cache*, type a todo and press *Add*; then tick *Refuse

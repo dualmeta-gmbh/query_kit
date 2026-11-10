@@ -130,7 +130,27 @@ search term changed. What happens depends on whether the function *read*
 **`client.cancelQueries(filters: …)`** cancels matching fetches on request —
 a *Stop* button, or the first step of an
 [optimistic update](optimistic-updates.md), so that a refetch in flight
-cannot overwrite the optimistic data:
+cannot overwrite the optimistic data. With
+[typed query definitions](typed-queries.md), every target has it as
+`cancel`, with the same `revert` and `silent`:
+
+```dart snippet="guides/query-cancellation.md#typed-cancel-button"
+class CancelLogButton extends StatelessWidget {
+  const CancelLogButton({super.key, required this.deviceId});
+
+  final String deviceId;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+        onPressed: () => deviceLog(deviceId)
+            .cancel(QueryClientProvider.read(context))
+            .ignore(),
+        child: const Text('Stop reading'),
+      );
+}
+```
+
+With raw keys, the same button names the key in a filter:
 
 ```dart snippet="guides/query-cancellation.md#cancel-button"
 class CancelLogButton extends StatelessWidget {

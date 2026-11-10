@@ -9,7 +9,27 @@ Waiting for data to go stale by itself is fine for data that changes
 elsewhere. It is not good enough when *your app* just changed it: the user
 renamed a task, and the list on the previous screen still shows the old name
 for as long as its `staleTime` says it is fresh. You know the cached
-data is wrong. `invalidateQueries` is how you say so.
+data is wrong. `invalidate` is how you say so — on a namespace, a family or
+one reference, from [typed query definitions](typed-queries.md):
+
+```dart snippet="guides/query-invalidation.md#typed-invalidate"
+// Everything under ['devices']: every list and every detail.
+await DeviceQueries.namespace.invalidate(client);
+
+// Every room's list, whatever the room.
+await deviceQueries.list.invalidate(client);
+
+// This one detail only: a reference is its own entry, exactly.
+await deviceQueries.detail(id).invalidate(client);
+
+// Mark everything under ['devices'] stale, and refetch nothing now.
+await DeviceQueries.namespace.invalidate(
+  client,
+  refetchType: RefetchType.none,
+);
+```
+
+With raw keys, the same calls are `invalidateQueries` with a filter:
 
 ```dart snippet="guides/query-invalidation.md#invalidate"
 // Every key that starts with ['tasks']: the lists and every detail.
@@ -48,8 +68,58 @@ for.
 A filter's `queryKey` matches as a **prefix**: `['tasks']` matches
 `['tasks']`, `['tasks', 'list', 'open']` and `['tasks', 'detail', '7']`. That
 is why keys are built from the most general part down, and why an app
-usually keeps them in one place. In a smart-home app, a key factory makes
-every level of the device hierarchy something you can name:
+usually keeps them in one place. In a smart-home app, the device queries are
+declared once, and every level of the hierarchy is something you can name —
+the namespace, each family, each reference:
+
+```dart snippet="guides/query-invalidation.md#device-queries"
+// lib/data/device_queries.dart
+final class DeviceQueries {
+  DeviceQueries(this._devices);
+
+  final DeviceRepository _devices;
+
+  static final QueryNamespace namespace = QueryNamespace(<Object?>['devices']);
+
+  /// ['devices', 'list', room]
+  late final QueryFamily<String, List<Device>> list =
+      QueryFamily<String, List<Device>>(
+    namespace: namespace,
+    name: 'list',
+    queryFn: (room, context) =>
+        _devices.list(room: room, signal: context.signal),
+  );
+
+  /// ['devices', 'detail', id]
+  late final QueryFamily<String, Device> detail = QueryFamily<String, Device>(
+    namespace: namespace,
+    name: 'detail',
+    queryFn: (id, context) => _devices.get(id, signal: context.signal),
+  );
+}
+
+final DeviceQueries deviceQueries = DeviceQueries(devices);
+```
+
+With that, every invalidation in the app is a sentence about the domain
+rather than a list of string arrays:
+
+```dart snippet="guides/query-invalidation.md#typed-device-invalidations"
+// Something changed about this device: its detail, and every room list.
+await deviceQueries.detail(device.id).invalidate(client);
+await deviceQueries.list.invalidate(client);
+
+// A bulk import from the hub: everything about devices is suspect.
+await DeviceQueries.namespace.invalidate(client);
+```
+
+A reference matches its own entry exactly; a family matches every input's
+entry, by the prefix `['devices', 'list']`; a namespace matches everything
+under its parts.
+
+### With raw keys
+
+A key factory does the same naming by hand:
 
 ```dart snippet="guides/query-invalidation.md#device-keys"
 // lib/data/device_keys.dart
@@ -66,8 +136,7 @@ abstract final class DeviceKeys {
 }
 ```
 
-With that, every invalidation in the app is a sentence about the domain
-rather than a list of string arrays:
+and the invalidations name its levels:
 
 ```dart snippet="guides/query-invalidation.md#device-invalidations"
 // Something changed about this device: its detail, and every room list.
@@ -92,11 +161,26 @@ keys](query-keys.md) for how keys compare, maps inside keys included.
 
 **`exact: true`** matches the key itself and nothing below it —
 `QueryFilters(queryKey: DeviceKeys.lists, exact: true)` matches a query whose
-key is exactly `['devices', 'list']`, and no room's list.
+key is exactly `['devices', 'list']`, and no room's list. A reference is
+always exact, and a family or a namespace never is.
 
 **`predicate`** takes the `Query` and says yes or no, for anything a key
 prefix cannot express. It runs after the other fields have matched, so give
-it a prefix to keep the set it is asked about small:
+it a prefix to keep the set it is asked about small. A target's `filters()`
+is that prefix, with the other fields as arguments:
+
+```dart snippet="guides/query-invalidation.md#typed-predicate"
+// The kitchen and the hallway were merged on the hub: invalidate the lists
+// of both rooms, and nothing else.
+const merged = <String>{'kitchen', 'hallway'};
+await client.invalidateQueries(
+  filters: deviceQueries.list.filters(
+    predicate: (query) => merged.contains(query.queryKey.parts.last),
+  ),
+);
+```
+
+With raw keys, the prefix is a `QueryFilters` of its own:
 
 ```dart snippet="guides/query-invalidation.md#predicate"
 // The kitchen and the hallway were merged on the hub: invalidate the lists
@@ -166,6 +250,10 @@ well.
 | `resetQueries` | puts matching queries back to their initial state (their `initialData`, or nothing), then refetches the active ones |
 | `removeQueries` | drops matching queries from the cache — for keys nobody is watching; a reader still attached keeps showing what it had |
 | `cancelQueries` | cancels matching fetches in flight and, by default, puts each query back to the state it had before the fetch |
+
+A namespace, a family and a reference have each of these as a method —
+`refetch`, `reset`, `remove` and `cancel` — over the same filters their
+`invalidate` uses.
 
 :::note[In React Query]
 The same `queryClient.invalidateQueries`, with the same prefix matching,

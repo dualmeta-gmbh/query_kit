@@ -30,13 +30,56 @@ inside it: which keys, which callback, and whether the mutation waits.
 
 Invalidate the most general key the write could have affected. Adding a
 task changes every task list, so `['tasks']`; renaming one changes its
-detail and every list it appears in, so `['tasks']` again. A key factory —
-see [query invalidation](query-invalidation.md#keys-decide-what-an-invalidation-reaches)
-— turns this into a sentence about the domain.
+detail and every list it appears in, so `['tasks']` again. Declared as
+[typed query definitions](typed-queries.md) — see
+[query invalidation](query-invalidation.md#keys-decide-what-an-invalidation-reaches)
+— each level is something the callback names: a namespace, a family, one
+reference.
 
 Sometimes a write makes one entry *meaningless* rather than stale. After a
 delete, refetching the device's detail would only fetch a 404; remove it
 instead, and invalidate the lists:
+
+```dart snippet="guides/invalidations-from-mutations.md#typed-remove-device"
+// lib/data/device_mutations.dart
+MutationOptions<void, String, void> removeDeviceMutation(QueryClient client) =>
+    MutationOptions.simple(
+      mutationFn: devices.remove,
+      onSuccess: (_, id, __) {
+        // The device is gone: drop its detail rather than refetch a 404 …
+        deviceQueries.detail(id).remove(client);
+        // … and refetch every room list that may have shown it.
+        return deviceQueries.list.invalidate(client);
+      },
+    );
+```
+
+`remove` — `removeQueries` underneath — is for entries nobody is watching: a
+reader still attached keeps showing what it had. Pop the detail screen before
+the delete starts, or, if it has to stay up, invalidate its entry instead and
+let it show the error.
+
+When a write touches two unrelated entries, invalidate both — in parallel:
+
+```dart snippet="guides/invalidations-from-mutations.md#typed-move-device"
+MutationOptions<Device, String, void> moveDeviceMutation(
+  QueryClient client,
+  Device device,
+) =>
+    MutationOptions.simple(
+      mutationFn: (String toRoom) => devices.move(device.id, toRoom),
+      // Two lists changed. Both refetches run at once, and the mutation
+      // settles when both have landed.
+      onSuccess: (moved, toRoom, _) => Future.wait(<Future<void>>[
+        deviceQueries.list(device.room).invalidate(client),
+        deviceQueries.list(toRoom).invalidate(client),
+      ]),
+    );
+```
+
+### With raw keys
+
+The same two mutations, with a key factory's keys in filters:
 
 ```dart snippet="guides/invalidations-from-mutations.md#remove-device"
 // lib/data/device_mutations.dart
@@ -55,12 +98,6 @@ MutationOptions<void, String, void> removeDeviceMutation(QueryClient client) =>
       },
     );
 ```
-
-`removeQueries` is for keys nobody is watching: a reader still attached keeps
-showing what it had. Pop the detail screen before the delete starts, or, if
-it has to stay up, invalidate its key instead and let it show the error.
-
-When a write touches two unrelated keys, invalidate both — in parallel:
 
 ```dart snippet="guides/invalidations-from-mutations.md#move-device"
 MutationOptions<Device, String, void> moveDeviceMutation(
@@ -94,7 +131,7 @@ MutationOptions<Device, String, void> moveDeviceMutation(
 
 ## Returning the future, or not
 
-A callback that **returns** the `invalidateQueries` future keeps the mutation
+A callback that **returns** the invalidation's future keeps the mutation
 `pending` until the refetch has landed. The button that shows a spinner while
 the mutation runs keeps it until the list on screen is actually up to date,
 and the new row never flickers in a moment after the spinner has gone. Most

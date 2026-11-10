@@ -77,7 +77,27 @@ A mutation's options belong next to the queries it affects — a
 `lib/data/device_mutations.dart` beside `device_queries.dart` — as a function
 of what it needs. Here, the power switch of one device in a smart-home app:
 the server answers with the device as it now is, which goes straight into
-the cache, and the room lists refresh behind it.
+the cache, and the room lists refresh behind it. With
+[typed query definitions](typed-queries.md), the callback names the entries
+through their references, and the write is checked against the detail's
+type:
+
+```dart snippet="guides/mutations.md#typed-set-power"
+// lib/data/device_mutations.dart
+MutationOptions<Device, bool, void> setPowerMutation(
+  QueryClient client,
+  String id,
+) =>
+    MutationOptions.simple(
+      mutationFn: (bool on) => devices.setPower(id, on: on),
+      onSuccess: (device, _, __) {
+        deviceQueries.detail(id).write(client, device);
+        deviceQueries.list.invalidate(client).ignore();
+      },
+    );
+```
+
+With raw keys, the same mutation names the keys and the type at each call:
 
 ```dart snippet="guides/mutations.md#set-power"
 // lib/data/device_mutations.dart

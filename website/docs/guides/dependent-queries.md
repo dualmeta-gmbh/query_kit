@@ -16,7 +16,30 @@ out with a `null` id — a 404, a retry loop, an error on screen for a moment
 that was never really an error.
 
 A query that needs the result of another must not run until that result is
-there. `enabled` holds it back, and the value it waits for goes in its key:
+there. `enabled` holds it back, and the value it waits for goes in its key.
+As a [typed query definition](typed-queries.md), that value is the family's
+input, and `configure` turns a missing one into `enabled: Enabled.no`:
+
+```dart snippet="guides/dependent-queries.md#typed-home-devices"
+/// ['devices', 'home', homeId]. The input is nullable, so "no home yet" has
+/// a reference too, and the definition says what it does then: wait.
+final QueryFamily<String?, List<Device>> homeDevices =
+    QueryFamily<String?, List<Device>>(
+  namespace: devices,
+  name: 'home',
+  queryFn: (homeId, context) =>
+      repository.homeDevices(homeId!, signal: context.signal),
+  // No home yet: nothing to ask the server.
+  configure: (base, homeId) =>
+      base.copyWith(enabled: homeId == null ? Enabled.no : Enabled.yes),
+);
+
+// The screen reads homeDevices(account.dataOrNull?.homeId).options().
+```
+
+With raw keys, it is an options function over the same key, and the tabs
+below read through it; `homeDevices(homeId).options()` gives them the same
+options:
 
 ```dart snippet="guides/dependent-queries.md#home-devices"
 QueryObserverOptions<List<Device>> homeDevicesQuery(String? homeId) =>

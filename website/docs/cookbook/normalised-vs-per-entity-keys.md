@@ -62,7 +62,10 @@ The list fetch writes every contact into its own entry with `setQueryData`.
 The detail screen then opens with data and no request. Each later list fetch
 updates those entries, so the detail is at most as old as the last list.
 After an edit, invalidate the contact's detail key and the list key, or
-invalidate `ContactKeys.all` for both.
+invalidate `ContactKeys.all` for both. Declared as
+[typed query definitions](../guides/typed-queries.md), the per-entity key is
+a family, the seeding loop writes through `detail(id).write`, and a
+family's `updateAll` reaches every cached contact at once.
 
 A seeded entry counts as fresh from the moment it is written. With the
 detail's 30-second `staleTime`, opening a contact right after the list loads

@@ -11,7 +11,16 @@ By the time a widget reads the key, the data is in the cache — or its fetch is
 already running, and the widget joins it. The user sees the screen with its
 content instead of a spinner.
 
-Everything imperative is one method on the client, `client.query`:
+Everything imperative is one method on the client, `client.query`. With
+[typed query definitions](typed-queries.md), a reference's `fetch` is that
+call — the same freshness by `staleTime`, the same joining of a fetch in
+flight — with the type taken from the definition:
+
+```dart snippet="guides/prefetching.md#typed-imperative"
+final tasks = await taskQueries.list.fetch(client); // List<Task>
+```
+
+With raw keys, the options are written at the call:
 
 ```dart snippet="guides/prefetching.md#imperative"
 final tasks = await client.query<List<Task>>(
@@ -24,7 +33,7 @@ final tasks = await client.query<List<Task>>(
 
 | You want | Write |
 |---|---|
-| fetch and await | `await client.query(options)` |
+| fetch and await | `await client.query(options)`, or `await ref.fetch(client)` |
 | prefetch, don't wait | `client.query(options).ignore()` |
 | only if nothing is cached | `staleTime: StaleTime.static` |
 | cached data now, refresh behind it | `client.query(options, revalidateIfStale: true)` |
@@ -138,7 +147,19 @@ waterfalls](request-waterfalls.md#prefetch-in-the-parent).
 
 Sometimes the data is already in the cache under another key. A room's list
 holds every field the detail screen shows, so the list can seed each detail
-when it arrives:
+when it arrives — through each detail's reference:
+
+```dart snippet="guides/prefetching.md#typed-prime"
+// The room list already holds every device's fields: seed each detail, so
+// opening one shows it at once.
+for (final device in list) {
+  deviceQueries.detail(device.id).write(client, device);
+}
+```
+
+An entry written this way holds the data and nothing else: the detail's
+fetch function and options arrive with the screen that reads it. With raw
+keys, the write names the key and the type:
 
 ```dart snippet="guides/prefetching.md#prime"
 // The room list already holds every device's fields: seed each detail, so

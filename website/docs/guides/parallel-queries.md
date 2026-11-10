@@ -126,7 +126,40 @@ and the count drops to `fetching=1`. *Refetch post 2* moves only that post's
 
 When the set of queries is data — one reading per device on screen — you
 cannot write one read per query in source. `QueriesBuilder` observes a list
-that may change length or order:
+that may change length or order. With
+[typed query definitions](typed-queries.md), one family describes every
+reading:
+
+```dart snippet="guides/parallel-queries.md#typed-energy"
+/// ['energy', 'reading', deviceId]
+final QueryFamily<String, EnergyReading> energy =
+    QueryFamily<String, EnergyReading>(
+  namespace: QueryNamespace(<Object?>['energy']),
+  name: 'reading',
+  queryFn: (deviceId, context) =>
+      repository.energy(deviceId, signal: context.signal),
+);
+
+// One reading per device on screen — however many that is.
+Widget energyPanel(List<String> deviceIds) =>
+    QueriesBuilder<EnergyReading, double>(
+      queries: <QuerySelectOptions<EnergyReading, double>>[
+        for (final id in deviceIds)
+          energy(id).options().withSelect((reading) => reading.watts),
+      ],
+      builder: (context, results) => switch (results.combine(
+        (watts) => watts.fold<double>(0, (sum, each) => sum + each),
+      )) {
+        CombinedPending() => const Text('Measuring…'),
+        CombinedError(:final error) => Text('No reading: $error'),
+        CombinedData(:final data) => Text('${data.toStringAsFixed(1)} W now'),
+      },
+    );
+```
+
+### With raw keys
+
+The same panel over an options function:
 
 ```dart snippet="guides/parallel-queries.md#energy-query guides/parallel-queries.md#queries-builder-devices"
 QueryObserverOptions<EnergyReading> energyQuery(String deviceId) =>
@@ -152,8 +185,8 @@ Widget energyPanel(List<String> deviceIds) =>
     );
 ```
 
-- **One description per query.** `energyQuery(id)` is an ordinary options
-  function; `withSelect` narrows each reading to its watts, so a refetch that
+- **One description per query.** `energy(id).options()`, or the raw
+  `energyQuery(id)`, is an ordinary set of options; `withSelect` narrows each reading to its watts, so a refetch that
   brings back the same reading rebuilds nothing.
 - **Observers are reused by key and occurrence**, so reordering the list
   starts no requests, and adding an id fetches only the new one.
@@ -163,7 +196,11 @@ Widget energyPanel(List<String> deviceIds) =>
   queries](combining-queries.md).
 
 It is homogeneous: one data type per collection, because a Dart `List` has
-one element type. For queries of **different** types, read each one as above
+one element type. A list that mixes references of two data types still compiles,
+but infers `Object`: its entries are created as `Object` entries, which the
+references' own typed reads then refuse (see the
+[limits](typed-queries.md#limits)). For queries of
+**different** types, read each one as above
 and combine the results. The other call styles have the same collection:
 `QueriesController(client, queries)` is it as a `ValueListenable`, and
 `QueriesObserver` is it without Flutter.
@@ -208,8 +245,9 @@ class _DevicesSyncIndicatorState extends State<DevicesSyncIndicator> {
 
 `IsFetchingController` is a `ValueListenable<int>` that notifies only when
 the count changes, and the filters narrow it — here to every key under
-`['devices']`. `client.isFetching(filters: …)` is the same count as a
-one-off snapshot.
+`['devices']`. A namespace's, a family's or a reference's `filters()` fits
+there too: `IsFetchingController(client, filters: devices.filters())`.
+`client.isFetching(filters: …)` is the same count as a one-off snapshot.
 
 ## Traps
 
