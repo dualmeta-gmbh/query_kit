@@ -50,6 +50,29 @@ replacement for the four. Its column says what to call there.
 | `QueryClientProvider` | `QueryClientProvider(client: …, child: …)` | the same |
 | `new QueryObserver(client, options)` | `client.observe(options)` or `QueryObserver(client, options)` | the same |
 
+## Declaring a query once
+
+TanStack Query declares a query once with `queryOptions()`, and builds keys
+in key factories. Here both are [typed query
+definitions](guides/typed-queries.md): a definition holds the key, the fetch
+function and the data type, and a call to a family gives a reference to one
+entry.
+
+| JS | Here |
+|---|---|
+| `queryOptions({ queryKey: ['todos'], queryFn, staleTime })` | `QueryDefinition<List<Todo>>(namespace: …, name: 'list', queryFn: …, configure: (base) => base.copyWith(staleTime: …))` |
+| `(id) => queryOptions({ queryKey: ['todos', 'detail', id], … })` | `QueryFamily<String, Todo>(namespace: …, name: 'detail', queryFn: (id, context) => …)`, called as `todos.detail(id)` |
+| `infiniteQueryOptions({ … })` | `InfiniteQueryDefinition<TPage, TParam>` and `InfiniteQueryFamily<TInput, TPage, TParam>` |
+| `useQuery(todoOptions(id))` | a reference's `options()`, in any of the four call styles: `context.query(todos.detail(id).options())` |
+| a key factory, `todoKeys.all` / `todoKeys.detail(id)` | a `QueryNamespace` for the prefix, and the definitions' own keys under it |
+| `getQueryData(todoOptions(id).queryKey)`, typed through the key's `DataTag` | `todos.detail(id).read(client)`, typed through the reference; `state(client)` for the whole state |
+| `setQueryData(todoOptions(id).queryKey, value or updater)` | `todos.detail(id).write(client, value)` or `.update(client, (previous) => …)` |
+| `invalidateQueries({ queryKey: todoKeys.all })` | `namespace.invalidate(client)`; a family, a reference and a namespace each take `invalidate`, `refetch`, `cancel`, `reset` and `remove` |
+| `Register` with `queryKey`, narrowing the shape of every key | no counterpart; a definition builds its key from its namespace, its name and its input |
+
+The client's raw calls below take the same keys, so the two forms meet on one
+entry.
+
 ## The client
 
 | JS | Here |

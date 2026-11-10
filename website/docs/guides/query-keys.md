@@ -1,6 +1,6 @@
 ---
 title: Query keys
-description: QueryKey as a value type, hierarchical keys and prefix matching, key factories, and the parts that do not compare the way you expect.
+description: The keys a typed query definition builds, QueryKey as a value type, hierarchical keys and prefix matching, key factories, and the parts that do not compare the way you expect.
 ---
 
 # Query keys
@@ -13,9 +13,34 @@ it does by key.
 
 A `QueryKey` is a list of parts, from the most general to the most specific:
 
-```dart snippet="prose-only: the smallest key, shown before the factory that builds keys in the app"
+```dart snippet="prose-only: the smallest key, shown before the definitions that build keys in the app"
 final key = QueryKey(<Object?>['devices', 'detail', 'd1']);
 ```
+
+## With definitions
+
+Most keys in an app are built by [typed query
+definitions](typed-queries.md), not by hand. A definition's key is its
+namespace, then its name, then, for a family, the input it was called with.
+Its prefixes are the targets an invalidation reaches:
+
+```dart snippet="guides/query-keys.md#definition-keys"
+final devices = queries.devices;
+
+expect(devices.list.key.rawKey, QueryKey(['devices', 'list']));
+expect(devices.inRoom('kitchen').key.rawKey,
+    QueryKey(['devices', 'inRoom', 'kitchen']));
+
+await devices.detail('d1').invalidate(client); // one device
+await devices.detail.invalidate(client); // every device detail
+await DeviceQueries.namespace.invalidate(client); // all about devices
+```
+
+The key is an ordinary `QueryKey`, so everything below holds for it as well:
+it is a value, it is matched as a prefix, and it is bound to one data type.
+What a definition adds is that the key is spelled once, beside its fetch
+function and its type. How a family turns its input into key parts, and when
+it needs a `keyOf`, is in [the key](typed-queries.md#the-key).
 
 ## A value, not a string
 
@@ -43,7 +68,9 @@ query is keyed by its id; a filtered list by its filter:
 - `['devices', 'detail', id]` — one device
 
 Otherwise two different requests share one cache entry, and one of them shows
-the other's data.
+the other's data. A family's fetch function is handed the input its key
+holds, so what it reads from that input is in the key; anything else it reads
+still has to be.
 
 ## Hierarchy and prefixes
 
@@ -59,7 +86,13 @@ holds the same entries, and more. So `['devices', 'list', {'room':
 'on': true}]` too. That is why filters go in a map rather than in positional
 parts — a new filter field does not move the others.
 
-## Key factories
+## With raw keys
+
+A key written by hand is a raw key. It is the form the client's own calls
+take, and it is what a definition builds underneath; nothing about it is
+going away.
+
+### Key factories
 
 Build keys in one place, from the most general part down, so a prefix is
 always a real parent. In an app that is one file per data area, next to the
@@ -122,7 +155,8 @@ prefix* and everything on screen under `[posts]` refetches while post 3 only tur
 
 A key is bound to the type it was first used with; reading it as another type
 throws `QueryDataTypeError`. Give data of a different shape a different key.
-See [type safety in Dart](../dart-type-safety.md#one-key-one-exact-type).
+A definition carries the type with the key, so its reads and writes name
+neither. See [type safety in Dart](../dart-type-safety.md#one-key-one-exact-type).
 
 ## A record of a list is not a stable key part
 
@@ -131,7 +165,8 @@ identity. So a key part like `(ids: [1, 2],)` is new every time it is built,
 never matches the key built from the same values again, and every read
 fetches anew. Lists and maps as key *parts* are compared deeply; inside a
 record they are not. Put the list in the key directly, or use a value class
-with deep `==` and `hashCode`.
+with deep `==` and `hashCode`. A family whose input is such a record gives it
+a `keyOf` that returns the parts; see [the key](typed-queries.md#the-key).
 
 ## Traps
 
@@ -142,8 +177,8 @@ with deep `==` and `hashCode`.
   built; mutate the list you passed in afterwards and the key does not
   change. Build the key from the current values each time.
 - **Keys spelled in two places.** `['device', id]` in one file and
-  `['devices', id]` in another are two entries and two requests. A factory
-  makes that impossible.
+  `['devices', id]` in another are two entries and two requests. A definition
+  or a factory makes that impossible.
 
 :::note[In React Query]
 Query keys are arrays hashed with `hashKey`. Here a `QueryKey` is a value

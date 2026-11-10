@@ -145,6 +145,67 @@ type: from then on the entry is an `Object` entry.
 **Fix.** Keep a list to one data type. For queries of different types, read
 each one on its own and combine the results with `(a, b).combine(…)`.
 
+## A typed write throws `QueryDataTypeError`
+
+**Symptom.** A reference's `write` or `update`, a typed key's, or a family's
+`readAll` or `updateAll`, throws `QueryDataTypeError`, though the value is
+of the definition's own type.
+
+**Mechanism.** The entry was created with another type before the typed
+write reached it. A raw `setQueryData` without a type argument creates an
+entry of the value's own type; a raw write with `<Device?>` creates one of
+`Device?`, which a `QueryRef<Device>` refuses because a typed write is
+exact; another definition with the same key and another type does the same.
+For a family's bulk calls, any entry under the family's prefix counts,
+including a key nested under it by hand.
+
+**Fix.** One key, one data type. Write the entry through the reference from
+the start, or give the other entry a name of its own beside the family
+instead of under it. See [errors](errors.md#from-a-typed-write).
+
+## "configure returned … whose definition makes …"
+
+**Symptom.** Every read and fetch through a definition throws a
+`StateError` that names `configure`, the key and two options types.
+
+**Mechanism.** `configure` built new options of a narrower data type, such
+as `QueryObserverOptions<Device>` for a definition of `Device?`. The analyzer
+accepts them, because they are a subtype of the return type, but they cannot
+take the definition's fetch function back.
+
+**Fix.** Return the options `configure` is handed, or a `copyWith` of them.
+
+## "the type argument … is a top type"
+
+**Symptom.** A debug build stops at a `QueryDefinition`, `QueryFamily` or
+infinite definition with an `AssertionError` that names a type argument and
+`dynamic`, `Object?` or `void`. A release build runs.
+
+**Mechanism.** A type argument was left to inference, and nothing anchored
+it: a family's input has nothing to infer from, and an infinite definition's
+page type can infer `Object?` from untyped paging functions. A data type of
+`Null` is refused the same way.
+
+**Fix.** Write the type arguments out, `QueryFamily<String, Device>(…)`. An
+input that can really be anything is declared as `Object`, or as a nullable
+or sealed type. See [typed query
+definitions](../guides/typed-queries.md#why-the-type-arguments-are-written).
+
+## A refetch fails with `MissingQueryFunctionError` after a typed key's write
+
+**Symptom.** An entry written through a typed key, from a rollback snapshot
+say, turns to an error with `MissingQueryFunctionError` at the next
+invalidation or refetch. The data is still there.
+
+**Mechanism.** A typed key knows the type, not the definition. When its
+`write` creates the entry, the entry has the key and the type and no fetch
+function, until an observer or a `fetch` through the reference supplies the
+definition's.
+
+**Fix.** Write through the reference when the entry may not exist yet. A
+rollback that writes back what `readAll` returned only reaches entries that
+existed, so it is safe unless the entry was removed in between. See [errors](errors.md#an-entry-a-typed-key-created).
+
 ## A mutation that awaits another mutation never finishes
 
 **Symptom.** Inside a mutation with a `MutationScope`, `await

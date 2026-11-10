@@ -184,7 +184,6 @@ final DeviceRepository repository = DeviceRepository();
 // overview.md
 // ---------------------------------------------------------------------------
 
-// >>> overview.md#example
 // lib/data/device_queries.dart — what the data is, described once.
 QueryObserverOptions<List<Device>> allDevicesQuery() => QueryObserverOptions(
       queryKey: QueryKey(<Object?>['devices']),
@@ -208,7 +207,6 @@ class DeviceList extends StatelessWidget {
     };
   }
 }
-// <<<
 
 // ---------------------------------------------------------------------------
 // guides/query-keys.md

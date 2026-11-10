@@ -28,6 +28,7 @@ considered and why one won.
 | [Core operations own their state](https://github.com/dualmeta-gmbh/query_kit/blob/main/docs/adr/0003-core-operation-lifetimes.md) | Which fetch or mutation may write to a query, when a mutation scope passes on, and what a cancelled operation may no longer do. |
 | [Hooks are an add-on](https://github.com/dualmeta-gmbh/query_kit/blob/main/docs/adr/0004-hooks-are-an-add-on-over-an-adapter-library.md) | Why `query_kit_hooks` is a separate package over a small public seam of the binding, and why hooks are not a fifth call style. See [hooks](../guides/hooks.md). |
 | [The comparison page describes and does not rank](https://github.com/dualmeta-gmbh/query_kit/blob/main/docs/adr/0005-the-comparison-page-describes-and-does-not-rank.md) | The rules [other Dart libraries](../reference/other-dart-libraries.md) follows when it writes about other people's packages. |
+| [Typed query definitions are values over the client](https://github.com/dualmeta-gmbh/query_kit/blob/main/docs/adr/0007-typed-query-definitions-are-values-over-the-client.md) | Why a definition, a reference and a typed key are values that hold no client, why their writes take no type argument of their own, and why nothing registers a definition. See [typed query definitions](../guides/typed-queries.md). |
 
 ## Research
 

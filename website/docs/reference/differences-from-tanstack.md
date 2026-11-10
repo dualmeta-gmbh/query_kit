@@ -22,7 +22,8 @@ libraries](other-dart-libraries.md).
 
 | TanStack Query | query_kit | Why |
 |---|---|---|
-| `getQueryData` casts whatever is cached to the type you asked for | a key is bound to the exact type it was first used with; reading it as another type — a supertype or a nullable one included — throws `QueryDataTypeError`. A write may store any value the entry's type can hold. See [type safety in Dart](../dart-type-safety.md#one-key-one-exact-type) | A blind cast hides a wrong type until it fails far from the cause. One key with one exact type turns the mismatch into an error at the read. |
+| `getQueryData` returns whatever is cached as the type the key's `DataTag` or your type argument names, unchecked | a key is bound to the exact type it was first used with; reading it as another type — a supertype or a nullable one included — throws `QueryDataTypeError`. A write may store any value the entry's type can hold. See [type safety in Dart](../dart-type-safety.md#one-key-one-exact-type) | A blind cast hides a wrong type until it fails far from the cause. One key with one exact type turns the mismatch into an error at the read. |
+| `queryOptions()` and `infiniteQueryOptions()` tag a key with its data type (`DataTag`), so reads through that key are inferred; key factories are plain functions; the `Register` interface narrows the shape of every key | [typed query definitions](../guides/typed-queries.md) declare the key, the fetch function and the data type once, and a reference reads, writes and invalidates its entry with no key and no type argument. The cache still checks the type at runtime | A Dart type argument cannot be attached to a list, so the type travels with a reference instead of a branded key. The reference is a value, and its entry is the same one the raw calls reach. |
 | union-typed options: `staleTime: number \| 'static' \| fn`, `retry: boolean \| number \| fn`, … | sealed value types: `StaleTime`, `RetryPolicy`, `Enabled`, `RefetchOn`, `RefetchInterval`, … `null` always means "not configured" | Dart has no union types, so each choice is a sealed value type the compiler can check. |
 | `staleTime: Infinity` | `StaleTime.infinite`, distinct from `StaleTime.static` | Never stale but still refetchable is not the same as static, so the two have different names. |
 | `initialData: null` and `placeholderData: null` mean "none" | `InitialData.value(null)` is a value of `null`; a `.compute` returning `null` means "none" | `null` can be real data in Dart, so a named constructor says whether you mean a value or none. |
@@ -140,6 +141,11 @@ says what that costs a fetch or a mutation in flight.
 - **`combine` over a record of results**, of different types, with a
   `CombinedResult` that is pending, an error or data. See [combining
   queries](../guides/combining-queries.md).
+- **Typed query definitions as targets.** A namespace, a family and a
+  reference each take `invalidate`, `refetch`, `cancel`, `reset` and
+  `remove`, and a family reads and updates every cached entry of its own
+  with `readAll` and `updateAll`. See [typed query
+  definitions](../guides/typed-queries.md).
 - **Cancellation is `QueryCancelToken`**, with `onCancel` as the interop point,
   because Dart has no ecosystem-wide abort signal.
 

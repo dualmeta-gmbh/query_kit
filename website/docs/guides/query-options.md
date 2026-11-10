@@ -1,6 +1,6 @@
 ---
 title: Describing a query once
-description: Options functions, the two observer options shapes, withSelect, what null means, and why options built in build are fine.
+description: Options from a typed query definition or an options function, the two observer options shapes, withSelect, what null means, and why options built in build are fine.
 ---
 
 # Describing a query once
@@ -14,6 +14,30 @@ So a query is described by an options object — its key, its function and
 whatever it configures — and that object lives behind a function. Every
 widget that reads the query, every prefetch and every test calls the same
 function and gets the same description.
+
+## From a definition
+
+A [typed query definition](typed-queries.md) is the other way to describe a
+query once. It holds the key, the fetch function and the data type, and a
+reference's `options()` hands out the options:
+
+```dart snippet="guides/query-options.md#reference-options"
+// A reference's options are ordinary options: every reader, every
+// prefetch and every helper that takes options takes these.
+final QueryObserverOptions<Device> options =
+    queries.devices.detail(id).options();
+
+await client.query(options); // a prefetch
+```
+
+They are the plain shape below, or `InfiniteQueryObserverOptions` for an
+infinite definition, so every sample on this site that takes options takes a
+reference's `options()` as well. What the definition sets for every use goes
+in its `configure`, which is handed the options the definition built and
+returns them or a `copyWith` of them. What one use changes goes on the
+result: `copyWith` for a field, [`withSelect`](#withselect) for a
+projection. A per-use `copyWith` can set a field but not unset one. See
+[options per use](typed-queries.md#options-per-use).
 
 ## Two rules
 
@@ -168,7 +192,9 @@ refetches. See [prefetching](prefetching.md).
 This is the `queryOptions()` helper, made the only way: there is no
 positional `useQuery(key, fn)` form. `select` moves into its own options
 shape so its second type argument can be inferred, and `withSelect` adds one
-to an existing description. See [differences from TanStack
+to an existing description. `queryOptions()` also tags its key with the data
+type, so `getQueryData` on that key is typed; here a definition's reference
+carries the type instead. See [differences from TanStack
 Query](../reference/differences-from-tanstack.md).
 :::
 

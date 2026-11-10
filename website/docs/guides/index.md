@@ -19,8 +19,11 @@ not set up a project yet, start with the [quick start](../quick-start.md).
   and when a read is released.
 - [Hooks](hooks.md): the optional `query_kit_hooks` add-on, with `useQuery`,
   `useMutation` and the rest of React Query's hooks on `flutter_hooks`.
-- [Query keys](query-keys.md): `QueryKey` as a value type, hierarchical keys,
-  prefix matching and key factories.
+- [Query keys](query-keys.md): the keys a definition builds, and `QueryKey`
+  as a value type, hierarchical keys, prefix matching and key factories.
+- [Typed query definitions](typed-queries.md): a query declared once, then
+  read, written and invalidated through a reference that carries its key and
+  its data type.
 - [Query functions](query-functions.md): a function that returns a `Future` and
   throws on failure, the error types a retry policy can read, and what the
   function's context carries.

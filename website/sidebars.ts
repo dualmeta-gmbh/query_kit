@@ -29,6 +29,7 @@ const sidebars: SidebarsConfig = {
             'guides/reading-queries-in-widgets',
             'guides/hooks',
             'guides/query-keys',
+            'guides/typed-queries',
             'guides/query-functions',
             'guides/query-options',
             'guides/parallel-queries',
@@ -131,6 +132,7 @@ const sidebars: SidebarsConfig = {
             'examples/combine',
             'examples/initial-and-placeholder',
             'examples/select-and-sharing',
+            'examples/typed-queries',
           ],
         },
         {

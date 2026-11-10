@@ -85,9 +85,7 @@ class Api {
 
 final Api api = Api();
 
-// >>> quick-start.md#key
 final QueryKey tasksKey = QueryKey(<Object?>['tasks']);
-// <<<
 
 QueryKey taskKey(String id) => QueryKey(<Object?>['tasks', id]);
 
@@ -95,13 +93,11 @@ QueryKey taskKey(String id) => QueryKey(<Object?>['tasks', id]);
 // quick-start.md
 // ---------------------------------------------------------------------------
 
-// >>> quick-start.md#options
 QueryObserverOptions<List<Task>> tasksQuery() => QueryObserverOptions(
       queryKey: tasksKey,
       queryFn: (context) => api.listTasks(signal: context.signal),
       staleTime: const StaleTime.duration(Duration(seconds: 30)),
     );
-// <<<
 
 // >>> guides/query-options.md#plain
 QueryObserverOptions<Task> taskQuery(String id) => QueryObserverOptions(
@@ -143,7 +139,6 @@ List<Widget> lifecycleProviders(QueryClient client, bool online) => <Widget>[
       // <<<
     ];
 
-// >>> quick-start.md#screen
 class TasksScreen extends StatelessWidget {
   const TasksScreen({super.key});
 
@@ -165,7 +160,6 @@ class TasksScreen extends StatelessWidget {
     );
   }
 }
-// <<<
 
 class AddTaskButton extends StatelessWidget {
   const AddTaskButton({super.key});

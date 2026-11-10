@@ -1,0 +1,95 @@
+---
+title: Typed query definitions
+description: Posts declared once as a namespace, a list definition and a detail family, then read, written, patched and invalidated through the references they hand out, beside a raw reader of the same entry.
+---
+
+import DartSource from '@site/src/components/DartSource'
+import screen from '@site/../examples/showcase/lib/features/typed_queries/typed_queries_screen.dart'
+
+A screen of posts declared once: a namespace for everything about posts, a
+definition for the list and a family for the details. Every read, write and
+invalidation on the screen goes through the reference a definition hands out,
+with no key and no type argument at the call site. Beside the typed readers, a
+`QueryBuilder` reads post 1 through plain options written by hand on the same
+key, and both readers share one entry. The server's time sits in a namespace
+of its own, so that something on screen lies outside the posts.
+
+<LiveDemo feature="typed-queries" />
+
+## What to try
+
+- Watch the screen open: each entry is fetched once, post 1 by one request
+  for both of its readers, the typed one and the raw one. The facts read
+  `readAll=2` (two cached details) and `equalRefs=true` (a reference made by
+  a second instance of the definitions equals the first).
+- Press *Write post 1*. Both readers of post 1 show the written title, and
+  `fetches` in the strip does not move: a write is not a request.
+- Press *Update post 2*: post 2's title gains "(updated)", computed from the
+  cached post, and post 1 stays as it was.
+- Press *Patch every detail*: both details gain "(patched)" through one
+  function, and the list's `first=` title does not change.
+- Press *Invalidate post 1*, then *Invalidate details*, then *Invalidate
+  posts*, and watch the strips. The first refetches post 1 alone, the second
+  both details and not the list, the third the list as well. The time's
+  strip never moves: it is outside the posts' namespace.
+
+## The code
+
+The namespace is the prefix of every key on the screen. The detail family
+writes its two type arguments out, the input and the data: nothing else tells
+Dart what the input is.
+
+<DartSource
+  source={screen}
+  path="examples/showcase/lib/features/typed_queries/typed_queries_screen.dart"
+  from="/// Everything about posts on this screen"
+  to="QueryNamespace(const <Object?>['typed-queries', 'posts']);"
+/>
+
+<DartSource
+  source={screen}
+  path="examples/showcase/lib/features/typed_queries/typed_queries_screen.dart"
+  from="late final detail = QueryFamily<int, Post>("
+  end="  );"
+/>
+
+The reads hand a reference's `options()` to `context.query`. They are plain
+options, so every call style takes them.
+
+<DartSource
+  source={screen}
+  path="examples/showcase/lib/features/typed_queries/typed_queries_screen.dart"
+  from="final first = context.query(_posts.detail(firstPostId).options());"
+  to="final time = context.query(_server.time.options());"
+/>
+
+A write puts a value into one entry, typed as the entry is. `update` computes
+the next value from the cached one, and a family's `updateAll` runs one
+function over every cached detail.
+
+<DartSource
+  source={screen}
+  path="examples/showcase/lib/features/typed_queries/typed_queries_screen.dart"
+  from="void _write() => _posts.detail(firstPostId).write("
+  end="      );"
+/>
+
+<DartSource
+  source={screen}
+  path="examples/showcase/lib/features/typed_queries/typed_queries_screen.dart"
+  from="void _patchAll() => _posts.detail.updateAll("
+  end="      );"
+/>
+
+<details>
+<summary>The whole screen</summary>
+
+<DartSource source={screen} path="examples/showcase/lib/features/typed_queries/typed_queries_screen.dart" />
+
+</details>
+
+## Related
+
+- Guides: [Typed query definitions](../guides/typed-queries.md), [Query keys](../guides/query-keys.md)
+- Tested by `test/features/typed_queries_test.dart` (widget) and `e2e/tests/typed_queries.spec.ts` (browser)
+- [View the feature on GitHub](https://github.com/dualmeta-gmbh/query_kit/tree/main/examples/showcase/lib/features/typed_queries)
