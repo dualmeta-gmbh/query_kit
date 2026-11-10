@@ -121,23 +121,33 @@ test('when: a focus while the data is young does nothing, one past ten seconds r
 }) => {
   await scenario.config({ latency: 0 })
   const mounted = await openFresh(page, open, scenario)
-  await pick(page, 'on-focus-a', 'when')
   // Silenced, so every request below belongs to entry A.
   await pick(page, 'on-focus-b', 'never')
 
-  // The rule is "older than ten seconds", so this branch cannot be shown with
-  // the stale-time knob — the ten seconds are waited out. Both branches are
-  // proven by the final count: two mounts and exactly one refetch.
+  // The rule is "older than ten seconds", so neither branch can be shown with
+  // the stale-time knob: the young branch needs a focus within ten seconds of
+  // the data, the old one ten seconds waited out. The data is dated by a
+  // refetch under `always` right before the young focus, not by the mount,
+  // so the ten seconds hold one knob and one focus cycle, not the boot and
+  // every knob before them as well — on a slow engine those took longer.
+  await pick(page, 'on-focus-a', 'always')
+  await focusCycle(page)
+  await expect(fact(page, 'focus-a', 'fetches=2')).toBeVisible()
+  await expect(fact(page, 'focus-a', 'fetchStatus=idle')).toBeVisible()
+  await pick(page, 'on-focus-a', 'when')
+
   await focusCycle(page)
   await expect(fact(page, 'focus-a', 'fetchStatus=idle')).toBeVisible()
-  await expect(fact(page, 'focus-a', 'fetches=1')).toBeVisible()
+  await expect(fact(page, 'focus-a', 'fetches=2')).toBeVisible()
 
   await page.waitForTimeout(11_000)
   await focusCycle(page)
-  await expect(fact(page, 'focus-a', 'fetches=2')).toBeVisible()
+  await expect(fact(page, 'focus-a', 'fetches=3')).toBeVisible()
   // Still fresh by the thirty-second stale time: only the `when` rule decided.
   await expect(reader(page, 'reader-a', 'isStale=false')).toBeVisible()
-  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted + 1)
+  // Both branches are proven by the final count: the mounts, the refetch
+  // `always` asked for, and exactly one refetch under `when`.
+  await expect.poll(() => scenario.count('GET', TIME)).toBe(mounted + 2)
 })
 
 test('on mount: never never fetches, always always does, ifStale only when stale', async ({
