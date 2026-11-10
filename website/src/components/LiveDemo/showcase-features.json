@@ -35,6 +35,11 @@
     "summary": "Three queries of three types, read as one result."
   },
   {
+    "id": "typed-queries",
+    "title": "Typed query definitions",
+    "summary": "A query declared once, then read, written and invalidated by reference."
+  },
+  {
     "id": "prefetching",
     "title": "Prefetching",
     "summary": "Warm the cache before the screen that needs it opens."
