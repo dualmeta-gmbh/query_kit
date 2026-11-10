@@ -95,9 +95,9 @@ a mutation reads, patches, rolls back and invalidates through
 `['tasks', 'list', {search, project}]` and `['tasks', 'byId', id]`, and
 [`test/query_definitions_test.dart`](test/query_definitions_test.dart) spells
 them out by hand, so a renamed definition fails a test instead of quietly
-starting a cold cache. One cache write still reaches past the definitions, and says
-why: the delete's rollback restores each list by its raw key, because the
-snapshot's keys cannot be turned back into filters.
+starting a cold cache. The delete's rollback stays inside them too: it keeps
+what `queries.list.readAll(client)` returned, every list's typed key with its
+data, and each key writes its list back.
 
 The detail's fallback seed from the lists needs a client to read them, and a
 definition holds none, so `taskQuery(client, queries, id)` adds it per use:

@@ -266,12 +266,11 @@ MutationOptions<String, String, ListSnapshot> deleteTaskMutation(
       },
       onError: (_, __, ___, snapshot) {
         // Each list goes back to exactly what it held, whatever has happened
-        // to it since. A family writes through a reference, and the
-        // snapshot's keys cannot be turned back into filters, so the restore
-        // hands each typed key's raw key to the client.
+        // to it since: `readAll` returned every entry's typed key with its
+        // data, and the key writes it back.
         for (final (key, data) in snapshot ?? const <Never>[]) {
           if (data != null) {
-            client.setQueryData<TaskListResponse>(key.rawKey, data);
+            key.write(client, data);
           }
         }
       },
