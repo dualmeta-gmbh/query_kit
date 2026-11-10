@@ -105,10 +105,16 @@ test('a row is reachable by keyboard, and Enter opens the row that has focus', a
   await expect(rows(page)).toHaveCount(features.length)
 
   // Tab walks the rows in order; the third is the one that is left focused.
+  // One press at a time, each waited out until the focus has moved: a press
+  // sent while the last one is still on its way through the engine walks past
+  // the third row, which a slow engine did.
+  const focused = () => page.evaluate(() => document.activeElement?.id ?? '')
   await expect(async () => {
+    const before = await focused()
     await page.keyboard.press('Tab')
+    await expect.poll(focused, { timeout: 5_000 }).not.toBe(before)
     await expect(row(page, third)).toBeFocused({ timeout: 250 })
-  }).toPass({ timeout: 10_000, intervals: [50] })
+  }).toPass({ timeout: 20_000, intervals: [0] })
   await page.keyboard.press('Enter')
 
   await expect(heading(page, third.title)).toBeVisible()

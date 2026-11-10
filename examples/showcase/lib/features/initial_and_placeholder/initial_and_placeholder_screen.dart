@@ -209,6 +209,10 @@ class _InitialAndPlaceholderScreenState
   LazySeedMode _lazySeedMode = LazySeedMode.off;
   final Map<LazySeedMode, int> _lazySeedCalls = <LazySeedMode, int>{};
 
+  /// How often `Rebuild card D` was pressed: what proves each press rebuilt
+  /// the card, so `computeCalls=1` after two of them is about two rebuilds.
+  int _rebuildsD = 0;
+
   void _openPost(int id) {
     setState(() {
       _openId = id;
@@ -402,7 +406,7 @@ class _InitialAndPlaceholderScreenState
           title: 'D. A seed timestamp computed lazily',
           trailing: IconButton(
             tooltip: 'Rebuild card D',
-            onPressed: () => setState(() {}),
+            onPressed: () => setState(() => _rebuildsD++),
             icon: const Icon(Icons.refresh),
           ),
           child: Column(
@@ -456,6 +460,7 @@ class _InitialAndPlaceholderScreenState
                     'mode=${_lazySeedMode.name}',
                     'computeCalls=${_lazySeedCalls[_lazySeedMode] ?? 0}',
                     'refetched=${(lazyState?.dataUpdateCount ?? 0) > 0}',
+                    'rebuilds=$_rebuildsD',
                   ],
                 ),
             ],

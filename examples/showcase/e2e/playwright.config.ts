@@ -32,7 +32,15 @@ export default defineConfig({
     ...(process.env.E2E_BROWSERS === 'all'
       ? [
           { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-          { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+          // At a pixel ratio of 1, as the other two run. `Desktop Safari` says
+          // 2, a Retina Mac's, and Linux WebKit paints CanvasKit in software
+          // on the CI runner: four times the pixels made every frame so slow
+          // that a click waited seconds for two stable animation frames, the
+          // screens' own windows (a 3 s fetch to cancel, a 5 s stale time, a
+          // 10 s focus rule) closed before the test acted, and the 4000 px
+          // sweeps stopped answering at all. No test reads a pixel: they read
+          // the semantics tree, which is laid out in CSS pixels at any ratio.
+          { name: 'webkit', use: { ...devices['Desktop Safari'], deviceScaleFactor: 1 } },
         ]
       : []),
   ],

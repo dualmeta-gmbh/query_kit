@@ -13,10 +13,13 @@ test('two concurrent runs under one key count as two', async ({ page, open, scen
   await expect(page.getByText('saving=0', { exact: true })).toBeVisible()
 
   // Hold both writes open in the browser, so "concurrent" is a fact about
-  // the requests rather than about how fast the clicks were.
+  // the requests rather than about how fast the clicks were. The second
+  // press waits for the first write: two presses inside Flutter web's 200 ms
+  // click debounce can reach the app as one tap (README, end-to-end tests).
   const hold = holdRequest(page, '**/api/todos*')
   const add = button(page, 'Add todo')
   await add.click()
+  await expect.poll(() => hold.seen).toBe(1)
   await add.click()
 
   await expect.poll(() => hold.seen).toBe(2)

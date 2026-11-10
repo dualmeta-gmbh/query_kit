@@ -149,8 +149,12 @@ test('a lazily computed timestamp of null dates the seed now, and nothing fetche
 
   // Every rebuild re-applies the options, and the entry holds data: the
   // callback is never consulted a second time.
+  // Each press waited out: two presses inside Flutter web's 200 ms click
+  // debounce can reach the app as one tap (README, end-to-end tests).
   await button(page, 'Rebuild card D').click()
+  await expect(detail(page, 'D', 'rebuilds=1')).toBeVisible()
   await button(page, 'Rebuild card D').click()
+  await expect(detail(page, 'D', 'rebuilds=2')).toBeVisible()
   await expect(detail(page, 'D', 'computeCalls=1')).toBeVisible()
   expect(await scenario.count('GET', /^\/api\/posts\/8$/)).toBe(0)
 })
