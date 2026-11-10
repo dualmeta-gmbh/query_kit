@@ -257,6 +257,7 @@ void main() {
 
       // Every rebuild re-applies the options; the entry holds data, so the
       // callback is never consulted again.
+      expect(detail('D', 'rebuilds=3'), findsOneWidget);
       expect(detail('D', 'computeCalls=1'), findsOneWidget);
       expect(detail('D', 'refetched=false'), findsOneWidget);
       expect(h.requests('GET', '/api/posts/8'), 0);

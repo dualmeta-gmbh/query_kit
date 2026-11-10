@@ -291,6 +291,28 @@ paints to a canvas, so the tests read the **semantics tree**, switched on by
 - The build passes `--pwa-strategy=none --no-web-resources-cdn`: no service
   worker serving a stale bundle after a local rebuild, no CanvasKit fetched
   from a CDN in every fresh browser context.
+- `E2E_BROWSERS=all` adds Firefox and WebKit (`native-e2e.yml`'s
+  `playwright` job). **WebKit runs at a pixel ratio of 1**, as the other two
+  do, not at `Desktop Safari`'s 2: Linux WebKit paints CanvasKit in
+  software, and four times the pixels made it three times slower than
+  Chromium, long enough for the screens' own windows — a 3 s fetch to
+  cancel, a 5 s stale time, a 10 s focus rule — to close before a test
+  acted, and for the tall sweeps to stop answering. A test that needs such
+  a window opens it right before it acts, not at the mount. Locally,
+  `docker run --rm --cpus=4 -e CI=1 -e E2E_BROWSERS=all -v "$PWD/../../..":/w
+  -w /w/examples/showcase/e2e mcr.microsoft.com/playwright:v1.64.0-noble
+  npx playwright test --project=webkit` (from `e2e/`, after `npm run
+  build`) is the CI runner's engine; macOS WebKit is much faster and hides
+  all of it.
+- **Two presses on one button are two steps, each waited out**: assert what
+  the first press did (a count, a held request seen) before the second.
+  With semantics on, Flutter web's `ClickDebouncer` holds a press's pointer
+  events for 200 ms waiting for the DOM `click`, and when a `click` comes it
+  sends one tap and drops everything it held. Linux WebKit now and then
+  dispatches no `click` for a press, and a second press inside that window
+  then folds both into one tap: `mutation_state`'s two concurrent writes
+  became one. A screen whose presses leave nothing to read gets a fact that
+  counts them (card D's `rebuilds=`).
 
 **Native end-to-end tests** (`integration_test/`, run by `e2e-native/run.sh`)
 run the real app on an iOS simulator, an Android emulator and as a macOS and

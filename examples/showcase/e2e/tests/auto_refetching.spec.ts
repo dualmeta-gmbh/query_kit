@@ -122,10 +122,12 @@ test('the dynamic interval stops itself at the third tick and starts again on cl
   await page.waitForTimeout(pollWindow)
   expect(await scenario.count('GET', TICKS)).toBeGreaterThan(short)
 
-  await button(page, 'Add tick').click()
-  await button(page, 'Add tick').click()
-  await button(page, 'Add tick').click()
-  await expect(page.getByText('ticks=3', { exact: true })).toBeVisible()
+  // Each press waited out: two presses inside Flutter web's 200 ms click
+  // debounce can reach the app as one tap (README, end-to-end tests).
+  for (const ticks of [1, 2, 3]) {
+    await button(page, 'Add tick').click()
+    await expect(page.getByText(`ticks=${ticks}`, { exact: true })).toBeVisible()
+  }
   await page.waitForTimeout(settle)
 
   // The rule returned null when the third tick landed, so no timer is armed.
