@@ -59,6 +59,13 @@ D5-infinite-3 | the same on the narrower value itself, held as the declared type
 D5-infinite-4 | write of an exact InfiniteData<List<Device>, int> | no entry before; the value given back is the given one: true; Query<InfiniteData<List<Device>, int>> holding an InfiniteData<List<Device>, int>
 D5-infinite-5 | update returning an InfiniteData<List<Never>, int> under InfiniteQueryFamily<String, List<DeviceEvent>, int> | Query<InfiniteData<List<DeviceEvent>, int>> holding an InfiniteData<List<DeviceEvent>, int>
 D5-infinite-6 | the same through the updateAll of the family | Query<InfiniteData<List<DeviceEvent>, int>> holding an InfiniteData<List<DeviceEvent>, int>
+D5-infinite-7 | write of an InfiniteData<List<Thermostat>, int> under a plain QueryDefinition<InfiniteData<List<Device>, int>> | Query<InfiniteData<List<Device>, int>> holding an InfiniteData of other type arguments; the value given back is the given one: true
+D5-infinite-8 | adding a page of plain Devices to what that definition reads | TypeError
+D6-1 | options() of a QueryDefinition<Device> whose configure returns QueryObserverOptions<Thermostat> | StateError
+D6-2 | a write and a read through that definition | write: StateError, read: completed; cache: no entry
+D6-3 | options() of a QueryFamily<String, Device> without a fetch function, the same configure | StateError
+D6-4 | options() of an InfiniteQueryDefinition<List<Device>, int> whose configure returns options of List<Thermostat> pages | StateError
+D6-5 | options() when configure returns new QueryObserverOptions<Device> | completed; keeps the key: true, the fetch function is back: true, gcTime never: true
 D7-1 | updateAll over a family with two inputs cached, a list and a lookup beside it | returned 2, all on: true, keys typed: true; list untouched: true, lookup untouched: true
 D7-2 | readAll over the same family | returned 2, all on: true
 D7-3 | what the filters of the family select, and those of the namespace | family 2, namespace 4, one reference 1
@@ -75,6 +82,14 @@ D7-13 | updateAll whose updater throws for the second entry | StateError; kept: 
 D9-1 | a QueriesObserver over the options of a QueryRef<Device> and a QueryRef<List<Device>> | device: Query<Object> without data, list: Query<Object> without data
 D9-2 | the references over those entries | read: QueryDataTypeError, write: QueryDataTypeError, list read: QueryDataTypeError
 D9-3 | a QueriesObserver over two references of one data type | Query<Device> without data; read: completed
+D9-4 | a Temperature written through the first of [QueryRef<Device>, QueryRef<Reading>] | TypeError; cache: no entry
+D9-5 | an update returning a Temperature through the same element | TypeError; cache: no entry
+D9-6 | the value of each element through it: a Device, then a Temperature | completed, completed; cache: Query<Device> holding a Device, Query<Reading> holding a Temperature
+D9-7 | a read through the first element | a Device
+D9-8 | null written through the first of [QueryRef<Device>, QueryRef<Device?>] | TypeError; cache: no entry
+D9-9 | an int written through the first of [QueryDefinition<List<Device>>, QueryDefinition<int>] | TypeError; cache: no entry
+D9-10 | an InfiniteData<List<Object>, Object> written through the first of two infinite references of different page types | TypeError; cache: no entry
+D9-11 | updateAll returning a Temperature through the first of [QueryFamily<String, Device>, QueryFamily<String, Reading>] | TypeError; cache: Query<Device> holding a Device, kept: true
 D10-1 | a family without type arguments (inferred QueryFamily<Object?, …>) | completed
 D10-2 | the same in the factory form | completed
 D10-3 | QueryFamily<dynamic, dynamic>, a key-only family that names nothing | completed

@@ -1286,6 +1286,142 @@ void main() {
       client.clear();
     });
 
+    // `configure` is typed to return the definition's options, and options
+    // of a narrower data type are a subtype of those: the analyzer accepts
+    // them. The definition then cannot put its own fetch function back,
+    // and where that is not noticed it hands out options that are not of
+    // its type. So what `configure` returns is checked for the exact type.
+    group('configure returns options of the definition\'s own type (S0-2)', () {
+      Matcher wrongOptions(String key, Type returned, Type declared) => throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              allOf(
+                contains('configure'),
+                contains(key),
+                contains('$returned'),
+                contains('$declared'),
+              ),
+            ),
+          );
+
+      test('a definition: refused when the options are made, with both types',
+          () {
+        final total = QueryDefinition<num>(
+          namespace: devices,
+          name: 'total',
+          queryFn: (context) => 1.5,
+          configure: (base) => QueryObserverOptions<int>(
+            queryKey: base.queryKey,
+          ),
+        );
+        expect(
+          total.options,
+          wrongOptions(
+            '["devices","total"]',
+            typeOf<QueryObserverOptions<int>>(),
+            typeOf<QueryObserverOptions<num>>(),
+          ),
+        );
+      });
+
+      // Without a fetch function of its own the definition has nothing
+      // that fails to fit the narrower options, so nothing but this check
+      // stands between them and the caller.
+      test('a definition without a fetch function is checked the same', () {
+        final total = QueryDefinition<num>(
+          namespace: devices,
+          name: 'total',
+          configure: (base) => QueryObserverOptions<int>(
+            queryKey: base.queryKey,
+            queryFn: (context) => 1,
+          ),
+        );
+        expect(
+          total.options,
+          wrongOptions(
+            '["devices","total"]',
+            typeOf<QueryObserverOptions<int>>(),
+            typeOf<QueryObserverOptions<num>>(),
+          ),
+        );
+      });
+
+      test('a family: refused per input, naming that input\'s key', () {
+        final detail = deviceDetail(
+          configure: (base, id) => QueryObserverOptions<Thermostat>(
+            queryKey: base.queryKey,
+          ),
+        );
+        // Binding is not making options: the reference exists.
+        final reference = detail('d1');
+        expect(
+          reference.options,
+          wrongOptions(
+            '["devices","detail","d1"]',
+            typeOf<QueryObserverOptions<Thermostat>>(),
+            typeOf<QueryObserverOptions<Device>>(),
+          ),
+        );
+      });
+
+      testFakeAsync('nothing is fetched, and a write creates no entry',
+          (time) async {
+        final client = testClient();
+        var fetches = 0;
+        final detail = deviceDetail(
+          queryFn: (id, context) {
+            fetches++;
+            return Device(id);
+          },
+          configure: (base, id) => QueryObserverOptions<Thermostat>(
+            queryKey: base.queryKey,
+          ),
+        );
+        expect(() => detail('d1').fetch(client), throwsStateError);
+        // A write resolves the options to create the entry.
+        expect(
+          () => detail('d1').write(client, const Device('d1')),
+          throwsStateError,
+        );
+        await time.advance(ms(10));
+        expect(fetches, 0);
+        expect(client.queryCache.findAll(), isEmpty);
+        client.clear();
+      });
+
+      // The control: options of exactly the declared type pass, whether
+      // they are the base changed or options made from nothing.
+      testFakeAsync('options of the declared type pass, however they are made',
+          (time) async {
+        final client = testClient();
+        final copied = deviceDetail(
+          configure: (base, id) => base.copyWith(meta: 'copied'),
+        );
+        final untouched = deviceDetail(configure: (base, id) => base);
+        final made = deviceDetail(
+          configure: (base, id) => QueryObserverOptions<Device>(
+            queryKey: base.queryKey,
+            meta: 'made',
+          ),
+        );
+        // Declared with a supertype as the static type of the closure's
+        // result: what counts is the object, not how the closure is typed.
+        Object build(QueryObserverOptions<Device> base, String id) =>
+            base.copyWith(meta: 'wide');
+        final wide = deviceDetail(
+          configure: (base, id) =>
+              build(base, id) as QueryObserverOptions<Device>,
+        );
+        expect(copied('d1').options().meta, 'copied');
+        expect(untouched('d1').options().meta, isNull);
+        expect(made('d1').options().meta, 'made');
+        expect(wide('d1').options().meta, 'wide');
+        expect(await made('d1').fetch(client), const Device('d1'));
+        client.clear();
+      });
+    });
+
     testFakeAsync('the fetch function gets the input and the query\'s context',
         (time) async {
       final client = testClient();
@@ -1840,6 +1976,112 @@ void main() {
     });
   });
 
+  // A reset cancels what is in flight before it refetches, so its
+  // `cancelRefetch` has something to act on only when a fetch starts
+  // between the two, and only for an entry the reset left with data: a
+  // seeded one, whose fetch a cache listener starts as it hears the reset.
+  group('reset passes cancelRefetch on', () {
+    Future<int> fetchesAfterReset(
+      FakeTime time, {
+      required bool? cancelRefetch,
+    }) async {
+      final client = testClient();
+      var fetches = 0;
+      final detail = deviceDetail(
+        queryFn: (id, context) async {
+          fetches++;
+          await sleep(ms(10));
+          return Device(id, name: 'fetch $fetches');
+        },
+        configure: (base, id) => base.copyWith(
+          initialData: InitialData.value(Device(id, name: 'seed')),
+        ),
+      );
+      final device = detail('d1');
+      final unsubscribe =
+          QueryObserver<Device, Device>(client, device.options())
+              .subscribe((result) {});
+      await time.advance(ms(10));
+      expect(fetches, 1);
+
+      var started = false;
+      client.queryCache.subscribe((event) {
+        // The reset's own update: the entry is back at its seed.
+        if (!started &&
+            event is QueryUpdated &&
+            event.query.state.fetchStatus == FetchStatus.idle &&
+            device.read(client)?.name == 'seed') {
+          started = true;
+          device.fetch(client).ignore();
+        }
+      });
+      final done = cancelRefetch == null
+          ? device.reset(client)
+          : device.reset(client, cancelRefetch: cancelRefetch);
+      expect(started, isTrue);
+      await time.advance(ms(20));
+      await done;
+      final after = fetches - 1;
+      unsubscribe();
+      client.clear();
+      return after;
+    }
+
+    testFakeAsync('off: the refetch joins the fetch already started',
+        (time) async {
+      expect(await fetchesAfterReset(time, cancelRefetch: false), 1);
+    });
+
+    testFakeAsync('on, the default: the refetch replaces it', (time) async {
+      expect(await fetchesAfterReset(time, cancelRefetch: true), 2);
+      expect(await fetchesAfterReset(time, cancelRefetch: null), 2);
+    });
+
+    // The control: the client's own call, over the same filters.
+    testFakeAsync('as client.resetQueries does', (time) async {
+      Future<int> raw(bool cancelRefetch) async {
+        final client = testClient();
+        var fetches = 0;
+        final key = QueryKey(['devices', 'detail', 'd1']);
+        final options = QueryObserverOptions<Device>(
+          queryKey: key,
+          queryFn: (context) async {
+            fetches++;
+            await sleep(ms(10));
+            return Device('d1', name: 'fetch $fetches');
+          },
+          initialData: const InitialData.value(Device('d1', name: 'seed')),
+        );
+        final unsubscribe =
+            QueryObserver<Device, Device>(client, options).subscribe((_) {});
+        await time.advance(ms(10));
+        var started = false;
+        client.queryCache.subscribe((event) {
+          if (!started &&
+              event is QueryUpdated &&
+              event.query.state.fetchStatus == FetchStatus.idle &&
+              client.getQueryData<Device>(key)?.name == 'seed') {
+            started = true;
+            client.query(options).ignore();
+          }
+        });
+        final done = client.resetQueries(
+          filters: QueryFilters(queryKey: key, exact: true),
+          cancelRefetch: cancelRefetch,
+        );
+        await time.advance(ms(20));
+        await done;
+        final after = fetches - 1;
+        unsubscribe();
+        client.clear();
+        return after;
+      }
+
+      expect(await raw(false), 1);
+      expect(await raw(true), 2);
+    });
+  });
+
   group('a family\'s bulk operations', () {
     ({
       QueryClient client,
@@ -2267,8 +2509,11 @@ void main() {
       });
 
       // Here the two part: the client's write takes any entry that can hold
-      // the value, the typed one stays exact at the moment it writes.
-      test('an entry swapped for a wider one is refused at its write', () {
+      // the value. The typed call looks every entry up once more after the
+      // updaters ran, so a swap one of them made refuses the whole call
+      // before its first write.
+      test('an entry swapped for a wider one refuses the call, nothing written',
+          () {
         Device? updater(
           QueryClient client,
           QueryFamily<String, Device> detail,
@@ -2292,11 +2537,17 @@ void main() {
             typeOf<Device?>(),
           ),
         );
-        // Not a transaction: `d1` was written before `d2` was refused.
+        // `d1` is not written either: what the cache holds is what the
+        // updater itself did to it.
         expect(typed.cached, {
-          'd1 Device': const Device('d1', name: 'one!'),
+          'd1 Device': const Device('d1', name: 'one'),
           'd2 Device?': const Device('d2', name: 'wider'),
         });
+        expect(typed.events, [
+          'removed devices/detail/d2',
+          'added devices/detail/d2',
+          'updated devices/detail/d2'
+        ]);
 
         final raw = run(false, updater);
         expect(raw.thrown, isNull);
@@ -2304,6 +2555,76 @@ void main() {
           'd1 Device': const Device('d1', name: 'one!'),
           'd2 Device?': const Device('d2', name: 'two!'),
         });
+      });
+    });
+
+    // What is left of "not a transaction": the writes are made one after
+    // the other, and a cache listener hears each. One that answers the
+    // first write by swapping a later entry makes that entry's write
+    // throw, with the first one made. The client's own bulk update writes
+    // into the wider entry instead.
+    test('a listener that swaps an entry during the writes: the earlier stay',
+        () {
+      ({Map<String, Object?> cached, Object? thrown}) run(bool typed) {
+        final world = populated();
+        final swapped = world.detail('d2').key.rawKey;
+        var done = false;
+        world.client.queryCache.subscribe((event) {
+          if (!done && event is QueryUpdated) {
+            done = true;
+            world.client
+              ..removeQueries(
+                filters: QueryFilters(queryKey: swapped, exact: true),
+              )
+              ..setQueryData<Device?>(
+                swapped,
+                const Device('d2', name: 'wider'),
+              );
+          }
+        });
+        Device? updater(Device? previous) =>
+            previous!.renamed('${previous.name}!');
+        Object? thrown;
+        try {
+          if (typed) {
+            world.detail.updateAll(world.client, updater);
+          } else {
+            world.client.updateQueriesData<Device>(
+              updater,
+              filters: world.detail.filters(),
+            );
+          }
+        } on Object catch (error) {
+          thrown = error;
+        }
+        final cached = {
+          for (final query in world.client.queryCache
+              .findAll(filters: world.detail.filters()))
+            '${query.queryKey.parts.last} ${query.dataType}': query.state.data,
+        };
+        world.client.clear();
+        return (cached: cached, thrown: thrown);
+      }
+
+      final typed = run(true);
+      expect(
+        typed.thrown,
+        dataTypeError(
+          QueryKey(['devices', 'detail', 'd2']),
+          Device,
+          typeOf<Device?>(),
+        ),
+      );
+      expect(typed.cached, {
+        'd1 Device': const Device('d1', name: 'one!'),
+        'd2 Device?': const Device('d2', name: 'wider'),
+      });
+
+      final raw = run(false);
+      expect(raw.thrown, isNull);
+      expect(raw.cached, {
+        'd1 Device': const Device('d1', name: 'one!'),
+        'd2 Device?': const Device('d2', name: 'two!'),
       });
     });
 

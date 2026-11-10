@@ -421,6 +421,29 @@ void main() {
       );
     });
 
+    // The zero-input twin. A definition pins what it declares; what it
+    // leaves unset, `configure` may set.
+    test('a definition that declares no previous-page function: the same', () {
+      final definition = InfiniteQueryDefinition<List<Post>, int>(
+        namespace: posts,
+        name: 'forward',
+        pageFn: (context) => page(context.pageParam),
+        initialPageParam: 0,
+        getNextPageParam: (page, pages, pageParam, pageParams) => pageParam + 3,
+        configure: (base) => base.copyWith(
+          getPreviousPageParam: (page, pages, pageParam, pageParams) => -1,
+          // Declared, so pinned: this one is put back.
+          getNextPageParam: (page, pages, pageParam, pageParams) => 99,
+        ),
+      );
+      final options = definition.options();
+      expect(
+        options.getPreviousPageParam!(const [], const [], 0, const [0]),
+        -1,
+      );
+      expect(options.getNextPageParam(const [], const [], 0, const [0]), 3);
+    });
+
     // `copyWith` reads null as "keep", so this is the one thing a
     // definition cannot put back after `configure`.
     test('a first page param of null that configure changed is an error', () {
@@ -465,6 +488,111 @@ void main() {
         throwsStateError,
       );
       expect(client.queryCache.findAll(), isEmpty);
+    });
+
+    // Options of narrower page types are a subtype of the definition's, so
+    // the analyzer lets `configure` return them. They cannot take the
+    // definition's paging functions back, and are refused before that is
+    // tried.
+    group('configure returns options of the definition\'s own type (S0-2)', () {
+      Matcher wrongOptions(String key, Type returned, Type declared) => throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              allOf(
+                contains('configure'),
+                contains(key),
+                contains('$returned'),
+                contains('$declared'),
+              ),
+            ),
+          );
+
+      InfiniteQueryObserverOptions<List<Pinned>, int> pinnedOptions(
+        QueryKey key,
+      ) =>
+          InfiniteQueryObserverOptions<List<Pinned>, int>(
+            queryKey: key,
+            pageFn: (context) => const [],
+            initialPageParam: 0,
+            getNextPageParam: (page, pages, pageParam, pageParams) => null,
+          );
+
+      test('a definition: narrower page data is refused, with both types', () {
+        final definition =
+            feed(configure: (base) => pinnedOptions(base.queryKey));
+        expect(
+          definition.options,
+          wrongOptions(
+            '["posts","feed"]',
+            typeOf<InfiniteQueryObserverOptions<List<Pinned>, int>>(),
+            typeOf<InfiniteQueryObserverOptions<List<Post>, int>>(),
+          ),
+        );
+        // A write would resolve the options to create the entry.
+        final client = testClient();
+        expect(() => definition.write(client, exact()), throwsStateError);
+        expect(() => definition.fetch(client), throwsStateError);
+        expect(client.queryCache.findAll(), isEmpty);
+      });
+
+      test('a definition: a narrower page param is refused too', () {
+        final cursor = InfiniteQueryDefinition<List<Post>, num>(
+          namespace: posts,
+          name: 'cursor',
+          pageFn: (context) => const [],
+          initialPageParam: 0.5,
+          getNextPageParam: (page, pages, pageParam, pageParams) => null,
+          configure: (base) => InfiniteQueryObserverOptions<List<Post>, int>(
+            queryKey: base.queryKey,
+            pageFn: (context) => const [],
+            initialPageParam: 0,
+            getNextPageParam: (page, pages, pageParam, pageParams) => null,
+          ),
+        );
+        expect(
+          cursor.options,
+          wrongOptions(
+            '["posts","cursor"]',
+            typeOf<InfiniteQueryObserverOptions<List<Post>, int>>(),
+            typeOf<InfiniteQueryObserverOptions<List<Post>, num>>(),
+          ),
+        );
+      });
+
+      test('a family: refused per input, naming that input\'s key', () {
+        final family = byAuthor(
+          configure: (base, author) => pinnedOptions(base.queryKey),
+        );
+        final ada = family('ada');
+        expect(
+          ada.options,
+          wrongOptions(
+            '["posts","byAuthor","ada"]',
+            typeOf<InfiniteQueryObserverOptions<List<Pinned>, int>>(),
+            typeOf<InfiniteQueryObserverOptions<List<Post>, int>>(),
+          ),
+        );
+      });
+
+      // The control: the declared type passes, made from the base or from
+      // nothing, and the definition's paging functions are pinned as before.
+      test('options of the declared type pass, however they are made', () {
+        final copied = feed(configure: (base) => base.copyWith(maxPages: 2));
+        final made = feed(
+          configure: (base) => InfiniteQueryObserverOptions<List<Post>, int>(
+            queryKey: QueryKey(['elsewhere']),
+            pageFn: (context) => const [],
+            initialPageParam: 99,
+            getNextPageParam: (page, pages, pageParam, pageParams) => null,
+            maxPages: 4,
+          ),
+        );
+        expect(copied.options().maxPages, 2);
+        expect(made.options().maxPages, 4);
+        expect(made.options().queryKey, made.key.rawKey);
+        expect(made.options().initialPageParam, 0);
+      });
     });
 
     testFakeAsync('withSelect changes what an observer sees, not the entry',
@@ -987,6 +1115,66 @@ void main() {
       final written = plain.write(client, exact());
       expect(definition.read(client), same(written));
       expect(plain, isNot(definition));
+      client.clear();
+    });
+
+    // Holding a written value to the declared page types is what an
+    // infinite definition does, because it has the two page types to
+    // rebuild from. A plain definition has one type, `T`, and stores what
+    // it is given: one typed `InfiniteData` is outside that promise.
+    test(
+        'a plain definition typed InfiniteData stores a narrower value as '
+        'it is (S0-3)', () {
+      final client = testClient();
+      final plain = QueryDefinition<Feed>(namespace: posts, name: 'feed');
+      final written = plain.write(client, narrow());
+
+      // The entry has the declared type; the value in it has its own.
+      expect(entry(client, plain.key.rawKey).dataType, typeOf<Feed>());
+      expect(written, same(plain.read(client)));
+      expect(
+        written.runtimeType,
+        typeOf<InfiniteData<List<Pinned>, int>>(),
+      );
+      // What that costs: a page of the declared type does not fit. (The
+      // check is the language's; a build that compiles such checks out
+      // lets the call through, which the fixture runner records.)
+      expect(
+        () => plain.read(client)!.copyWith(
+          pages: [
+            [const Post(2)],
+          ],
+        ),
+        throwsA(isA<TypeError>()),
+      );
+      // The infinite definition on the same key reads the same entry, and
+      // gets the value as it was stored.
+      expect(feed().read(client), same(written));
+      expect(
+        feed().read(client).runtimeType,
+        typeOf<InfiniteData<List<Pinned>, int>>(),
+      );
+      client.clear();
+    });
+
+    // The control: the same value through the infinite definition.
+    test('the same value written through the infinite definition is rebuilt',
+        () {
+      final client = testClient();
+      final plain = QueryDefinition<Feed>(namespace: posts, name: 'feed');
+      final written = feed().write(client, narrow());
+      expect(written.runtimeType, typeOf<Feed>());
+      expect(plain.read(client), same(written));
+      expect(
+        plain.read(client)!.copyWith(
+          pages: [
+            [const Post(2)],
+          ],
+        ).pages,
+        [
+          [const Post(2)],
+        ],
+      );
       client.clear();
     });
   });

@@ -1,0 +1,32 @@
+# What tool/check_typed_query_fixtures.dart has to find in this tree:
+# every fixture file with the markers it holds, every recorded file
+# with its observations. The run fails on any difference. Written by
+# --record, never by hand: a row that changes here is a fixture, a
+# refused misuse or an observation that came or went.
+fixture boundary/generic_setter.dart errors=0 strict=0
+fixture boundary/mixed_list.dart errors=0 strict=0
+fixture boundary/untyped_definition.dart errors=0 strict=2
+fixture boundary/widened_receiver.dart errors=0 strict=3
+fixture negative/definitions.dart errors=26 strict=0
+fixture negative/dx_misuses.dart errors=6 strict=0
+fixture negative/generic_setter.dart errors=3 strict=0
+fixture negative/reads_and_writes.dart errors=23 strict=0
+fixture negative/static_type_helper.dart errors=9 strict=0
+fixture negative/surface_limits.dart errors=47 strict=0
+fixture negative/untyped_definition.dart errors=5 strict=0
+fixture positive/declaration_forms.dart errors=0 strict=0
+fixture positive/infinite.dart errors=0 strict=0
+fixture positive/plain_reference.dart errors=0 strict=0
+fixture positive/reference_names.dart errors=0 strict=0
+fixture positive/selection_nullable_subtypes.dart errors=0 strict=0
+fixture positive/target_list.dart errors=0 strict=0
+fixture positive/typed_inputs.dart errors=0 strict=0
+fixture runtime/observations.dart errors=0 strict=0
+fixture support/client_style_setter.dart errors=0 strict=0
+fixture support/models.dart errors=0 strict=0
+fixture support/namespace_factories.dart errors=0 strict=0
+fixture support/static_type.dart errors=0 strict=0
+fixture surface.dart errors=0 strict=0
+observations runtime/observations.debug.expect lines=113
+observations runtime/observations.release.expect lines=113
+observations runtime/observations.unchecked.expect lines=113

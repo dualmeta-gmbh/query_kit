@@ -42,8 +42,19 @@ import 'query_state.dart';
 /// ```
 ///
 /// The type is sealed: a `switch` over a target is exhaustive, and nothing
-/// outside this package can be one. A list of references of different data
-/// types is a `List<QueryTarget>`, which can be invalidated and not written.
+/// outside this package can be one.
+///
+/// To act on references of different data types together, declare the list
+/// as one of targets: it has every operation above and no write.
+///
+/// ```dart
+/// final stale = <QueryTarget>[devices.detail('d1'), rooms.detail('r1')];
+/// ```
+///
+/// Left to inference the literal takes what its elements share, and two
+/// references of one class share that class: `[ints('a'), strings('a')]`
+/// is a `List<QueryRef<Object>>`, whose `write` compiles for any value and
+/// is checked only when it runs.
 ///
 /// {@category Typed queries}
 sealed class QueryTarget {
@@ -449,7 +460,11 @@ abstract final class QueryRef<T> extends QueryEntryRef<T> {
 /// A written value is stored under the declared page types. An
 /// `InfiniteData` built elsewhere with narrower type arguments, say of
 /// `List<Never>` pages, is rebuilt from its pages, so that a later
-/// `copyWith` on the cached value takes a page of the declared type.
+/// `copyWith` on the cached value takes a page of the declared type. That
+/// is this reference's doing: it has the two page types to rebuild with. A
+/// plain `QueryDefinition<InfiniteData<P, Q>>` has one type, the whole
+/// value's, and stores what it is given, narrower type arguments included;
+/// declare paged data as an infinite definition.
 ///
 /// It is a value in the way a [QueryRef] is, and never equal to one.
 ///
@@ -532,6 +547,11 @@ abstract final class InfiniteQueryRef<TPageData, TPageParam>
 /// fetch function serves, write the type argument out:
 /// `QueryDefinition<Session?>(...)`.
 ///
+/// Paged data belongs in an [InfiniteQueryDefinition]. A plain definition
+/// whose data type is an `InfiniteData` works as any other type does, and
+/// that is all: a written value is stored as it is, not rebuilt under the
+/// page types as an [InfiniteQueryRef] rebuilds it.
+///
 /// {@category Typed queries}
 final class QueryDefinition<T> extends QueryRef<T> {
   /// The query stored under `[...namespace, name]`.
@@ -551,8 +571,17 @@ final class QueryDefinition<T> extends QueryRef<T> {
   /// );
   /// ```
   ///
-  /// Whatever [configure] returns, the options keep the definition's key
-  /// and, when it has one, its fetch function.
+  /// The definition pins what it declares: whatever [configure] returns,
+  /// the options keep the definition's key and, when it has one, its fetch
+  /// function. What the definition leaves unset, [configure] may set, so
+  /// one declared without a [queryFn] takes the one [configure] gives it.
+  ///
+  /// [configure] must return options of the definition's own type, which
+  /// the ones it is handed and any `copyWith` of them are. Options are
+  /// covariant in their data type, so a `QueryObserverOptions<int>`
+  /// satisfies the return type of a `QueryDefinition<num>`'s [configure];
+  /// [options] refuses them with a [StateError] that names the key and
+  /// both types.
   ///
   /// The data type must be a real one. In a debug build the constructor
   /// refuses `dynamic`, `Object?` and `void`, which is what a forgotten
@@ -584,7 +613,8 @@ final class QueryDefinition<T> extends QueryRef<T> {
     // key or swap its own fetch function.
     return configure == null
         ? base
-        : configure(base).copyWith(queryKey: key.rawKey, queryFn: _queryFn);
+        : _ownOptions<QueryObserverOptions<T>>(configure(base), key.rawKey)
+            .copyWith(queryKey: key.rawKey, queryFn: _queryFn);
   }
 }
 
@@ -647,8 +677,13 @@ final class QueryFamily<TInput, T> extends QueryTarget {
   ///
   /// [configure] sets the other options, per input: it receives options
   /// holding the key and the fetch function, and the input, and returns
-  /// them with its changes. Whatever it returns, the options keep the
-  /// family's key and, when it has one, its fetch function.
+  /// them with its changes. The family pins what it declares: whatever
+  /// [configure] returns, the options keep the family's key and, when it
+  /// has one, its fetch function; a family declared without a [queryFn]
+  /// takes the one [configure] sets. The options it returns must be of the
+  /// family's own type, `QueryObserverOptions<T>` and not ones of a
+  /// narrower data type, or making a reference's options throws a
+  /// [StateError], as on [QueryDefinition].
   ///
   /// In a debug build the constructor refuses `dynamic`, `Object?` and
   /// `void` for either type argument, which is what a forgotten one
@@ -722,7 +757,8 @@ final class QueryFamily<TInput, T> extends QueryTarget {
     final configure = _configure;
     return configure == null
         ? base
-        : configure(base, input).copyWith(queryKey: key, queryFn: bound);
+        : _ownOptions<QueryObserverOptions<T>>(configure(base, input), key)
+            .copyWith(queryKey: key, queryFn: bound);
   }
 
   /// The cached data of every input, each with its typed key; `null` where
@@ -754,13 +790,16 @@ final class QueryFamily<TInput, T> extends QueryTarget {
   /// and every result must be of that type, or the call throws (a
   /// [QueryDataTypeError] for a type, or what an updater threw) with the
   /// cache as it was. Every updater sees the data from before the call,
-  /// whatever another one returned.
+  /// whatever another one returned. The entries are looked at once more
+  /// when the updaters are done, so one that an updater itself replaced
+  /// with an entry of another type refuses the call as well.
   ///
   /// The writes then happen one after the other, inside one
   /// `NotifyManager.batch`. It is not a transaction: a cache listener hears
   /// each write as it is made, and one that reacts by changing the cache
-  /// is not undone. An entry removed while the updaters ran is created
-  /// again by its write.
+  /// is not undone; if it replaces a later entry with one of another type,
+  /// that entry's write throws with the earlier ones made. An entry removed
+  /// while the updaters ran is created again by its write.
   List<(TypedQueryKey<T>, T?)> updateAll(
     QueryClient client,
     T? Function(T? previous) updater, {
@@ -814,12 +853,19 @@ final class InfiniteQueryDefinition<TPageData, TPageParam>
   /// [getPreviousPageParam] are `InfiniteQueryOptions`' fields of the same
   /// names. [configure] sets the other options (`maxPages`, `staleTime`,
   /// ...): it receives options holding the key and the paging functions
-  /// and returns them with its changes. Whatever it returns, the options
-  /// keep the definition's key and paging functions. Two edges: a
-  /// definition without a [getPreviousPageParam] takes the one [configure]
-  /// sets, and a definition whose [initialPageParam] is `null` cannot have
-  /// it replaced there, so [options] throws a [StateError] when
-  /// [configure] tries.
+  /// and returns them with its changes. The definition pins what it
+  /// declares: whatever [configure] returns, the options keep the
+  /// definition's key and paging functions. What it leaves unset,
+  /// [configure] may set, so a definition without a [getPreviousPageParam]
+  /// takes the one [configure] sets. One edge: a definition whose
+  /// [initialPageParam] is `null` cannot have it replaced there, so
+  /// [options] throws a [StateError] when [configure] tries.
+  ///
+  /// [configure] must return options of the definition's own type,
+  /// `InfiniteQueryObserverOptions<TPageData, TPageParam>`, which the ones
+  /// it is handed and any `copyWith` of them are. Options of narrower page
+  /// types satisfy its return type; [options] refuses them with a
+  /// [StateError] that names the key and both types.
   ///
   /// A `structuralSharing` or an `initialData` that [configure] sets is
   /// held to the declared page types: what it produces is stored as an
@@ -926,8 +972,9 @@ final class InfiniteQueryFamily<TInput, TPageData, TPageParam>
   /// the input. [configure] sets the other options per input, and the
   /// options keep the family's key and paging functions whatever it
   /// returns. A `structuralSharing` or an `initialData` it sets is held to
-  /// the declared page types, and a missing [getPreviousPageParam] or a
-  /// `null` first page param is treated, as on [InfiniteQueryDefinition].
+  /// the declared page types, and a missing [getPreviousPageParam], a
+  /// `null` first page param or options of another type are treated as on
+  /// [InfiniteQueryDefinition].
   ///
   /// In a debug build the constructor refuses `dynamic`, `Object?` and
   /// `void` for any type argument, which is what a forgotten input type
@@ -1190,6 +1237,15 @@ List<(TypedQueryKey<T>, T?)> _updateAll<T>(
         final value => normalise(_checked<T>(value, entries[i].queryKey)),
       },
   ];
+  // Every entry about to be written, looked up once more before the first
+  // write. An updater is the caller's code: one that swapped an entry for
+  // one of another type would otherwise be found out at that entry's
+  // write, after the writes before it.
+  for (var i = 0; i < entries.length; i++) {
+    if (next[i] != null) {
+      client.queryCache.get<T>(entries[i].queryKey);
+    }
+  }
   return client.notifyManager.batch(
     () => [
       for (var i = 0; i < entries.length; i++)
@@ -1230,6 +1286,36 @@ T _checked<T>(Object? value, QueryKey key) {
   return value;
 }
 
+// ------------------------------------------------ what configure returned
+
+/// [configured], which a definition's `configure` returned for the query
+/// under [key], when it is options of exactly the definition's own type
+/// [TOptions]; a [StateError] otherwise.
+///
+/// `configure` is typed to return the definition's options, and options of
+/// a narrower data type are a subtype of those, so the analyzer accepts
+/// `QueryObserverOptions<int>` from the `configure` of a definition of
+/// `num`. Such options cannot take the definition's fetch function back:
+/// the `copyWith` that pins it throws a `TypeError` about a parameter the
+/// caller never wrote, and a JavaScript build compiled with `-O3` or `-O4`
+/// omits that check and hands the narrower options on. Both options
+/// classes are final, so comparing the runtime type is comparing the type
+/// arguments, and that comparison is kept at every level.
+TOptions _ownOptions<TOptions extends Object>(
+  TOptions configured,
+  QueryKey key,
+) {
+  if (configured.runtimeType != _typeOf<TOptions>()) {
+    throw StateError(
+      'configure returned ${configured.runtimeType} for $key, whose '
+      'definition makes ${_typeOf<TOptions>()}. Return options of the '
+      'definition\'s own type: the ones configure is handed, changed with '
+      'copyWith.',
+    );
+  }
+  return configured;
+}
+
 // ------------------------------------------------- the declared page types
 
 /// [value] under exactly the declared page types.
@@ -1263,6 +1349,10 @@ InfiniteQueryObserverOptions<TPageData, TPageParam>
   InfiniteQueryObserverOptions<TPageData, TPageParam> base,
   InfiniteQueryObserverOptions<TPageData, TPageParam> configured,
 ) {
+  _ownOptions<InfiniteQueryObserverOptions<TPageData, TPageParam>>(
+    configured,
+    base.queryKey,
+  );
   final initialPageParam = base.initialPageParam;
   if (initialPageParam == null && configured.initialPageParam != null) {
     // `copyWith` reads `null` as "keep", so a first page param of `null`

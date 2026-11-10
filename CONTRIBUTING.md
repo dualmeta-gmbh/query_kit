@@ -114,6 +114,16 @@ with its diagnostic code and that every control analyzes clean, then runs
 the same surface on the VM and compiled with dart2js (it needs `node`).
 Run it after changing a signature of that surface.
 
+The fixture tree is pinned by `tool/typed_query_fixtures/inventory.txt`:
+every fixture file with its number of markers, every recorded output with
+its number of observations. A run fails when the tree and the inventory
+differ in either direction, so a fixture, a refused misuse or an observation
+cannot disappear with a green run. After adding or removing one on purpose,
+run the script with `--record`, read what it says moved, and commit the
+inventory (and the recorded `*.expect` files) with the change. `--self-test`
+breaks a copy of the tree in each of those ways and requires the failure;
+CI runs it beside the fixtures.
+
 ## Depending on a checkout
 
 To try unreleased work from `main` in an app of your own, depend on the

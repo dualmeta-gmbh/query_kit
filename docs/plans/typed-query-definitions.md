@@ -28,6 +28,21 @@ the package alone. The lasting part of the shape is
 the implementation left this plan and why. Nothing is released: the
 version bumps are Phase 4's (D11).
 
+**Phase 2 is done (TQ2, [#133](https://github.com/dualmeta-gmbh/query_kit/issues/133),
+2026-11-10), and with it the five findings of GPT-6.1-Sol's review of
+TQ0.** Two claims of this plan were narrowed by that review, not
+defended: a collection literal of references of one class and two data
+types infers `QueryRef<Object>`, not `QueryTarget` (D9, limit 18), and
+only an infinite definition holds a written `InfiniteData` to its page
+types (D5, limit 20). Two things were fixed: options of another type
+returned by `configure` are refused on every runtime (D6, limit 19), and
+the fixture runner can no longer pass with less than it was committed
+with ([Phase 0](#phase-0--prove-the-dart-api-before-implementing-the-facade)).
+[Phase 2](#phase-2--families-infinite-queries-and-mutation-workflows) has
+a "Done" block with the mutation recipes and the exit walked item by
+item; the review record ends with one table for the review and one for
+the phase. No signature changed.
+
 Date: 2026-10-18. Repository baseline: `a5afe7d` (`main`). Phase 0 ran over
 `51ab8ad`.
 
@@ -264,11 +279,13 @@ filters; (b) one sealed supertype, `QueryTarget`, that carries
 `invalidate`, `refetch`, `cancel`, `reset`, `remove` and
 `filters({type, stale, fetchStatus, status, predicate})`, and no data type.
 Answer: (b). It is the adapter D7 names, it is the type a helper takes that
-invalidates "whatever it is given", and the fixtures found a third use
-nobody planned: a list of references of two data types infers
-`List<QueryTarget>`, not `List<QueryRef<Object>>`, so it can be invalidated
-and its elements cannot be written (`boundary/mixed_list.dart`,
-`negative/surface_limits.dart`). The cost is one more public name. It is
+invalidates "whatever it is given", and it is the element type a list of
+references of several data types is declared with, `<QueryTarget>[a, b]`,
+so that it can be invalidated and its elements cannot be written
+(`positive/target_list.dart`, `negative/surface_limits.dart`). Phase 0
+claimed more: that such a list *infers* `List<QueryTarget>`. The review
+of TQ0 showed that holds only for references of different classes (S0-1,
+corrected under D9 and in limit 18). The cost is one more public name. It is
 sealed, like `QueryEntryRef`, so a switch over "what is this aimed at" is
 exhaustive (`positive/reference_names.dart`) and nothing outside the
 library can pose as a target (`invalid_use_of_type_outside_library`).
@@ -419,6 +436,13 @@ query); and a nested key under a family's prefix with the family's own type
 (D7). Hot reload re-runs no top-level `final` initialiser, so a renamed
 definition or a changed default needs a hot restart; the data under the old
 key stays until collected.
+
+The second of those has a consequence the review of TQ0 made explicit
+(S0-3, D5): the ordinary definition typed `InfiniteData<P, Q>` is also
+outside the infinite normalisation. It stores the value it is given, under
+whatever type arguments that value has. Paged data is declared with an
+infinite definition; the plain one typed `InfiniteData` stays allowed, as
+any `T` is, and promises nothing about page types (limit 20).
 
 Consequences: explicit stable names; no identity from closure identity,
 `runtimeType.toString()`, construction order or a random token. Recreating a
@@ -713,6 +737,38 @@ above.
   `initialData` would seed the entry it then creates. The raw call does
   the same, and the entry is seeded and then written.
 
+**After the review of TQ0 (S0-3, TQ2): the normalisation is the infinite
+definition's, and only its.** The decision above reads "typed `write`,
+`update` and `updateAll` create or accept only an entry whose runtime type
+argument is exactly `TCacheData`", and for an infinite definition it adds
+the rebuilt value. The review asked what a plain
+`QueryDefinition<InfiniteData<List<Device>, int>>` does with an
+`InfiniteData<List<Thermostat>, int>`. Reproduced: the *entry* is exact
+(`Query<InfiniteData<List<Device>, int>>`), the *value* in it keeps its own
+type arguments, the next `copyWith` typed for the entry throws a
+`TypeError` on the VM and dart2js default and completes at `-O3`/`-O4`,
+and a read through an infinite definition on the same key hands the
+narrower value back (`D5-infinite-7`, `-8`, and a test with the infinite
+definition's write beside it as the control).
+
+Options: (a) normalise in the plain definition too. It has one type
+argument, `T`, and Dart cannot open `InfiniteData<P, Q>` out of a `T` to
+name the page types the rebuilt value needs; a runtime-type comparison can
+tell that the value is not exactly `T` and cannot build the exact one. (b)
+Refuse the declaration: a debug assertion that `T` is not an
+`InfiniteData`. It contradicts D3, which names that declaration among the
+things nothing detects, and it would refuse the reads of a paged entry
+some applications do through a plain reference. (c) Refuse the write: an
+exactness check on the value for every plain write of an `InfiniteData`.
+That is a rule for one data class inside the generic write path, and a
+value of narrower type arguments is what every other generic class
+(`List<Thermostat>` under `List<Device>`) is stored as without complaint.
+(d) Narrow the promise: the entry is exact for every definition; the
+written *value* is held to the declared page types by an infinite
+definition only. Answer: (d), the product owner's. (b) and (c) are cheap
+and are not built; they are named here in case the limit turns out to
+bite.
+
 ### D6. Options, defaults and execution are reused, not rebuilt
 
 **Options:** (a) a second options type for definitions; (b) `ref.options()`
@@ -811,6 +867,43 @@ tested.
   is one comparison, the message says where the value belongs, and a
   `configure` that leaves the first page param alone is unaffected
   (limit 17).
+
+**After the review of TQ0 (TQ2): the rule, and what `configure` returns.**
+
+- *The rule, stated (S0-4).* **The definition pins what it declares; what
+  it leaves unset, `configure` may set.** The review read the first edge
+  above as a defect: a definition declared without a fetch function, or
+  without a `getPreviousPageParam`, does not get its `null` back after a
+  `configure` that sets one. Reproduced, and kept (the product owner's
+  decision): the declared `null` means "not declared", and a definition
+  has no way to say "declared absent" that a `copyWith` could restore.
+  Both halves are tests on both kinds, and the constructors' dartdoc
+  states the rule in these words.
+- *`configure` returns options of the definition's own type (S0-2).* Its
+  return type is `QueryObserverOptions<T>`, and options are covariant in
+  their data type, so a `configure` on a `QueryDefinition<num>` may return
+  a `QueryObserverOptions<int>`. Reproduced: on the VM the re-pin's
+  `copyWith` then failed with a `TypeError` about the fetch function's
+  type, which names neither the definition nor `configure`; at dart2js
+  `-O4` nothing failed, `options()` returned the narrower options and a
+  fetch stored `1.5` through them. Options: (a) a cast, which `-O4`
+  compiles out; (b) an `is` test, which a narrower type passes; (c) rebuild
+  the options field by field under the declared type, the field list D6
+  refused; (d) compare `runtimeType` with the declared options type before
+  any `copyWith` and throw. Answer: (d). Both options classes are `final`,
+  so the runtime type of a value is exactly its type arguments' doing, and
+  a `Type` comparison is not something an optimisation level removes: it
+  is the technique the infinite normalisation already rests on. The error
+  is a `StateError` naming the key and both types, the kind the `null`
+  first page param already throws when the options are made;
+  `QueryDataTypeError` is about what an entry holds, and `ArgumentError`
+  about an argument of the call that throws. It is thrown by `options()`
+  and by everything that makes options (`fetch`, a write that creates the
+  entry), on a plain definition and family and on both infinite kinds,
+  before a `copyWith` and before the `null`-param check. Run on all five
+  runtimes (`D6-1` to `D6-5`): `StateError` each time, no entry after a
+  write through such a definition, and options of the declared type that
+  `configure` builds anew instead of copying pass (limit 19).
 
 ### D7. Exact for a reference, prefix for a family or namespace; bulk keeps the cache's check
 
@@ -913,11 +1006,30 @@ test:
 - An entry an updater added is not part of the call.
 - An entry swapped for one of a wider type makes its own write throw, and
   the writes made before it stay. The raw path writes into the wider
-  entry. This is limit 16.
+  entry. This is limit 16. (Narrowed in TQ2, below.)
 - A cache listener and an observer hear each write as it is made; only a
   subscriber that schedules through the notify manager waits for the end
   of the batch. The raw call behaves the same, and the test compares the
   two event lists.
+
+**TQ2: the entries are looked at once more before the first write.**
+TQ1 left the swapped entry as an open point: `updateAll`'s dartdoc says
+that nothing is written unless everything can be, and an updater that
+replaced a *later* entry with one of another type broke that, because the
+replacement was found at that entry's write, after the earlier ones.
+Options: (a) leave it, a documented limit; (b) look every entry that is
+about to be written up again, with the exact check, after the last updater
+returned and before the batch; (c) write into the `Query` objects captured
+in the first pass, which loses the write to a removed entry (D5's reason
+for the second lookup). Answer: (b). It is one cache lookup per written
+entry, it changes no result for a caller whose updaters leave the cache
+alone, and it makes the sentence true for everything an updater can do:
+the swap now throws `QueryDataTypeError` with **no** entry written. What
+remains, and limit 16 now says only this: a cache listener or an observer
+that reacts to one of the writes by replacing a later entry. That happens
+inside the batch, between two writes, and the only way to exclude it is to
+write without notifying, which is a different operation. Both are tests,
+the listener's with the raw call beside it.
 
 ### D8. Infinite queries keep all three types
 
@@ -992,8 +1104,50 @@ One thing the fixture found that the plan had not asked: a list of the
 `List<QueryRef<Object>>` but a `List<QueryTarget>` (D1), because the
 nearest common supertype of the two is the one without a data type. Its
 elements can be invalidated and cannot be read or written
-(`negative/surface_limits.dart`). So the hole is the options list and
-nothing wider.
+(`negative/surface_limits.dart`).
+
+**Corrected after the review of TQ0 (S0-1, TQ2).** Phase 0 concluded from
+that one case that "the hole is the options list and nothing wider". It is
+wider. `[device, list]` is a family's reference and a definition: two
+classes, whose nearest common supertype is the target. Two references of
+**one** class meet at that class, at the common supertype of their data:
+
+| Literal | Inferred (Dart 3.6, 3.10, 3.13) |
+|---|---|
+| `[ints('a'), strings('a')]`, two families' references | `List<QueryRef<Object>>` |
+| `[device, lookup]`, data `Device` and `Device?` | `List<QueryRef<Device?>>` |
+| two `QueryDefinition`s | `List<QueryDefinition<Object>>` |
+| two infinite families' references | `List<InfiniteQueryRef<List<Object>, Object>>` |
+| two families; two typed keys | `List<QueryFamily<String, Object>>`; `List<TypedQueryKey<Object>>` |
+| a set, a map, a conditional expression of the first pair | `Set<QueryRef<Object>>`, `Map<String, QueryRef<Object>>`, `QueryRef<Object>` |
+| a family's reference and a definition of another type; a plain and an infinite reference | `List<QueryTarget>` |
+
+So: **a collection literal of references of different data types infers a
+common supertype, `QueryRef<Object>` or `QueryEntryRef<Object>`; writes
+through its elements are checked at runtime only; declare a heterogeneous
+lifecycle list as `<QueryTarget>[…]`.** (`QueryEntryRef<Object>` is what
+elements already typed as `QueryEntryRef` meet at; no literal of the
+concrete kinds measured above infers it.) This is D2's widening, reached
+without an upcast in the source, and it ends where D2's does: run on all
+five runtimes (`D9-4` to `D9-11`), a `Temperature` written or returned by
+an updater through the device's element, `null` through a non-nullable
+one, an `int` through a list definition's, an `InfiniteData<List<Object>,
+Object>` through an infinite one and a wrong `updateAll` result through a
+family's are each refused before anything is written, by `TypeError` on
+the VM and dart2js default and by `QueryDataTypeError` at `-O3`/`-O4`, and
+no entry is created; the right value through each element is written.
+What is lost is the compile-time refusal, not the cache's integrity.
+
+Options: (a) make the two-class result hold for one class too, which
+needs the references to stop sharing a generic class, that is `QueryRef`
+invariant in `T`, and Dart has no declaration-site variance; (b) a lint;
+(c) narrow the claim, pin the inference in a boundary fixture, give the
+declared-target spelling a positive and a negative fixture, and say it in
+the dartdoc where the limits are listed. Answer: (c), the product owner's.
+`boundary/mixed_list.dart` pins every row above,
+`positive/target_list.dart` shows `<QueryTarget>[…]` taking every kind of
+target and every lifecycle operation, and `negative/surface_limits.dart`
+refuses `write`, `update`, `read`, `state` and `key` on its elements.
 
 Mutation definitions are outside this feature. Existing mutation callbacks
 use typed references for cancellation, optimistic writes, snapshots, rollback,
@@ -1366,7 +1520,14 @@ Behaviour that belongs to the signatures:
   top type, and the plain ones that the data type is not `Null` (D10, D5).
   Debug builds only.
 - `options()` returns fresh options on every call, with the definition's
-  key and functions pinned after `configure` (D4, D6).
+  key and functions pinned after `configure` (D4, D6). The definition pins
+  what it declares; what it leaves unset, `configure` may set. Options of
+  another runtime type than the definition's own are a `StateError` (D6,
+  TQ2).
+- `updateAll` looks every entry it is about to write up once more before
+  the first write (D7, TQ2).
+- Only the infinite definitions rebuild a written `InfiniteData` under
+  the declared page types (D5, TQ2).
 
 **The limits, stated.** Each is measured in Phase 0 unless it says
 otherwise, and each belongs in the guide where the feature it limits is
@@ -1416,12 +1577,32 @@ introduced.
     outside the normalisation, and so is a `structuralSharing` from the
     client's or a key's defaults. The definition's own `structuralSharing`
     and `initialData` are inside it, built and tested by TQ1 (D5).
-16. *A bulk update is not a transaction:* every result is validated before
-    the first write, but a callback that writes re-entrantly is not rolled
-    back. An updater that swaps an entry for one of a wider type makes that
-    entry's write throw after earlier ones were made (D7).
+16. *A bulk update is not a transaction:* every result is validated, and
+    every entry about to be written looked up again, before the first
+    write, so nothing an updater does to the cache leaves it half-written
+    (TQ2). The writes notify as they are made: a cache listener or an
+    observer that answers one by replacing a later entry with one of
+    another type makes that entry's write throw after the earlier ones, and
+    nothing is rolled back (D7).
 17. *A definition whose first page param is `null`* cannot have it changed
     by `configure`: making the options throws a `StateError` (D6, TQ1).
+18. *A collection literal of references of different data types infers a
+    common supertype*, `QueryRef<Object>` or `QueryEntryRef<Object>` (and
+    `QueryDefinition<Object>`, `QueryFamily<String, Object>`,
+    `TypedQueryKey<Object>`, `InfiniteQueryRef<List<Object>, Object>` for
+    their kinds), not `QueryTarget`, whenever its elements are of one
+    class; a set, a map and a conditional expression do the same. Writes
+    through its elements are checked at runtime only, as in limit 1.
+    Declare a heterogeneous lifecycle list as `<QueryTarget>[…]`, whose
+    elements have no `write` (D9, TQ2).
+19. *`configure` returns options of the definition's own type.* Options of
+    a narrower data type satisfy its return type; making the options then
+    throws a `StateError` naming the key and both types, on every runtime
+    (D6, TQ2).
+20. *A plain definition typed `InfiniteData<P, Q>` does not normalise.*
+    Its entry is exact and the value it stores keeps the type arguments it
+    came with; only an infinite definition rebuilds a narrower
+    `InfiniteData` under the declared page types (D3, D5, TQ2).
 
 ## Implementation map
 
@@ -1537,6 +1718,51 @@ observations as recorded on each of the five runtimes. In CI it is a step
 of `gates` (the CI SDK) and of `floors` (the floor), so the floor's own
 analyzer and dart2js are covered, not only its test run. `latest-stable.yml`
 does not run it yet.
+
+**After the review of TQ0 (S0-5, TQ2): the runner can no longer pass
+with less than it was committed with.** The review reduced the tree to
+one positive file, no negative directory and an observation program that
+prints nothing, recorded that, and got a green run. Reproduced on a copy
+of that tree: `OK: 1 fixture files, 0 misuses refused`, exit code 0. The
+rule above ("a negative file has to have at least one marker") is a rule
+about a file that exists. Options: (a) minimum counts as constants in the
+runner, which are stale the day a fixture is added and then let the new
+one be deleted unseen; (b) an inventory file of minimum counts, the same
+flaw one step removed; (c) an inventory that the tree must match
+**exactly**, in both directions, written only by `--record`; (d) a hash
+per file, which fails on every edit of a comment and teaches people to
+record without reading. Answer: (c), over floors no inventory can lower.
+
+- `tool/typed_query_fixtures/inventory.txt` lists every fixture file with
+  its number of `error` and `strict` markers and every recorded output
+  with its number of observations. A run compares it with the tree first
+  and stops at a difference in either direction, naming the row.
+- Floors in the runner's code, which hold whatever the inventory says:
+  every fixture directory holds a file, the observation program exists,
+  the tree refuses at least one misuse, every recorded output exists and
+  is not empty, no fixture is an empty file.
+- The output of each of the five runtimes is checked for itself before it
+  is compared: at least one observation, every line an observation
+  (`id | what | result`), no identifier twice.
+- `--record` is the one way an inventory or a recorded output moves. It
+  refuses to record an output that fails those checks, records the
+  inventory only after a green run, and prints what is gone, changed and
+  new, so the diff a reviewer reads says "gone: negative/definitions.dart"
+  in so many words.
+- `--self-test` breaks a copy of the tree in each of those ways, 31
+  cases, and requires the failure and its message: the reviewer's tree
+  among them, the same tree with the inventory deleted and re-recorded,
+  and one end-to-end run that must exit with 1. CI runs it before the
+  runner in `gates` and in `floors`.
+
+What it does not hold: the inventory pins counts, not content. A misuse
+replaced by another keeps its row; that is a reviewer's diff to read, and
+the marker's diagnostic code still has to be the one the analyzer
+reports.
+
+The tree after TQ2: 24 files (seven positive, seven negative, four
+boundary, four support, the surface and the program), 119 `error` markers
+and 5 `strict` ones, 113 observations.
 
 **Phase 1 points the fixtures at the real exports by deleting one line:**
 `surface.dart`'s `export 'prototype/typed_queries.dart';`. Nothing else
@@ -1668,6 +1894,88 @@ prefix making the bulk call throw before any write, a wider raw entry under
 a family prefix making the typed bulk update throw where the raw one writes,
 an extracted narrower `InfiniteData` normalised on write, stored null,
 absence and rollback. Runtime failures do not partially corrupt the cache.
+
+**Done (TQ2, 2026-11-10).** What exists beyond TQ1:
+
+| Path | What it is |
+|---|---|
+| `packages/query_kit/test/query_definition_mutation_test.dart` | 22 cases: the six mutation recipes, each a function a guide can lift, with a fetch in flight where it matters |
+| `packages/query_kit/test/query_definition_test.dart` | 94 cases (85 after TQ1): what `configure` may return, the bulk update's second look, `reset(cancelRefetch:)` |
+| `packages/query_kit/test/infinite_query_definition_test.dart` | 46 cases (39): the same for the infinite kinds, the pin rule without a previous-page function, the plain definition typed `InfiniteData` |
+| `packages/query_kit/lib/src/query_definition.dart` | two changes of behaviour, no signature changed: options of another type than the definition's own are refused (D6), and a bulk update looks its entries up once more before the first write (D7) |
+| `tool/check_typed_query_fixtures.dart`, `tool/typed_query_fixtures/inventory.txt` | the runner's inventory, floors, output checks and self-test (Phase 0, above) |
+| `tool/typed_query_fixtures/positive/target_list.dart`, `boundary/mixed_list.dart`, `negative/surface_limits.dart`, `runtime/observations.dart` | the collection literal's inferred types pinned, the declared target list offered and refused, 15 more observations |
+
+The core's suite went from 1300 to 1338 VM cases and from 1295 to 1333
+in Chrome, no existing case rewritten; one TQ1 case was replaced, the
+swap during a bulk update, whose expectation is the behaviour D7 changed
+on purpose. Line coverage is 3786 of 3792 (99.84 %, floor 99.8 %).
+
+**The recipes.** A mutation *definition* stays out of scope; each recipe
+is a function that returns ordinary `MutationOptions` over typed
+references, and the test file's own domain (`Device`, `DeviceQueries`,
+`DeviceApi`) is what a guide would show.
+
+| # | Recipe | What its cases hold |
+|---|---|---|
+| 1 | Optimistic write of one entry: `cancel`, `read`, `update`, write the old value back in `onError`, `invalidate` in `onSettled` | every step with a refetch in flight: the fetch is cancelled and its response never lands, the patch, the rollback, the refetch, with data, status, fetch status, timestamp and the entry's type after each; the control without the `cancel`, where the response in flight overwrites the patch; success; nothing cached |
+| 2 | A snapshot of `state`, not of `read`, and a `restore` over it | no entry: removed again, exactly, a sibling untouched; an entry without data whose first fetch was in flight: reset and refetched; one nothing observes: reset, idle; a cached `null` on a nullable definition: written back as `null` with its timestamp; a value over a value and `null` over a value; and that `read` alone returns `null` for all three |
+| 3 | The server's answer written into the detail and into its row of the list | no refetch; a detail never read is created with the declared type and a list never read is not; a refused write changes nothing |
+| 4 | A list written, then its family invalidated | every cached detail marked, the observed ones refetched, an unrelated family untouched, and the mutation waits for the refetches |
+| 5 | Every cached detail patched with `updateAll`, and put back by id | only the family's entries; a refusal restores the devices the mutation changed and keeps a neighbour's later write; with a detail's fetch in flight |
+| 6 | The same as 1 and 2 over an infinite definition | cancel, prepend a row to the first page, fail, restore, refetch, with `InfiniteData<List<Event>, int>` as the stored type at every step; success; a feed nobody opened; a narrower optimistic value stored under the page types |
+
+A last case runs every recipe against a refusing backend and compares
+the cache before and after: entries, types and data.
+
+**The exit, item by item.** Tests are named by group and case;
+"definition", "infinite" and "mutation" are the three files above.
+
+| Exit item | Covered by |
+|---|---|
+| page and input type fixtures | `positive/infinite.dart`, `positive/typed_inputs.dart`, `negative/definitions.dart`, `negative/reads_and_writes.dart`; the runner on three SDKs |
+| ordinary and infinite on one key, different types | infinite, "a plain and an infinite definition on one key": "of different data types: the cache's own type error" |
+| the same, one `InfiniteData` type: shared, documented | the same group: "of the same InfiniteData type: one entry, and nothing reports it"; limits 9 and 20; the barrel's limits list |
+| sibling and descendant isolation | definition, "exact for a reference, prefix for a family and a namespace" (filters, invalidate, remove) and "updateAll writes every input and nothing beside the family"; infinite, "an infinite reference is exact, its family a prefix"; mutation, group 2 "no entry" (a sibling), group 4 (another family of the namespace), group 5 (the list beside the family) |
+| a nested key of another type under a family prefix: the bulk call throws before any write | definition, "an entry of another type under the prefix: nothing runs or is written"; infinite, "an entry of other page types under the prefix: nothing is written" |
+| a wider raw entry under a family prefix: the typed bulk update throws where the raw one writes | definition, "a wider entry under the prefix: refused where the client writes" |
+| an extracted narrower `InfiniteData` normalised on write | infinite, "a written value is stored under the declared page types" (seven cases); mutation, group 6 "a narrower optimistic value is stored under the page types" |
+| the same through a custom sharing callback (the ticket's wording) | infinite, "a hook that returns a narrower value: the commit is exact", "fetched pages go through it as well", "the family's hook is wrapped per input" |
+| stored null, absence | definition, "absence, no data and a cached null" (seven cases); mutation, group 2 |
+| rollback, with a request in flight, stored type and state after each step | mutation, group 1 and group 6 (their first cases), group 2 (its second case, a first fetch in flight); cancellation of a whole family's fetches before a patch: group 5 (its third case) |
+| runtime failures do not partially corrupt the cache | definition, "an updater that throws for a later entry: no earlier one is written", "re-entrant updaters" (four cases), "through a widened family a wrong result is refused, nothing written", "write, update and read over a wider entry throw, and write nothing"; mutation, "every recipe, refused: entries, types and data as before"; observations `D9-4` to `D9-11` and `D6-2` on five runtimes |
+| the filter adapter carries active/inactive, refetch type and cancellation (the ticket's build list) | definition, "filters carry the target's key and exactness, and every argument", "invalidate and refetch pass cancelRefetch on", "cancel passes revert and silent on", "reset passes cancelRefetch on" |
+| `fetch` over `client.infiniteQuery`; the page functions are handed the input | infinite, "fetch is client.infiniteQuery: fresh, stale, joined", "a family hands every paging function its input" |
+
+Nothing on the list was missing a case after the recipes were written;
+the one line of it that had no case before TQ2 was rollback.
+
+**TQ1's three open points, decided.**
+
+- *A re-entrant swap during `updateAll`.* The entries are looked up
+  again before the first write (D7, above). The listener's swap, which
+  that cannot reach, is a test and limit 16.
+- *`reset(cancelRefetch:)` had no behavioural case.* TQ1 recorded that
+  the argument "cannot be observed", because a reset cancels what is in
+  flight before it refetches. It can: for an entry the reset leaves with
+  data (a seeded one), a fetch a cache listener starts as it hears the
+  reset is in flight when the refetch arrives, and then `false` joins it
+  (one fetch) and `true`, the default, replaces it (two). Three cases,
+  one of them the client's own `resetQueries` over the same filters as
+  the control. Checked by changing the library: with the argument
+  dropped in a scratch copy of TQ1's code the "off" case fails.
+- *Two lines the VM cannot reach* (the `throw` of the value check and of
+  the input check, behind Dart's own covariance check). Options: (a) a
+  `coverage:ignore` comment, which this repository has never used, so
+  it would be the first hidden line in a count that is otherwise a plain
+  count; (b) a test that reaches them through a private seam, which
+  means a seam that exists for the test; (c) leave them counted as
+  missed while the floor holds. Answer: (c). The library is at 260 of
+  262 lines and the package at 99.84 % against a floor of 99.8 %, with
+  the two new functions of TQ2 fully covered, and the lines are proven
+  where they run: the `-O3` and `-O4` observations, which CI runs on two
+  SDKs. The floor is not lowered; if a later change brings the package
+  under it, that change has to cover something, not hide something.
 
 ### Phase 3 — Flutter, hooks and representative consumers
 
@@ -1959,7 +2267,7 @@ the fixture runner on Dart 3.6.2, 3.10.7 and 3.13.4; the paths are under
 | P0-2 | A new limit under P0-1: a record input holding a collection needs a `keyOf`, undetected | `K-6`: unequal without, equal with | D3, limit 8 |
 | P0-3 | One declaration form, the constructors; no factory methods on the namespace. The product owner's question | both forms side by side infer the same and hit the same backstop (`positive/declaration_forms.dart`, `D10-1`, `D10-2`) | D12 (new) |
 | P0-4 | `QueryRef` keeps its name | `positive/reference_names.dart`, an `invalid_assignment` between the two types | D1 |
-| P0-5 | A tenth type, the sealed `QueryTarget`: the lifecycle operations and the filter adapter in one place | a list of references of two data types infers `List<QueryTarget>` (`boundary/mixed_list.dart`); an exhaustive switch (`positive/reference_names.dart`) | D1, D7 |
+| P0-5 | A tenth type, the sealed `QueryTarget`: the lifecycle operations and the filter adapter in one place | a list of a family's reference and a definition of another data type infers `List<QueryTarget>` (`boundary/mixed_list.dart`); an exhaustive switch (`positive/reference_names.dart`). The row first read "a list of references of two data types": true of two classes, false of one (S0-1) | D1, D7 |
 | P0-6 | D2's claim narrowed: the generic *value* setter widens, a generic *updater* does not | `boundary/generic_setter.dart` compiles with `T = Object`; `negative/generic_setter.dart` refuses the updater | D2 |
 | P0-7 | A family's `call` checks its input through `Object?` and throws `ArgumentError` | `O7-input-1`, `-2`: `TypeError` on the VM, `ArgumentError` at `-O3`/`-O4` | D2 |
 | P0-8 | A reference's `==` is its kind and its typed key; namespace and name only through the raw key | `D4-8` to `D4-10` | D4 |
@@ -1982,6 +2290,13 @@ timer, because the compiled code reaches for `self`; the runner defines
 it, and an empty run would have compared as a failure against the
 recorded file either way).
 
+Two of those sentences did not survive the review of TQ0. The second
+prediction was right for the case it was made about and the correction
+overreached: two references of one class *are* a `List<QueryRef<Object>>`
+(S0-1). And "an empty run would have compared as a failure against the
+recorded file" holds only while the recorded file is not empty too
+(S0-5).
+
 ### Phase 1 (TQ1, 2026-11-10)
 
 Where the implementation left this plan, or settled what it had not said.
@@ -1994,7 +2309,7 @@ phase: the rows are the implementer's own.
 | # | What changed or was settled | Evidence | Where |
 |---|---|---|---|
 | P1-1 | The typed bulk update is its own pass in the raw update's order, not the raw update with a wrapped updater | reading `updateQueriesData`: an empty entry of another type passes its first pass, `_holds` passes on type alone, the second pass writes leniently; tests with the raw call as the control | D7, Phase 1 |
-| P1-2 | What an updater that touches the cache does to a bulk update: captured data, a removed entry re-created bare, an added entry ignored, a swapped wider entry refused at its write | tests, each beside the raw call | D7, limit 16 |
+| P1-2 | What an updater that touches the cache does to a bulk update: captured data, a removed entry re-created bare, an added entry ignored, a swapped wider entry refused at its write (since TQ2 before the first write, P2-2) | tests, each beside the raw call | D7, limit 16 |
 | P1-3 | A bulk update's writes are not held back for a cache listener or an observer; only a notify-manager subscriber waits for the batch. The dartdoc first said otherwise | a test that failed as first written, then rewritten as parity with the raw call | D7 |
 | P1-4 | `update` resolves the entry again after the updater ran | tests: an updater that removes the entry, and one that swaps it | D5 |
 | P1-5 | The definition's own `structuralSharing` and `initialData` are wrapped in Phase 1, not Phase 2; the default sharing and the opt-out instance are not wrapped; an exact `InitialData.value` keeps its instance | tests, with a raw definition as the control that the narrower value is otherwise stored | D5, limit 15, Phase 2 |
@@ -2003,6 +2318,39 @@ phase: the rows are the implementer's own.
 | P1-8 | `configure` may supply what a definition lacks: a key-only definition's fetch function, a missing `getPreviousPageParam` | tests | D6 |
 | P1-9 | `QueryDataTypeError.actual` is the entry's type for an entry mismatch and the value's `runtimeType` for a value mismatch | tests for the first; the observations at `-O3`/`-O4` for the second | D5 |
 | P1-10 | Two lines are unreachable on the VM (the two `throw`s behind Dart's covariance check) and are proven by the `-O3`/`-O4` observations; coverage 99.84 % with them counted as missed | `tool/check_coverage.dart` | Phase 1 |
-| P1-11 | `reset`'s `cancelRefetch` is passed on and cannot be observed: a reset cancels the fetch in flight whatever it is given | a test that could not be written to fail | D7 |
+| P1-11 | `reset`'s `cancelRefetch` is passed on and cannot be observed: a reset cancels the fetch in flight whatever it is given | a test that could not be written to fail. Wrong: TQ2 wrote it (P2-3) | D7 |
 | P1-12 | The decision record is ADR-0007 and the ticket's "ADR-0005" is noted in it | `docs/adr/` | Phase 1 |
 | P1-13 | No version or CHANGELOG change in Phase 1 | D11 puts the bumps in Phase 4 | D11 |
+
+### Review of TQ0 (GPT-6.1-Sol, over `9aad67b`, worked in TQ2)
+
+Five findings, each reproduced against the code before anything changed.
+"Run" is the fixture runner on Dart 3.6.2, 3.10.7 and 3.13.4.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| S0-1 (P1) | A list of references of two data types infers `List<QueryRef<Object>>`, not `List<QueryTarget>`; `refs.first.write(client, 'wrong')` compiles | yes. The analyzer's own answer, literal by literal (D9's table), on language 3.6 and 3.10: one class at two data types meets at that class, two classes at `QueryTarget`. The write throws `TypeError` on the VM and dart2js default and `QueryDataTypeError` at `-O3`/`-O4`, and creates no entry | The claim is narrowed (the product owner's decision), no code changed. D1, D9 and P0-5 corrected; limit 18; `boundary/mixed_list.dart` pins the inferred types; `positive/target_list.dart` and five lines of `negative/surface_limits.dart` hold the declared `<QueryTarget>[…]`; observations `D9-4` to `D9-11`; the barrel's limits list and `QueryTarget`'s dartdoc say it |
+| S0-2 (P2) | `configure` may return options of a narrower data type | yes. VM: a `TypeError` from inside the re-pin's `copyWith`, naming a function type. dart2js `-O4`: no error, the narrower options handed out | Fixed: the runtime type of what `configure` returned is compared with the definition's options type before any `copyWith`; `StateError` with the key and both types. Nine tests on the four kinds, observations `D6-1` to `D6-5` identical on all five runtimes. D6, limit 19 |
+| S0-3 (P2) | A plain definition typed `InfiniteData<P, Q>` bypasses the infinite normalisation | yes. The entry is exact, the stored value keeps its narrower type arguments, a `copyWith` typed for the entry throws on checked runtimes | The promise is narrowed (the product owner's decision), no code changed. D3, D5, limit 20; a test with the infinite definition as the control, observations `D5-infinite-7` and `-8`; the dartdoc of `QueryDefinition` and `InfiniteQueryRef`. No sound way to normalise from a plain definition exists (D5 names the two cheap refusals that were not built) |
+| S0-4 (P2) | The re-pin does not restore a declared `null`: a `configure` can add a fetch function or a `getPreviousPageParam` the definition left out | yes, and it is what TQ1 built on purpose (P1-8) | Kept (the product owner's decision), no code changed. D6 states the rule: the definition pins what it declares; what it leaves unset, `configure` may set. The constructors' dartdoc says it; both halves are tests on the plain and the infinite kind, the zero-input and the family form |
+| S0-5 (P2) | The fixture runner can pass vacuously: with the negative directory gone and an observation program that prints nothing, a re-record is green | yes: `OK: 1 fixture files, 0 misuses refused`, exit code 0, on a copy of the reviewer's tree | Fixed: an inventory the tree must match exactly, floors in the code, a check of every runtime's output, `--record` as the one path that moves a pin and that prints what moved, and `--self-test` (31 cases, the reviewer's tree among them) in CI before the runner. On that tree the runner now reports nine failures and exits with 1; `--record` there refuses and writes nothing. Phase 0's section |
+
+What the review did not change: no signature, no existing fixture's
+expectation, and no existing test except the one whose behaviour D7
+changed on purpose in the same ticket (P2-2).
+
+### Phase 2 (TQ2, 2026-11-10)
+
+Where TQ2 left this plan or settled what it had not said, beyond the
+five rows above. No second reviewer has read this phase: the rows are
+the implementer's own, and the ticket ends in a review.
+
+| # | What changed or was settled | Evidence | Where |
+|---|---|---|---|
+| P2-1 | The mutation recipes are six functions returning `MutationOptions`, in a test file of their own; no mutation definition, no helper added to the library | 22 cases | Phase 2 |
+| P2-2 | A bulk update looks its entries up once more before the first write, so an updater's swap is refused with nothing written. TQ1's case for that swap asserted the earlier writes stayed; it now asserts none was made, and a new case holds what is left of the limit, a listener's swap, beside the raw call | tests | D7, limit 16 |
+| P2-3 | `reset(cancelRefetch:)` is observable after all, for an entry the reset leaves with data, and has three cases. P1-11's "cannot be observed" was wrong | tests; the "off" case fails against a copy of the library that drops the argument | D7, Phase 2 |
+| P2-4 | The two lines the VM cannot reach stay counted as missed; no `coverage:ignore`, no lowered floor | `tool/check_coverage.dart`: 3786 of 3792, 99.84 % | Phase 2 |
+| P2-5 | A rollback that must tell absence, an entry without data and a stored `null` apart snapshots `state`, and restores an entry without data with `reset`, which is not the state it had: an error it held, or a fetch failure count, is gone. The exact restore needs the raw cache | the recipe's cases; reported to the product owner as a possible helper, not built | Phase 2, D5 |
+| P2-6 | A snapshot taken with `readAll` cannot be written back by key: a `TypedQueryKey` has no `write`, and `updateAll`'s updater is not told which entry it is called for. The recipe restores through the data's own id | recipe 5; reported, not built | D7 |
+| P2-7 | The first optimistic write of an entry whose rollback is a plain `write` gets a new timestamp on rollback; a rollback through the snapshot keeps the old one (`updatedAt:`) | recipe 2's cases assert the kept timestamp; the last case compares the cache without timestamps because recipe 1's rollback moves one | Phase 2 |

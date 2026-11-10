@@ -7494,7 +7494,10 @@ in the plan's review record (P0-1 to P0-16):
   assertions. A zero-input definition with a fetcher infers exactly.
 - A list of references of two data types infers `List<QueryTarget>`, the
   one supertype without a data type, so it can be invalidated and cannot
-  be written.
+  be written. (**Wrong as stated**, and corrected by TQ2's S0-1: that is
+  the result for references of two *classes*, a family's reference and a
+  definition. Two of one class infer `List<QueryRef<Object>>`, and a
+  write through an element compiles.)
 - A record input holding a collection needs a `keyOf`; nothing detects
   its absence.
 
@@ -7609,7 +7612,9 @@ are counted as missed, with no `coverage:ignore`.
 **Not proven here.** dart2wasm is still not run. `reset(cancelRefetch:)`
 is passed on to the client and has no case of its own: a reset cancels
 the fetch in flight whatever it is given, so no test could tell the
-values apart. `QueryDataTypeError`'s message says the query "holds" the
+values apart (**wrong**: TQ2 found the case, a seeded entry and a fetch
+started between the reset's cancel and its refetch, and added it).
+`QueryDataTypeError`'s message says the query "holds" the
 actual type, which reads loosely for a refused value; the message is the
 raw API's and is unchanged. Nothing in the binding or the hooks uses the
 new types yet; their suites were run over this core to show that the
@@ -7619,3 +7624,91 @@ ten names clash with nothing they export.
 and an optimistic write with a request in flight, the stored type
 checked after each step, and the mutation recipes around it. The version
 and the CHANGELOG are Phase 4's.
+
+### TQ2 — a review of TQ0 worked off, rollback and the mutation recipes (#133)
+
+**What.** Two things in one ticket. GPT-6.1-Sol reviewed TQ0 (`9aad67b`)
+and reported five findings; each was reproduced against the code before
+anything changed, and all five reproduced. And the rest of Phase 2:
+rollback with a request in flight, the mutation recipes, and three
+points TQ1 had left open. No public signature changed. Two behaviours of
+`lib/src/query_definition.dart` did, both refusals that were silent or
+late before.
+
+**The review of TQ0.** The plan's review record has the same rows
+(S0-1 to S0-5) with the options weighed under D5, D6, D9 and Phase 0.
+
+| # | Finding | Reproduced | What became of it |
+|---|---|---|---|
+| S0-1 (P1) | A list of references of two data types infers `List<QueryRef<Object>>`, so a wrong write through an element compiles; TQ0 said such a list infers `List<QueryTarget>` | yes. Two references of **one class** meet at that class with the common supertype of their data; only two classes meet at the target. The same for a set, a map, a conditional expression, two definitions, two families, two typed keys. The write is refused at run time on all five runtimes and creates no entry | The claim is narrowed, no code changed. `boundary/mixed_list.dart` pins each inferred type; `positive/target_list.dart` shows the declared `<QueryTarget>[…]` with every lifecycle operation, and `negative/surface_limits.dart` refuses `write`, `update`, `read`, `state` and `key` on its elements; observations `D9-4` to `D9-11`; the barrel's limits list and `QueryTarget`'s dartdoc |
+| S0-2 (P2) | `configure` may return options of a narrower data type | yes. On the VM the re-pin's `copyWith` threw a `TypeError` about a function type, naming neither the definition nor `configure`. At dart2js `-O4` nothing threw: the narrower options were handed out | **Fixed.** `_ownOptions` compares the runtime type of what `configure` returned with the definition's options type, before any `copyWith`, and throws a `StateError` naming the key and both types. Both options classes are `final`, so the comparison is exact, and it is a `Type` comparison, which no optimisation level removes. 9 cases; observations `D6-1` to `D6-5`, identical on all five runtimes |
+| S0-3 (P2) | A plain definition typed `InfiniteData<P, Q>` bypasses the infinite normalisation | yes. The entry is exact; the value keeps its narrower type arguments; a `copyWith` typed for the entry throws a `TypeError` on the VM | The promise is narrowed, no code changed: only an infinite definition rebuilds a written value. 2 cases, the second the infinite definition's write of the same value as the control; observations `D5-infinite-7`, `-8`; dartdoc. A plain definition has one type argument and cannot name the page types a rebuilt value needs |
+| S0-4 (P2) | The re-pin does not restore a declared `null`: `configure` can supply a fetch function or a `getPreviousPageParam` the definition left out | yes, and TQ1 built it on purpose | Kept, no code changed. The rule is now stated where a user reads it: the definition pins what it declares; what it leaves unset, `configure` may set. One case added, the zero-input infinite definition, so both halves are held on all four kinds |
+| S0-5 (P2) | The fixture runner passes vacuously: the negative directory deleted, an observation program that prints nothing, re-recorded, green | yes, on a copy of the reviewer's tree: `OK: 1 fixture files, 0 misuses refused`, exit code 0 | **Fixed** in `tool/check_typed_query_fixtures.dart`: an inventory (`tool/typed_query_fixtures/inventory.txt`) the tree must match exactly in both directions; floors in the code that no inventory lowers; every runtime's output checked for itself; `--record` as the only way a pin moves, printing what moved and refusing a bad output; `--self-test`, 31 cases, in CI before the runner on both SDKs |
+
+**Rollback and the recipes.** A new port-only file,
+`query_definition_mutation_test.dart`, 22 cases. Its recipes are
+top-level functions that return ordinary `MutationOptions` over typed
+references, written to be lifted into a guide: an optimistic write of
+one entry; a snapshot of `state` that tells no entry, an entry without
+data and a cached `null` apart, with a `restore` that removes, resets or
+writes back with the old timestamp; the server's answer written into a
+detail and its row of a list; a list written and its family invalidated;
+every cached detail patched with `updateAll` and put back by id; and the
+first two over an infinite definition. The cases with a request in
+flight assert data, status, fetch status, timestamp and the entry's
+`dataType` after each step, count the backend's calls, and one records
+what an observer saw, change by change: the cancelled response never
+comes between the patch and the rollback. Its control drops the
+`cancel` from the recipe and the response in flight overwrites the
+patch. A last case runs every recipe against a refusing backend and
+compares entries, types and data before and after.
+
+**TQ1's open points, decided** (the plan's P2-2 to P2-4):
+
+- *A swap during a bulk update.* An updater that replaced a later entry
+  with one of another type was found at that entry's write, after the
+  earlier writes. `_updateAll` now looks every entry it is about to write
+  up once more, with the exact check, after the last updater and before
+  the batch: the swap is refused and **nothing** is written. TQ1's case
+  asserted the earlier writes stayed; its expectation is changed to the
+  new behaviour, which is the one assertion of an existing case this
+  ticket changed, and it is stricter. What cannot be closed the same way
+  is a cache listener that replaces an entry in answer to one of the
+  writes; a new case holds it beside the raw call, and the dartdoc of
+  `updateAll` says it.
+- *`reset(cancelRefetch:)`.* TQ1 wrote that no test could tell the
+  values apart. One can: a seeded entry keeps data across a reset, a
+  cache listener starts a fetch as it hears the reset, and the reset's
+  refetch then joins that fetch (`false`, one fetch) or replaces it
+  (`true` and the default, two). Three cases, the third the client's
+  `resetQueries` over the same filters. Against a copy of the library
+  that drops the argument the first fails.
+- *The two lines no VM test reaches* stay counted as missed. The
+  repository has no `coverage:ignore` anywhere and the floor holds
+  without one.
+
+**Counts.**
+
+| File | Cases | Before |
+|---|---|---|
+| `query_definition_test.dart` | 94 | 85 |
+| `infinite_query_definition_test.dart` | 46 | 39 |
+| `query_definition_mutation_test.dart` | 22 | new |
+
+The fixture tree: 24 files (23), 119 `error` markers (114) and 5
+`strict` ones, 113 observations per recorded output (98).
+
+**Verified.** Core 1338 VM / 1333 browser on Dart 3.10.7 (1300 / 1295
+before); the VM suite also on 3.6.2. The fixture runner and its
+self-test on 3.6.2, 3.10.7 and 3.13.4. Line coverage 3786 of 3792,
+99.84 % against a floor of 99.8 %; `query_definition.dart` 260 of 262,
+the two lines above.
+
+**Not proven here.** dart2wasm is still not run. The inventory pins
+counts, not content: a misuse replaced by another keeps its row. The
+recipes run against a fake backend in the core's suite and in no
+application; the binding, the hooks and the examples have their own
+tickets. A rollback of an entry that held no data restores it with
+`reset`, which is not the state it had when it held an error; the exact
+restore needs the raw cache, and no helper was added for it.

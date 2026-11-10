@@ -141,6 +141,12 @@ jobs:
       # repository's options; then what a widened receiver does at runtime,
       # on the VM and compiled with dart2js up to -O4 (under node, which the
       # runner image has). The `floors` job runs it on the declared floor.
+      # A tree with fewer fixtures, markers or recorded observations than
+      # tool/typed_query_fixtures/inventory.txt records fails before anything
+      # is analyzed, and so does a runtime that prints nothing. The self-test
+      # proves each of those failures on a broken copy of the tree.
+      - name: typed query fixtures self-test
+        run: dart run tool/check_typed_query_fixtures.dart --self-test
       - name: typed query fixtures
         run: dart run tool/check_typed_query_fixtures.dart
       - name: formatter
@@ -191,6 +197,8 @@ jobs:
         working-directory: examples/doc_snippets
       # A suite that passes says nothing about what the analyzer infers, so
       # the fixtures run on the floor's own analyzer and dart2js as well.
+      - name: typed query fixtures self-test
+        run: dart run tool/check_typed_query_fixtures.dart --self-test
       - name: typed query fixtures
         run: dart run tool/check_typed_query_fixtures.dart
 

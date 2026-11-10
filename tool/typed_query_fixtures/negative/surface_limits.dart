@@ -72,13 +72,31 @@ void entries(QueryClient client) {
 
   _use([plain, paged, observer]);
 
-  // A list of references of two data types is a list of targets: it can be
-  // invalidated, and it cannot be read or written.
+  // A list of a family's reference and a definition is a list of targets:
+  // it can be invalidated, and it cannot be read or written.
   final mixed = [queries.devices.detail('d1'), queries.devices.list];
   // EXPECT error undefined_method
   mixed.first.write(client, const Device('d1'));
   // EXPECT error undefined_method
   mixed.first.read(client);
+
+  // Two references of one class are a list of references, whose write
+  // compiles (`boundary/mixed_list.dart`). Declared as a list of targets
+  // it is the same list without one.
+  final lifecycle = <QueryTarget>[
+    queries.devices.detail('d1'),
+    queries.devices.reading('d1'),
+  ];
+  // EXPECT error undefined_method
+  lifecycle.first.write(client, const Temperature(21));
+  // EXPECT error undefined_method
+  lifecycle.first.update(client, (previous) => const Temperature(21));
+  // EXPECT error undefined_method
+  lifecycle.first.read(client);
+  // EXPECT error undefined_method
+  lifecycle.first.state(client);
+  // EXPECT error undefined_getter
+  lifecycle.first.key;
 }
 
 void typedKeys(QueryClient client) {

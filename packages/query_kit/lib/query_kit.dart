@@ -149,7 +149,21 @@
 ///   or `Object?`.
 /// * **A reference assigned to a wider type is checked when it runs.**
 ///   Through a `QueryRef<Object?>` a write of the wrong type compiles; it
-///   throws a [QueryDataTypeError] before anything is written.
+///   throws before anything is written, a `TypeError` from the language
+///   or, in a build that compiles that check out, a [QueryDataTypeError].
+/// * **A collection literal widens without being asked.** Two references
+///   of one class and two data types, `[ints('a'), strings('a')]`, are a
+///   `List<QueryRef<Object>>`, and a write through an element is checked
+///   when it runs, as above. For a list that is only invalidated,
+///   refetched or removed, say `<QueryTarget>[...]`: a target has no
+///   write.
+/// * **`configure` returns options of the definition's own type**, the
+///   ones it is handed or a `copyWith` of them. Options of a narrower data
+///   type satisfy its return type and are refused with a `StateError` when
+///   the options are made.
+/// * **Only an infinite definition holds a written `InfiniteData` to its
+///   page types.** A plain `QueryDefinition<InfiniteData<P, Q>>` stores
+///   the value it is given.
 /// * **A plain key leaves the typed surface.** `rawKey` is there for an
 ///   API that takes a [QueryKey]; with `client.setQueryData(ref.key.rawKey,
 ///   ...)` the type argument is yours to get right again.

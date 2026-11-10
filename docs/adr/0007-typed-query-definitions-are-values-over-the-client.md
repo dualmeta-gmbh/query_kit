@@ -164,3 +164,31 @@ the one case that needs it.
 - `options()` allocates on every call, and a write that creates an entry
   runs the definition's `configure` first, to build the entry with the
   definition's options.
+
+Added on 2026-11-10 by ticket #133, after a second model reviewed the
+fixtures; each is a consequence of the decision above that the first
+version of this record did not state, and the plan's limits 18 to 20 hold
+the options that were weighed.
+
+- **A collection literal widens like an upcast.** Two references of one
+  class and two data types, `[ints('a'), strings('a')]`, infer
+  `List<QueryRef<Object>>`, not `List<QueryTarget>`: the sealed target is
+  the common supertype only of two *classes*. A write through an element
+  compiles and is refused when it runs, as through any widened receiver.
+  A list that is only invalidated is declared `<QueryTarget>[…]`. Making
+  the literal itself safe would need `QueryRef` invariant in its data
+  type, which Dart cannot declare.
+- **`configure` returns options of the definition's own type.** Its
+  return type admits options of a narrower data type; those are refused
+  with a `StateError` when the options are made, on every runtime. The
+  definition pins what it declares (key, fetch function, paging
+  functions), and what it leaves unset `configure` may set.
+- **Only an infinite definition holds a written `InfiniteData` to its
+  page types.** A plain definition typed `InfiniteData<P, Q>` is allowed,
+  its entry is exact, and the value it stores keeps the type arguments it
+  came with: a definition with one type argument cannot name the page
+  types a rebuilt value would need.
+- **A bulk update is checked twice and is still not a transaction.** Every
+  entry is looked up again before the first write, so nothing an updater
+  does to the cache leaves it half-written; a listener that replaces an
+  entry in answer to one of the writes can.

@@ -28,6 +28,7 @@ Future<void> main() async {
   _d4Values();
   _d5DeclaredTypes();
   _d5Infinite();
+  _d6Configure();
   await _d7Prefixes();
   _d9MixedList();
   _d10Backstop();
@@ -738,6 +739,131 @@ void _d5Infinite() {
       _entry(client, history.key.rawKey),
     );
   }
+
+  // Rebuilding is what an infinite definition does. A plain definition
+  // typed `InfiniteData` stores the value it is given.
+  {
+    final client = _client();
+    final plain = QueryDefinition<InfiniteData<List<Device>, int>>(
+      namespace: DeviceQueries.namespace,
+      name: 'plainFeed',
+    );
+    final narrow = InfiniteData<List<Thermostat>, int>(
+      pages: const [
+        [Thermostat('t1')],
+      ],
+      pageParams: const [0],
+    );
+    final stored = plain.write(client, narrow);
+    _note(
+      'D5-infinite-7',
+      'write of an InfiniteData<List<Thermostat>, int> under a plain '
+          'QueryDefinition<InfiniteData<List<Device>, int>>',
+      '${_entry(client, plain.key.rawKey)}; '
+          'the value given back is the given one: '
+          '${identical(stored, narrow)}',
+    );
+    _note(
+      'D5-infinite-8',
+      'adding a page of plain Devices to what that definition reads',
+      _attempt(
+        () => plain.read(client)!.copyWith(
+          pages: [
+            ...plain.read(client)!.pages,
+            [const Device('d2')],
+          ],
+          pageParams: [...plain.read(client)!.pageParams, 1],
+        ),
+      ),
+    );
+  }
+}
+
+// --------------------------------------------------------------------- D6
+
+/// `configure` returns options of the definition's own type. Its return
+/// type lets a narrower options type through, since options are covariant
+/// in their data type, so the definition looks at what came back.
+void _d6Configure() {
+  final client = _client();
+
+  final narrower = QueryDefinition<Device>(
+    namespace: DeviceQueries.namespace,
+    name: 'narrower',
+    queryFn: (context) => const Device('n1'),
+    configure: (base) => QueryObserverOptions<Thermostat>(
+      queryKey: base.queryKey,
+    ),
+  );
+  _note(
+    'D6-1',
+    'options() of a QueryDefinition<Device> whose configure returns '
+        'QueryObserverOptions<Thermostat>',
+    _attempt(narrower.options),
+  );
+  _note(
+    'D6-2',
+    'a write and a read through that definition',
+    'write: ${_attempt(() => narrower.write(client, const Device('n1')))}, '
+        'read: ${_attempt(() => narrower.read(client))}; '
+        'cache: ${_entry(client, narrower.key.rawKey)}',
+  );
+
+  // Without a fetch function of its own, nothing else of the definition
+  // would fail to fit the narrower options.
+  final unfetched = QueryFamily<String, Device>(
+    namespace: DeviceQueries.namespace,
+    name: 'unfetched',
+    configure: (base, id) => QueryObserverOptions<Thermostat>(
+      queryKey: base.queryKey,
+      queryFn: (context) => Thermostat(id),
+    ),
+  );
+  _note(
+    'D6-3',
+    'options() of a QueryFamily<String, Device> without a fetch function, '
+        'the same configure',
+    _attempt(unfetched('u1').options),
+  );
+
+  final paged = InfiniteQueryDefinition<List<Device>, int>(
+    namespace: DeviceQueries.namespace,
+    name: 'narrowerPages',
+    pageFn: (context) => const [Device('p1')],
+    initialPageParam: 0,
+    getNextPageParam: (page, pages, pageParam, pageParams) => null,
+    configure: (base) => InfiniteQueryObserverOptions<List<Thermostat>, int>(
+      queryKey: base.queryKey,
+      pageFn: (context) => const [Thermostat('t1')],
+      initialPageParam: 0,
+      getNextPageParam: (page, pages, pageParam, pageParams) => null,
+    ),
+  );
+  _note(
+    'D6-4',
+    'options() of an InfiniteQueryDefinition<List<Device>, int> whose '
+        'configure returns options of List<Thermostat> pages',
+    _attempt(paged.options),
+  );
+
+  // The control: options of the declared type, made anew and not copied.
+  final own = QueryDefinition<Device>(
+    namespace: DeviceQueries.namespace,
+    name: 'own',
+    queryFn: (context) => const Device('o1'),
+    configure: (base) => QueryObserverOptions<Device>(
+      queryKey: base.queryKey,
+      gcTime: GcTime.never,
+    ),
+  );
+  _note(
+    'D6-5',
+    'options() when configure returns new QueryObserverOptions<Device>',
+    '${_attempt(own.options)}; '
+        'keeps the key: ${own.options().queryKey == own.key.rawKey}, '
+        'the fetch function is back: ${own.options().queryFn != null}, '
+        'gcTime never: ${own.options().gcTime == GcTime.never}',
+  );
 }
 
 // --------------------------------------------------------------------- D7
@@ -938,6 +1064,120 @@ void _d9MixedList() {
     '${_entry(control, device.key.rawKey)}; '
         'read: ${_attempt(() => device.read(control))}',
   );
+
+  // The references themselves in one literal. Two of one class meet at
+  // that class, so the elements offer `write`, checked against `Object`
+  // by the compiler and against the reference's own type when it runs.
+  {
+    final client = _client();
+    final reading = queries.reading('d1');
+    final references = [device, reading]; // List<QueryRef<Object>>
+    _note(
+      'D9-4',
+      'a Temperature written through the first of '
+          '[QueryRef<Device>, QueryRef<Reading>]',
+      '${_attempt(
+        () => references.first.write(client, const Temperature(21)),
+      )}; cache: ${_entry(client, device.key.rawKey)}',
+    );
+    _note(
+      'D9-5',
+      'an update returning a Temperature through the same element',
+      '${_attempt(
+        () => references.first.update(
+          client,
+          (previous) => const Temperature(21),
+        ),
+      )}; cache: ${_entry(client, device.key.rawKey)}',
+    );
+    _note(
+      'D9-6',
+      'the value of each element through it: a Device, then a Temperature',
+      '${_attempt(() => references.first.write(client, const Device('d1')))}, '
+          '${_attempt(
+        () => references.last.write(client, const Temperature(21)),
+      )}; cache: ${_entry(client, device.key.rawKey)}, '
+          '${_entry(client, reading.key.rawKey)}',
+    );
+    _note(
+      'D9-7',
+      'a read through the first element',
+      _value(references.first.read(client)),
+    );
+  }
+
+  // A nullable and a non-nullable type meet at the nullable one.
+  {
+    final client = _client();
+    final lookups = [device, queries.lookup('d1')]; // List<QueryRef<Device?>>
+    _note(
+      'D9-8',
+      'null written through the first of '
+          '[QueryRef<Device>, QueryRef<Device?>]',
+      '${_attempt(() => lookups.first.write(client, null))}; '
+          'cache: ${_entry(client, device.key.rawKey)}',
+    );
+  }
+
+  // Two definitions, two infinite references, two families.
+  {
+    final client = _client();
+    final count = QueryDefinition<int>(
+      namespace: DeviceQueries.namespace,
+      name: 'count',
+    );
+    final definitions = [queries.list, count]; // QueryDefinition<Object>
+    _note(
+      'D9-9',
+      'an int written through the first of '
+          '[QueryDefinition<List<Device>>, QueryDefinition<int>]',
+      '${_attempt(() => definitions.first.write(client, 3))}; '
+          'cache: ${_entry(client, queries.list.key.rawKey)}',
+    );
+
+    final log = InfiniteQueryFamily<String, List<Device>, String>(
+      namespace: DeviceQueries.namespace,
+      name: 'log',
+      pageFn: (id, context) => const [],
+      initialPageParam: (id) => '',
+      getNextPageParam: (id, page, pages, pageParam, pageParams) => null,
+    );
+    final history = queries.history('d1');
+    // List<InfiniteQueryRef<List<Object>, Object>>
+    final paged = [history, log('d1')];
+    _note(
+      'D9-10',
+      'an InfiniteData<List<Object>, Object> written through the first of '
+          'two infinite references of different page types',
+      '${_attempt(
+        () => paged.first.write(
+          client,
+          InfiniteData<List<Object>, Object>(
+            pages: const [
+              ['not an event'],
+            ],
+            pageParams: const ['not an int'],
+          ),
+        ),
+      )}; cache: ${_entry(client, history.key.rawKey)}',
+    );
+
+    queries.detail('a').write(client, const Device('a', name: 'kept'));
+    // List<QueryFamily<String, Object>>
+    final families = [queries.detail, queries.reading];
+    _note(
+      'D9-11',
+      'updateAll returning a Temperature through the first of '
+          '[QueryFamily<String, Device>, QueryFamily<String, Reading>]',
+      '${_attempt(
+        () => families.first.updateAll(
+          client,
+          (previous) => const Temperature(21),
+        ),
+      )}; cache: ${_entry(client, queries.detail('a').key.rawKey)}, '
+          'kept: ${_allKept(client, queries)}',
+    );
+  }
 }
 
 // -------------------------------------------------------------------- D10
