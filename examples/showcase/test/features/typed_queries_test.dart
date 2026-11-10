@@ -11,6 +11,7 @@ import 'package:query_kit_flutter/query_kit_flutter.dart';
 import 'package:showcase/features/typed_queries/typed_queries_screen.dart';
 import 'package:showcase/shared/models.dart';
 
+import '../fake_backend.dart';
 import '../harness.dart';
 
 /// A view tall enough for every card and every strip.
@@ -197,6 +198,30 @@ void main() {
     expect(reader('post 1', 'title=$firstTitle'), findsOneWidget);
     expect(reader('raw post 1', 'title=$firstTitle'), findsOneWidget);
     expectFetches(h, 2, 1, 1, 1);
+  });
+
+  showcaseTest(
+      'an api replaced under the open screen fetches every next refetch '
+      'through the replacement', (tester, h) async {
+    tall(tester);
+    await h.open(tester, '/typed-queries');
+    expect(h.backend.log, hasLength(4));
+
+    final replacement = FakeBackend();
+    addTearDown(replacement.close);
+    await h.replaceApi(tester, '/typed-queries', replacement);
+    final refetch = h.client.invalidateQueries();
+    await tester.pumpAndSettle();
+    await refetch;
+
+    // Both definitions were made again over the new api: every entry was
+    // refetched there — post 2, the list and the time have typed readers
+    // only — and the old backend heard nothing more.
+    expect(replacement.count('GET', '/api/posts/1'), 1);
+    expect(replacement.count('GET', '/api/posts/2'), 1);
+    expect(replacement.count('GET', '/api/posts'), 1);
+    expect(replacement.count('GET', '/api/time'), 1);
+    expect(h.backend.log, hasLength(4));
   });
 
   showcaseTest('leaving the screen releases every observer', (tester, h) async {

@@ -9,6 +9,9 @@
 // the file is already there.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:query_kit_hooks_example/src/api.dart';
+import 'package:query_kit_hooks_example/src/app.dart';
+import 'package:query_kit_hooks_example/src/in_memory_backend.dart';
 import 'package:query_kit_hooks_example/src/queries.dart';
 import 'package:query_kit_hooks_example/src/todos.dart';
 
@@ -474,6 +477,46 @@ void main() {
       await run.answer();
       expect(run.backend.count('GET', '/api/todos'), 2);
       expect(ticked(run, token), isTrue);
+    });
+  });
+
+  group('the api', () {
+    exampleTest(
+        'ApiScope: an api replaced under the running app serves the next '
+        'refetch of the todos and the projects', (run) async {
+      await run.answer();
+      await run.tapText('Todos');
+      await run.answer();
+      expect(run.backend.count('GET', '/api/todos'), 1);
+      expect(run.backend.count('GET', '/api/projects'), 1);
+
+      // The same app and client over another backend: the scope makes the
+      // definitions again over the new api and tells its readers.
+      final replacement = InMemoryBackend(seed: seed(), latency: latency);
+      try {
+        await run.tester.pumpWidget(
+          HooksExampleApp(
+            api: ExampleApi.inMemory(replacement),
+            client: run.client,
+          ),
+        );
+        final todos = TodoQueries.namespace.invalidate(run.client);
+        await run.answer();
+        await todos;
+        expect(replacement.count('GET', '/api/todos'), 1);
+
+        // The projects have no reader on this tab, so the invalidation only
+        // marks them stale; opening the tab refetches them, through the
+        // definitions made over the new api.
+        await ProjectQueries.namespace.invalidate(run.client);
+        await run.tapText('Projects');
+        await run.answer();
+        expect(replacement.count('GET', '/api/projects'), 1);
+        expect(run.backend.count('GET', '/api/todos'), 1);
+        expect(run.backend.count('GET', '/api/projects'), 1);
+      } finally {
+        replacement.close();
+      }
     });
   });
 

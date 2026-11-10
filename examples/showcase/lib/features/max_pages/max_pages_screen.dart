@@ -7,8 +7,8 @@
 ///
 /// The query is declared once, as an `InfiniteQueryDefinition` that starts
 /// from a cursor and sets `maxPages` in its `configure`. Its `options()` go
-/// to an `InfiniteQueryController` created in `initState` and read through
-/// a `ListenableBuilder`, and the debug strip takes its key: no key is
+/// to an `InfiniteQueryController` the screen's state holds, read through a
+/// `ListenableBuilder`, and the debug strip takes its key: no key is
 /// written anywhere else. The definition's two type arguments are written
 /// out, because the paging functions read the page and Dart cannot infer
 /// the page type from them. The paging half — `hasNextPage`,
@@ -29,7 +29,8 @@
 /// direction (`hasNextPage=false`, button disabled) and cursor 0 the backward
 /// one; and `lastPage` says `40 forward` after `Load next`, `20 backward`
 /// after `Load previous`, and the window's last cursor `forward` after a
-/// refetch.
+/// refetch; and after the api is replaced above the screen, the next refetch
+/// goes to the new one and not to the old.
 library;
 
 import 'package:flutter/material.dart';
@@ -111,7 +112,10 @@ class MaxPagesScreen extends StatefulWidget {
 }
 
 class _MaxPagesScreenState extends State<MaxPagesScreen> {
-  late final InfiniteQueryRef<ProjectSlice, int> _definition;
+  /// The api [_definition] was declared over.
+  ShowcaseApi? _api;
+
+  late InfiniteQueryRef<ProjectSlice, int> _definition;
 
   late final InfiniteQueryController<ProjectSlice, int, ProjectWindow> _window;
 
@@ -121,20 +125,32 @@ class _MaxPagesScreenState extends State<MaxPagesScreen> {
   /// `setState` is needed for it.
   String _lastPage = 'none';
 
+  /// The client lookup does not subscribe: the client is fixed for the life
+  /// of the app. The api lookup does, so an api replaced above the screen
+  /// reaches it: the definition is made again over the new one — the same
+  /// key, the same entry — and handed to the controller, whose next fetch
+  /// goes through the new api.
   @override
-  void initState() {
-    super.initState();
-    // Neither lookup subscribes: the api and the client are fixed for the
-    // life of the app, and a subscribing lookup is not allowed here anyway.
-    final api = context.getInheritedWidgetOfExactType<ShowcaseScope>()!.api;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final api = ShowcaseScope.apiOf(context);
+    if (identical(api, _api)) {
+      return;
+    }
+    final first = _api == null;
+    _api = api;
     _definition = MaxPagesQueries(
       api,
       onPage: (cursor, direction) => _lastPage = '$cursor ${direction.name}',
     ).window;
-    _window = InfiniteQueryController<ProjectSlice, int, ProjectWindow>(
-      QueryClientProvider.read(context),
-      _definition.options(),
-    );
+    if (first) {
+      _window = InfiniteQueryController<ProjectSlice, int, ProjectWindow>(
+        QueryClientProvider.read(context),
+        _definition.options(),
+      );
+    } else {
+      _window.setInfiniteOptions(_definition.options());
+    }
   }
 
   @override

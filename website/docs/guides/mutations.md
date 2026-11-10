@@ -222,7 +222,7 @@ Disposing a controller does not cancel the mutation — a write the user started
 should normally finish; call `cancel()` first when it should not. That has one
 practical consequence, and it bites everyone once:
 
-```dart snippet="excerpt: quick-start.md#mutation"
+```dart snippet="excerpt: quick-start.md#typed-mutation"
 @override
 Widget build(BuildContext context) {
   // Take the client HERE, not inside onSuccess. The callback can run after
@@ -231,11 +231,14 @@ Widget build(BuildContext context) {
   final client = QueryClientProvider.of(context);
   final add = context.mutation(MutationOptions.simple(
     mutationFn: api.addTask,
-    onSuccess: (_, __, ___) => client.invalidateQueries(/* … */),
+    onSuccess: (_, __, ___) => allTasks.invalidate(client),
   ));
   // …
 }
 ```
+
+`allTasks` is the [quick start](../quick-start.md)'s definition of the task
+list; its `invalidate` takes the client as an argument, which is the point.
 
 The cache work has to happen either way. The client is the right thing to close
 over; the `BuildContext` is not.

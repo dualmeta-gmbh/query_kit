@@ -34,7 +34,9 @@
 /// and nothing asks for `cursor=100`; going to `About` and back shows the
 /// same rows with no request, the entry's observers going 1 → 0 → 1, while
 /// About reads `cached pages=2`, `cached rows=20` off the cache with nobody
-/// observing; a refetch re-requests every held page, first to last.
+/// observing; a refetch re-requests every held page, first to last; and
+/// after the api is replaced above the screen, the next refetch goes to the
+/// new one and not to the old.
 library;
 
 import 'package:flutter/material.dart';
@@ -142,18 +144,24 @@ class _LoadMoreScreenState extends State<LoadMoreScreen> {
   /// Upstream's two routes, as one screen with two views.
   bool _about = false;
 
-  /// Declared once for the life of the screen; both views are handed the
-  /// same reference.
-  late final InfiniteQueryRef<ProjectSlice, int> _feed;
+  /// The api [_feed] was declared over.
+  ShowcaseApi? _api;
 
+  /// Declared once per api; both views are handed the same reference.
+  late InfiniteQueryRef<ProjectSlice, int> _feed;
+
+  /// The lookup subscribes, so an api replaced above the screen reaches it:
+  /// the definition is made again over the new one, its reference is equal
+  /// to the old one — the same key, the same entry — and the next fetch,
+  /// whoever asks for it, goes through the new api.
   @override
-  void initState() {
-    super.initState();
-    // The lookup does not subscribe: the api is fixed for the life of the
-    // app, and a subscribing lookup is not allowed here anyway.
-    _feed = LoadMoreQueries(
-      context.getInheritedWidgetOfExactType<ShowcaseScope>()!.api,
-    ).feed;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final api = ShowcaseScope.apiOf(context);
+    if (!identical(api, _api)) {
+      _api = api;
+      _feed = LoadMoreQueries(api).feed;
+    }
   }
 
   @override

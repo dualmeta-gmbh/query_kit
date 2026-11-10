@@ -110,7 +110,10 @@ final class DeviceQueries {
     configure: configureDetail,
   );
 
-  /// No type argument: the data type comes from the fetch function.
+  /// No type argument, on purpose: this one pins that the data type Dart
+  /// infers from the fetch function reaches the hooks exactly (the
+  /// inference case checks `QueryResult<List<Device>>`). App code writes
+  /// every definition's type arguments out.
   late final list = QueryDefinition(
     namespace: namespace,
     name: 'list',
@@ -616,6 +619,99 @@ void main() {
       await advance(tester, 11);
       expect(repo.calls, ['detail a']);
       expect(find.text('r a'), findsOneWidget);
+    });
+  });
+
+  group(
+      'a held Enabled.when over outside state is asked again by a rebuild '
+      'whose options are equal to the last ones', () {
+    // One definition and one callback for every build: the options the hook
+    // hands the observer are equal each time, and only the observer
+    // comparing the callback's answer with its last result tells the
+    // rebuild apart.
+    hookTest('useQuery', (tester, client) async {
+      final repo = Repo('r');
+      var allowed = false;
+      final enabled = Enabled.when((_) => allowed);
+      final current = QueryDefinition<Device>(
+        namespace: DeviceQueries.namespace,
+        name: 'current',
+        queryFn: (_) => repo.device('a'),
+        configure: (base) => base.copyWith(enabled: enabled),
+      );
+      expect(
+        client.defaultQueryObserverOptions<Device, Device>(current.options()),
+        client.defaultQueryObserverOptions<Device, Device>(current.options()),
+      );
+      var updates = 0;
+      final stop = client.queryCache.subscribe((event) {
+        if (event is QueryObserverOptionsUpdated) updates++;
+      });
+      addTearDown(stop);
+      late VoidCallback rebuild;
+      await tester.pumpApp(
+        client,
+        rebuildable(
+          (bound) => rebuild = bound,
+          () => HookBuilder(builder: (context) {
+            final result = useQuery(current.options());
+            return Text(result.dataOrNull?.name ?? 'pending');
+          }),
+        ),
+      );
+      await advance(tester, 11);
+      rebuild();
+      await advance(tester, 11);
+      expect(repo.calls, isEmpty);
+
+      allowed = true;
+      rebuild();
+      await advance(tester, 11);
+      expect(repo.calls, ['detail a']);
+      expect(find.text('r a'), findsOneWidget);
+      expect(updates, 0, reason: 'every build handed equal options');
+    });
+
+    hookTest('useInfiniteQuery', (tester, client) async {
+      final repo = Repo('r');
+      var allowed = false;
+      final enabled = Enabled.when((_) => allowed);
+      final feed = InfiniteQueryDefinition<List<int>, int>(
+        namespace: DeviceQueries.namespace,
+        name: 'held feed',
+        pageFn: (context) => repo.page(context.pageParam),
+        initialPageParam: 0,
+        getNextPageParam: (page, _, pageParam, __) =>
+            page.isEmpty ? null : pageParam + page.length,
+        configure: (base) => base.copyWith(enabled: enabled),
+      );
+      var updates = 0;
+      final stop = client.queryCache.subscribe((event) {
+        if (event is QueryObserverOptionsUpdated) updates++;
+      });
+      addTearDown(stop);
+      late VoidCallback rebuild;
+      await tester.pumpApp(
+        client,
+        rebuildable(
+          (bound) => rebuild = bound,
+          () => HookBuilder(builder: (context) {
+            final result = useInfiniteQuery(feed.options());
+            return Text('pages=${result.value.dataOrNull?.pages.length ?? 0}');
+          }),
+        ),
+      );
+      await advance(tester, 11);
+      rebuild();
+      await advance(tester, 11);
+      expect(repo.calls, isEmpty);
+
+      allowed = true;
+      rebuild();
+      await advance(tester, 11);
+      expect(repo.calls, ['page 0']);
+      expect(find.text('pages=1'), findsOneWidget);
+      expect(updates, 0, reason: 'every build handed equal options');
     });
   });
 

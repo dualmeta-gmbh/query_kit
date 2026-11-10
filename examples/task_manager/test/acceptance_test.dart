@@ -450,6 +450,34 @@ void main() {
 
   // Regressions found by review, not checklist rows.
 
+  demoTest('a transport replaced under the running app serves the next refetch',
+      (tester) async {
+    await start(tester);
+    expect(backend.requests.where((r) => r == 'GET /tasks'), hasLength(1));
+
+    // The same app, the same client, another transport: the app makes its
+    // query definitions again over it, and the open list is refetched
+    // through the new one.
+    final replacement = FakeBackend();
+    final replacementApi = TaskApi(
+      dio: Dio(BaseOptions(baseUrl: 'http://backend.test/api'))
+        ..httpClientAdapter = replacement,
+    );
+    await tester.pumpWidget(
+      TaskManagerApp(api: replacementApi, client: client),
+    );
+    await tester.pumpAndSettle();
+    final refetch = tasks.list.invalidate(client);
+    await tester.pumpAndSettle();
+    await refetch;
+
+    expect(
+      replacement.requests.where((request) => request == 'GET /tasks'),
+      hasLength(1),
+    );
+    expect(backend.requests.where((r) => r == 'GET /tasks'), hasLength(1));
+  });
+
   demoTest('a refused delete of the last visible task still shows its notice',
       (tester) async {
     await start(tester);

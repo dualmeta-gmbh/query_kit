@@ -136,7 +136,11 @@ final class TodoQueries {
   /// todo write is in flight, though: that read could answer with the list
   /// from before the write and take its tick off the screen. The last write
   /// to settle refetches instead.
-  late final list = QueryDefinition(
+  ///
+  /// The type argument is written out, as on every definition, though Dart
+  /// would infer this one from `queryFn`: it says what the entry holds where
+  /// the query is declared.
+  late final list = QueryDefinition<List<Todo>>(
     namespace: namespace,
     name: 'list',
     queryFn: (context) => _api.todos(signal: context.signal),

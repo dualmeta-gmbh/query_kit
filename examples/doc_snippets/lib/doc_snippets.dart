@@ -164,7 +164,6 @@ class TasksScreen extends StatelessWidget {
 class AddTaskButton extends StatelessWidget {
   const AddTaskButton({super.key});
 
-  // >>> quick-start.md#mutation
   @override
   Widget build(BuildContext context) {
     // Take the client here, in build — not inside the callback. A mutation
@@ -187,7 +186,6 @@ class AddTaskButton extends StatelessWidget {
       child: Text(add.value.isPending ? 'Adding…' : 'Add'),
     );
   }
-  // <<<
 }
 
 // ---------------------------------------------------------------------------

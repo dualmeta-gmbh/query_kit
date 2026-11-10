@@ -14,6 +14,8 @@
 /// and the raw options built inline beside each.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
@@ -180,12 +182,34 @@ Future<_Run> _runInfinite(
 }
 
 /// Every source's trace, keyed by its name, and the check that each one
-/// equals the raw options' trace.
-void _expectParity(Map<String, _Run> runs) {
-  final raw = runs['raw options']!.trace;
+/// equals the raw options' trace — those of [reference].
+void _expectParity(Map<String, _Run> runs, {String reference = 'raw options'}) {
+  final raw = runs[reference]!.trace;
   for (final MapEntry(:key, :value) in runs.entries) {
-    expect(value.trace, raw, reason: '$key against raw options');
+    expect(value.trace, raw, reason: '$key against $reference');
   }
+}
+
+/// How many timers [action] creates, one-shot and periodic, counted by a
+/// zone of its own that hands each one on to the test's fake clock. A
+/// frame [action] pumps builds in that zone, so a timer an observer arms
+/// in `setOptions` is counted.
+Future<int> _timersCreatedBy(Future<void> Function() action) async {
+  var created = 0;
+  await runZoned(
+    action,
+    zoneSpecification: ZoneSpecification(
+      createTimer: (self, parent, zone, duration, callback) {
+        created++;
+        return parent.createTimer(zone, duration, callback);
+      },
+      createPeriodicTimer: (self, parent, zone, period, callback) {
+        created++;
+        return parent.createPeriodicTimer(zone, period, callback);
+      },
+    ),
+  );
+  return created;
 }
 
 int _fetches(List<String> trace) => trace
@@ -281,8 +305,8 @@ void main() {
       });
 
       queryWidgetTest(
-          'a rebuild with an equal reference does not restart the stale '
-          'timer', (tester, _) async {
+          'a rebuild with an equal reference arms no timer: the stale timer '
+          'armed at the fetch is the one that runs', (tester, _) async {
         QueryObserverOptions<Device> stale(QueryObserverOptions<Device> base) =>
             base.copyWith(
               staleTime: const StaleTime.duration(Duration(seconds: 1)),
@@ -297,15 +321,22 @@ void main() {
               (lab, _) async {
                 await tester.pump();
                 await tester.pump(const Duration(milliseconds: 600));
-                await lab.rebuild();
+                final created = await _timersCreatedBy(lab.rebuild);
+                lab.trace.add('-- timers the rebuild created: $created');
                 lab.trace.add('-- 1100 ms, no rebuild since 600 ms');
                 await tester.pump(const Duration(milliseconds: 500));
               },
             ),
         };
         _expectParity(runs);
-        // The timer armed at the fetch flipped the result at 1000 ms; one
-        // re-armed by the rebuild would flip it at 1600 ms.
+        // No timer at all: the one armed at the fetch is the one that runs.
+        // Counted, because the flip alone would not tell: a timer re-armed
+        // by the rebuild is armed for the same deadline, the data's age
+        // plus the stale time, and would flip the result at 1000 ms too.
+        expect(
+          runs['raw options']!.trace,
+          contains('-- timers the rebuild created: 0'),
+        );
         expect(runs['raw options']!.trace.last, 'show a@A1 success/idle stale');
       });
 
@@ -500,6 +531,85 @@ void main() {
         _expectPausedThenResumed(runs['raw options']!.trace);
       });
 
+      queryWidgetTest(
+          'a held Enabled.when over outside state starts the first fetch on a '
+          'rebuild whose options are equal to the last ones',
+          (tester, _) async {
+        // One callback for every build, so a held definition hands the
+        // observer equal options each time: only the observer comparing the
+        // callback's answer with its last result tells the rebuild apart.
+        var allowed = false;
+        final enabled = Enabled.when((_) => allowed);
+        QueryObserverOptions<Device> held(QueryObserverOptions<Device> base) =>
+            base.copyWith(enabled: enabled);
+        final runs = <String, _Run>{};
+        for (final source in _heldGateSources) {
+          // Closed again before the run's first build.
+          allowed = false;
+          runs[source.name] = await _runPlain(
+            tester,
+            style,
+            source,
+            policy: held,
+            (lab, _) async {
+              await tester.pump();
+              await lab.rebuild();
+              await tester.pump();
+              lab.trace.add('-- allowed');
+              allowed = true;
+              await lab.rebuild();
+              await tester.pump();
+            },
+          );
+        }
+        _expectParity(runs, reference: 'raw options of the definition key');
+        final trace = runs['raw options of the definition key']!.trace;
+        expect(_fetches(trace.sublist(0, trace.indexOf('-- allowed'))), 0);
+        expect(_fetches(trace.sublist(trace.indexOf('-- allowed'))), 1);
+        expect(trace.last, 'show a@A1 success/idle stale');
+        // The held definitions were handed equal options on every build.
+        expect(runs['one definition']!.optionUpdates, 0);
+        expect(runs['one definition, the policy per use']!.optionUpdates, 0);
+      });
+
+      queryWidgetTest(
+          'infinite: a held Enabled.when over outside state starts the first '
+          'fetch on a rebuild whose options are equal to the last ones',
+          (tester, _) async {
+        var allowed = false;
+        final enabled = Enabled.when((_) => allowed);
+        InfiniteQueryObserverOptions<List<int>, int> held(
+          InfiniteQueryObserverOptions<List<int>, int> base,
+        ) =>
+            base.copyWith(enabled: enabled);
+        final runs = <String, _Run>{};
+        for (final source in _heldInfiniteGateSources) {
+          // Closed again before the run's first build.
+          allowed = false;
+          runs[source.name] = await _runInfinite(
+            tester,
+            style,
+            source,
+            policy: held,
+            (lab, _) async {
+              await tester.pump();
+              await lab.rebuild();
+              await tester.pump();
+              lab.trace.add('-- allowed');
+              allowed = true;
+              await lab.rebuild();
+              await tester.pump();
+            },
+          );
+        }
+        _expectParity(runs, reference: 'raw options of the definition key');
+        final trace = runs['raw options of the definition key']!.trace;
+        expect(_fetches(trace.sublist(0, trace.indexOf('-- allowed'))), 0);
+        expect(_fetches(trace.sublist(trace.indexOf('-- allowed'))), 1);
+        expect(runs['one definition']!.optionUpdates, 0);
+        expect(runs['one definition, the policy per use']!.optionUpdates, 0);
+      });
+
       for (final id in <Object?>[null, 'detail']) {
         // A builder and a controller hold one observer and move it; the
         // two reading styles move theirs only when an id says the reads
@@ -630,6 +740,32 @@ InfiniteQueryObserverOptions<List<int>, int> _keepPreviousPages(
   InfiniteQueryObserverOptions<List<int>, int> base,
 ) =>
     base.copyWith(placeholderData: const PlaceholderData.keepPrevious());
+
+/// The zero-input sources of [_plainSources]: a held definition among them
+/// hands out the fetch function it was given, so with a held policy its
+/// options are equal from one build to the next. The raw options beside
+/// them are the parity reference.
+final _heldGateSources = <_Source<QueryObserverOptions<Device>, Policy>>[
+  for (final source in _plainSources)
+    if (const <String>{
+      'raw options of the definition key',
+      'one definition',
+      'one definition, the policy per use',
+    }.contains(source.name))
+      source,
+];
+
+/// [_heldGateSources]' twins among [_infiniteSources].
+final _heldInfiniteGateSources =
+    <_Source<InfiniteQueryObserverOptions<List<int>, int>, InfinitePolicy>>[
+  for (final source in _infiniteSources)
+    if (const <String>{
+      'raw options of the definition key',
+      'one definition',
+      'one definition, the policy per use',
+    }.contains(source.name))
+      source,
+];
 
 String _input(int generation) => generation == 0 ? 'a' : 'b';
 

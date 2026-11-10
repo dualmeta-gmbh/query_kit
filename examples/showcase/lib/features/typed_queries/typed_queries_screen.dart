@@ -39,7 +39,8 @@
 /// list as it was; `Invalidate post 1` refetches post 1 and nothing else,
 /// `Invalidate details` both details and not the list, `Invalidate posts`
 /// the list as well and not the time — counted on the strips and in the
-/// backend's log.
+/// backend's log; and after the api is replaced above the screen, every next
+/// refetch goes to the new one and not to the old.
 library;
 
 import 'package:flutter/material.dart';
@@ -86,17 +87,19 @@ final class TypedPostQueries {
   static final QueryNamespace namespace =
       QueryNamespace(const <Object?>['typed-queries', 'posts']);
 
-  /// `QueryDefinition<List<Post>>`, inferred from what the fetch function
-  /// returns: a definition with no input has no type it cannot infer.
-  late final list = QueryDefinition(
+  /// The list. Its type argument is written out, as on every definition:
+  /// Dart would infer this one from the fetch function, but it says what the
+  /// entry holds where the query is declared, and one rule for every
+  /// definition is simpler than knowing which ones infer.
+  late final list = QueryDefinition<List<Post>>(
     namespace: namespace,
     name: 'list',
     queryFn: (context) => _api.posts(signal: context.signal),
     configure: (base) => base.copyWith(staleTime: fresh),
   );
 
-  /// One post per id. The type arguments are written out: nothing tells
-  /// Dart the input type, and without them it would be `Object?`.
+  /// One post per id: the input type, then the data type. Nothing else
+  /// tells Dart the input type; without it, it would be `Object?`.
   late final detail = QueryFamily<int, Post>(
     namespace: namespace,
     name: 'detail',
@@ -114,7 +117,8 @@ final class TypedServerQueries {
   static final QueryNamespace namespace =
       QueryNamespace(const <Object?>['typed-queries', 'server']);
 
-  late final time = QueryDefinition(
+  /// The server's time, its type argument written out like the list's.
+  late final time = QueryDefinition<ServerTime>(
     namespace: namespace,
     name: 'time',
     queryFn: (context) => _api.time(signal: context.signal),
@@ -145,23 +149,41 @@ class TypedQueriesScreen extends StatefulWidget {
 }
 
 class _TypedQueriesScreenState extends State<TypedQueriesScreen> {
-  late final ShowcaseApi _api;
   late final QueryClient _client;
 
-  /// Declared once for the life of the screen.
-  late final TypedPostQueries _posts;
-  late final TypedServerQueries _server;
+  /// The api the definitions below were declared over.
+  late ShowcaseApi _api;
+
+  /// Declared once per api.
+  late TypedPostQueries _posts;
+  late TypedServerQueries _server;
 
   @override
   void initState() {
     super.initState();
-    // Neither lookup subscribes: the api and the client are fixed for the
-    // life of the app, and a subscribing lookup is not allowed here anyway.
-    _api = context.getInheritedWidgetOfExactType<ShowcaseScope>()!.api;
+    // The client lookup does not subscribe: the client is fixed for the life
+    // of the app.
     _client = QueryClientProvider.read(context);
-    _posts = TypedPostQueries(_api);
-    _server = TypedServerQueries(_api);
   }
+
+  /// The api lookup subscribes, so an api replaced above the screen reaches
+  /// it: the definitions are made again over the new one. Their references
+  /// are equal to the old ones — the same keys, the same entries — and every
+  /// next fetch goes through the new api.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final api = ShowcaseScope.apiOf(context);
+    if (_declared && identical(api, _api)) {
+      return;
+    }
+    _declared = true;
+    _api = api;
+    _posts = TypedPostQueries(api);
+    _server = TypedServerQueries(api);
+  }
+
+  bool _declared = false;
 
   void _write() => _posts.detail(firstPostId).write(
         _client,
@@ -302,12 +324,12 @@ class _TypedQueriesScreenState extends State<TypedQueriesScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                "A family's type arguments are written out, "
-                'QueryFamily<int, Post>: Dart infers the data type from the '
-                'fetch function, but nothing tells it the input type, and '
-                'without them the input is Object?. An infinite definition '
-                'whose paging functions read the page writes its two out as '
-                'well.',
+                "Every definition's type arguments are written out, "
+                'QueryDefinition<List<Post>> and QueryFamily<int, Post>, '
+                'including the ones Dart would infer. It cannot infer them '
+                "all: nothing tells it a family's input type, which would be "
+                'Object?, and an infinite definition whose paging functions '
+                'read the page loses its page type.',
               ),
               SizedBox(height: 8),
               Text(

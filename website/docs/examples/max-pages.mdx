@@ -48,14 +48,16 @@ read their cursor off the page the backend sent, and `maxPages`, set in its
 />
 
 The screen hands the definition's `options()` to an
-`InfiniteQueryController`, created in `initState` and disposed with the
-state, and rebuilds through a `ListenableBuilder`:
+`InfiniteQueryController`, created the first time the state meets the api
+and disposed with the state, and rebuilds through a `ListenableBuilder`. An
+api replaced above the screen makes the definition again, and the same
+controller takes its options:
 
 <DartSource
   source={screen}
   path="examples/showcase/lib/features/max_pages/max_pages_screen.dart"
-  from="_window = InfiniteQueryController<ProjectSlice, int, ProjectWindow>("
-  end="    );"
+  from="void didChangeDependencies() {"
+  end="  }"
 />
 
 Which end is loading is on the controller, not on the sealed result, so the

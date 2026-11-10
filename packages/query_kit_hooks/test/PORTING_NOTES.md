@@ -1351,3 +1351,17 @@ cancels the list's reads when its answer arrives" fix, is green.
   server ran on 5198, and the suite from a copy whose hard-coded `5178`s
   (and font path) pointed there, against a web build with
   `BACKEND=http://localhost:5198/api`. The native suite was not run.
+
+### After the review of the consumers (GPT-6.1-Sol, at `cd4bc21`)
+
+Each finding was reproduced before anything changed.
+
+| Finding | Reproduced | Outcome |
+|---|---|---|
+| The gate cases above build a new `Enabled.when` on every build, so the options are unequal anyway: an observer that skipped `setOptions` for equal options (`if (nextOptions == prevOptions) return;` after `nextOptions` in `QueryObserver.setOptions`) left every consumer case green | yes: the reviewer's mutant, applied to a scratch copy of the core (never the worktree), kept this file's 21 cases green | Two cases, `useQuery` and `useInfiniteQuery`, under a group of their own: one definition and one `Enabled.when` held across every build, over outside state. They assert the resolved options are equal (`defaultQueryObserverOptions` twice, and no `QueryObserverOptionsUpdated` over the run), no request while closed, and the first request on the rebuild that opens it. Against the same mutant both fail (`Expected: ['detail a'] / Actual: []`, `['page 0']` / `[]`); without it both pass. 23 cases here now |
+| The untyped `DeviceQueries.list` | not a defect | It stays untyped on purpose: it pins that the data type inferred from the fetch function reaches the hooks exactly. Its comment now says so, and that app code writes every definition's type arguments out |
+| The example's `ApiScope` over a replaced api | checked, no defect | `ApiScope` is built with its api in `HooksExampleApp.build`, makes `TodoQueries` and `ProjectQueries` over it, and notifies on an api change. A new case in `example/test/widget_test.dart` ("the api"): the app pumped again over a second in-memory backend, the todos invalidated, then the projects invalidated and their tab opened — each request goes to the new backend, none to the old. With `updateShouldNotify` forced to `false` (by hand, reverted) it fails, 0 requests on the new backend |
+| The example's `TodoQueries.list` was `QueryDefinition(` without a type argument | yes | `QueryDefinition<List<Todo>>`, with a line saying why it is written though Dart would infer it |
+
+Runs (Flutter 3.38.8, `--no-pub`): here 361 passed; the example 62 passed,
+10 skipped without a server.

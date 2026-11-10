@@ -3,8 +3,10 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:showcase/features/max_pages/max_pages_screen.dart';
 import 'package:showcase/shared/chrome.dart';
 
+import '../fake_backend.dart';
 import '../harness.dart';
 
 /// The rows sit in a bounded scroller, but the test font is a square per
@@ -243,6 +245,28 @@ void main() {
     await press(tester, 'Refetch');
     expect(find.text('lastPage=40 forward'), findsOneWidget);
     expect(cursors(h), <String>['30', '40', '20', '20', '30', '40']);
+  });
+
+  showcaseTest(
+      'an api replaced under the open screen fetches the next refetch '
+      'through the replacement', (tester, h) async {
+    tall(tester);
+    await h.open(tester, '/max-pages');
+    expect(cursors(h), <String>['30']);
+
+    final replacement = FakeBackend();
+    addTearDown(replacement.close);
+    await h.replaceApi(tester, '/max-pages', replacement);
+    final refetch = MaxPagesQueries.namespace.invalidate(h.client);
+    await tester.pumpAndSettle();
+    await refetch;
+
+    // The window's page function is the replacement's now: the refetch of
+    // the one page went there, and the old backend heard nothing more.
+    expect(replacement.count('GET', '/api/projects'), 1);
+    expect(cursors(h), <String>['30']);
+    // And the page context still reaches the screen through the new one.
+    expect(find.text('lastPage=30 forward'), findsOneWidget);
   });
 
   showcaseTest('leaving the screen releases the observer', (tester, h) async {
