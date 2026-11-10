@@ -8066,3 +8066,48 @@ evidence per row.
 | F8 | a held definition's options "equal from call to call" | yes (`==` false, defaulted equal) | "equal once defaulted", with the family caveat, in the guide and four dartdoc places |
 
 Core 1444 VM / 1438 browser, task manager 46 (+14), doc snippets 80.
+
+#### GPT-6.1-Sol, over `320e922`
+
+A second whole-feature review of the same commit, by another model. No P1,
+one P2, two P3, each reproduced against `0d83afc` with the reviewer's
+probes before anything changed. The plan's review record has the probe
+output per row.
+
+| # | What it was | Reproduced | Outcome |
+|---|---|---|---|
+| R1 (P2) | the typed write's rule ("into the entry the cache holds when it is stored, or it throws") broken by a `Clock`: `setData` asked `canCommit`, then the success reducer read `clock.now()`, so a clock that removed the entry saw `ref.write`, `ref.update`, `key.write`, `key.update` and `updateAll` store into the removed object and return the value | yes: `removedByClock=true returned=42 error=none cached=null` for all five | `Query.setData` reads `updatedAt ?? clock.now()` after sharing and before `canCommit`, and passes it to `_reduce` through `_dispatch(…, storedAt:)`; the reducer takes that time (`storedAt!`, since `setData` is the one place the action is made) and reads no clock. `QuerySuccessAction.dataUpdatedAt` stays the caller's (`null` for "now"), so cache listeners see what upstream's do. `_gone`'s message names "structuralSharing or clock". Between the guard and the store nothing of the caller's runs now: the action, `_reduce`, `QueryState.copyWith`. Regressions, `query_definition_test.dart`, "a clock that removes the entry while the write dates it (R1)": the five calls throw `StateError`, nothing stored, only `removed` heard; the controls `setQueryData stores into the removed object` (upstream's behaviour, unchanged) and `what a listener hears is the caller's timestamp, or none`; the neighbour `a fetched result is not stored in the entry the clock removed`. `infinite_query_definition_test.dart`, SC-1 group, four calls × (removed → `StateError`, narrower pages put there → `QueryDataTypeError`). All red against `0d83afc`'s `query.dart` (run in a scratch copy of `lib/`: "Expected: <Instance of 'StateError'> Actual: <null>"; the fetch neighbour "Expected: ['removed'] Actual: ['removed', 'updated']"), green after; the two controls green on both |
+| R2 (P3) | the guide's infinite normalisation and limits omitted limit 15 (outside sharing and per-use seeds are stored as built; a later `copyWith` can throw `TypeError`) | yes, for client defaults, key defaults and a per-use `initialData` | guide paragraph and a "What nothing checks" item; `InfiniteQueryRef.options` states the consequence |
+| R3 (P3) | `errors.md`: "read it through the reference before it is refetched" cures nothing | yes; and `ref.fetch` cures only when it fetches (not under `StaleTime.infinite`); an observer of `ref.options()` cures at any stale time | corrected on the error page, the troubleshooting page, both guides, `TypedQueryKey.write`, `updateAll`, the library overview and limit 21 |
+
+What R1 changes beyond the typed write, and why it is safe:
+
+- **The raw `setQueryData`** passes no guard. The clock is read a few
+  synchronous steps earlier: after sharing, as before, and before the
+  action, `_reduce` and `copyWith`, none of which runs user code. Same
+  time under a fake clock, one read, the same events in the same order
+  (the control above). Upstream's reducer takes `dataUpdatedAt ??
+  Date.now()` at the same point relative to user code.
+- **The fetch path** (`_settle`) passes an ownership guard. A clock that
+  removes the entry while a result is dated now drops it (the caller still
+  gets the data; the cache neither stores nor notifies after `removed`),
+  where it used to store into the removed object. The clock is also read
+  once when sharing itself took the run's ownership away and the result
+  is dropped, where it was not read before; only a clock that counts or
+  acts on reads can see that. Upstream has no guard here at all; this is
+  the existing ownership divergence, applied to one more piece of user
+  code.
+- **A clock that writes the same entry re-entrantly** used to run inside
+  `_reduce`, whose result then overwrote the inner write's state. Now the
+  inner write completes before the outer dispatch. Not tested: no one
+  writes a cache from a clock.
+
+The proof matrix: five typed calls plus the infinite four, removed or
+replaced; the raw write and a fetch beside them; VM (`dart test`) and
+compiled JavaScript (`--platform chrome`), 3.38.8 and the floor. Self-review
+of the diff against the parent and upstream's `query.ts` (no sub-agent: the
+round's rules forbid them) found nothing more.
+
+Core 1456 VM / 1450 browser (+12 each), 1456 on the floor, line coverage
+99.84 %; every consumer suite unchanged and green (binding 659, hooks 361,
+hooks example 62, showcase 345, task manager 46, doc snippets 80).

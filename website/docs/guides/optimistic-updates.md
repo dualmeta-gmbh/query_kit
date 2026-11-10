@@ -441,10 +441,10 @@ The rollback puts back what this write changed and nothing else, because
 another write may have touched a neighbour in the meantime. A detail removed
 while the request was out is made again by its typed key — with the right
 type, but from the key alone: the client's defaults, none of the
-definition's options, and no fetch function until a screen or a `fetch`
-through the reference uses the query again. A refetch that reaches it
-before that fails that one entry with `MissingQueryFunctionError` and keeps
-its data. See [typed queries](typed-queries.md) for the rest of what a typed key
+definition's options, and no fetch function until a screen reads the
+reference's options, or a `fetch` through the reference that does fetch. A
+refetch that reaches it before that fails that one entry with
+`MissingQueryFunctionError` and keeps its data. See [typed queries](typed-queries.md) for the rest of what a typed key
 knows. For a family of a nullable type the `device != null` test cannot tell
 a cached `null` from no data: snapshot each key's `state(client)` instead,
 and write back `state.data` where `state.hasData` is true.

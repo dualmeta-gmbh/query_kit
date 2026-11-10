@@ -290,14 +290,20 @@ A typed key knows the entry's key and data type, and not the definition.
 That shows in one place: an entry that a typed key's `write` or `update`
 **creates** is built from the key and the type alone. It gets the client's
 defaults and the key's own (`setQueryDefaults`), none of the definition's
-options, and no fetch function. A refetch of it before an observer or a
-`fetch` through the reference supplies one fails it with
-`MissingQueryFunctionError` and keeps its data: a `refetch` that reaches it,
-or an invalidation with a `refetchType` of `all` or `inactive`. A default
-invalidation refetches only the entries an observer reads, so it only marks
-this one stale. Write through the reference to create an entry with the
-definition's options. An entry that already exists is written exactly as
-the reference writes it.
+options, and no fetch function. A refetch of it before one is supplied
+fails it with `MissingQueryFunctionError` and keeps its data: a `refetch`
+that reaches it, or an invalidation with a `refetchType` of `all` or
+`inactive`. A default invalidation refetches only the entries an observer
+reads, so it only marks this one stale.
+
+An observer built from the reference's `options()`, in any call style,
+supplies the definition's function as soon as it is created. A `fetch`
+through the reference supplies it only when it fetches: while the written
+data is fresh under the definition's `staleTime`, `fetch` returns that data
+and leaves the entry without a function. Reading through the reference
+(`read`, `state`) only looks at the cache and supplies nothing. Write
+through the reference to create an entry with the definition's options. An
+entry that already exists is written exactly as the reference writes it.
 
 Only a definition or a reference makes a typed key: there is no public
 constructor, because the data type would then be whatever the caller
@@ -488,8 +494,15 @@ await queries.events.ofDevice('d1').invalidate(client);
 
 A value written there, and a `structuralSharing` or `initialData` that its
 `configure` sets, is stored under the declared page types even when it was
-built with narrower type arguments. [Infinite queries](infinite-queries.md)
-covers paging itself.
+built with narrower type arguments. Two sources are not converted: a
+`structuralSharing` from the client's defaults or from `setQueryDefaults`,
+and a `structuralSharing` or `initialData` passed to a `copyWith` of the
+reference's options. What they return is stored as it was built. An
+`InfiniteData<int, int>` stored that way in an `InfiniteData<num, num>`
+entry still reads as the declared type, but a later
+`copyWith(pages: <num>[1.5])` on it throws a `TypeError`, because its lists
+take only `int`. Build such values with the declared page types.
+[Infinite queries](infinite-queries.md) covers paging itself.
 
 ## Bulk operations
 
@@ -545,8 +558,9 @@ MutationOptions<void, RoomRename, ChangedDevices> renameRoom(
 The rollback puts back the devices this rename changed and no others, so a
 write to a neighbour in the meantime survives it. An entry removed while the
 request ran is created again by its key's `write`, and such an entry has no
-fetch function until an observer or a `fetch` through the reference brings
-one (see [typed keys](#typed-keys)). The [optimistic
+fetch function until an observer of the reference's options, or a `fetch`
+through the reference that does fetch, supplies one (see [typed
+keys](#typed-keys)). The [optimistic
 updates](optimistic-updates.md) guide has the single-entry form.
 
 `readAll`'s `null` means "no data" only for a non-null data type. For a
@@ -639,8 +653,10 @@ What a definition checks, and when, in three parts.
   `updateAll` throw. Give a nested operation a name of its own beside the
   family instead.
 - **An entry a typed key created** has no fetch function, and a refetch of
-  it fails with `MissingQueryFunctionError` until an observer or a `fetch`
-  through the reference supplies one. See [typed keys](#typed-keys).
+  it fails with `MissingQueryFunctionError` until an observer of the
+  reference's options, or a `fetch` through the reference that does fetch,
+  supplies one. A read through the reference supplies nothing. See [typed
+  keys](#typed-keys).
 - **An input without value equality** is refused by `QueryKey`'s debug
   assertion only.
 - **Options through a wider parameter.** A helper that takes
@@ -689,6 +705,12 @@ Future<T> warm<T>(QueryClient client, QueryObserverOptions<T> options) =>
   Q>>` stores what it is given, as any other type. Only an infinite
   definition holds a written `InfiniteData` to its page types; declare paged
   data with one.
+- **Narrower pages from outside an infinite definition.** A
+  `structuralSharing` from the client's or a key's defaults, and a
+  `structuralSharing` or `initialData` passed to a per-use `copyWith`, store
+  what they return with the type arguments it was built with. Reads of it
+  work; a later `copyWith` with a value of a declared page type can throw a
+  `TypeError`. See [infinite definitions](#infinite-definitions).
 - **A per-use `copyWith`** cannot unset a definition's option.
 - **`updateAll` is not a transaction**, as [bulk
   operations](#bulk-operations) says.

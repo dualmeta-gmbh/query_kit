@@ -207,12 +207,16 @@ function with it.
 
 **Mechanism.** A typed key knows the type, not the definition. When its
 `write` creates the entry, the entry has the key and the type and no fetch
-function, until an observer or a `fetch` through the reference supplies the
-definition's.
+function, until an observer of the reference's options, or a `fetch`
+through the reference that does fetch, supplies the definition's. A `fetch`
+while the written data is still fresh under the definition's `staleTime`
+returns that data and supplies nothing, and neither does a `read`.
 
-**Fix.** Write through the reference when the entry may not exist yet. A
-rollback that writes back what `readAll` returned only reaches entries that
-existed, so it is safe unless the entry was removed in between. See [errors](errors.md#an-entry-a-typed-key-created).
+**Fix.** Write through the reference when the entry may not exist yet. An
+entry that already exists gets the function from an observer of the
+reference's options, created before the refetch. A rollback that writes
+back what `readAll` returned only reaches entries that existed, so it is
+safe unless the entry was removed in between. See [errors](errors.md#an-entry-a-typed-key-created).
 
 ## A mutation that awaits another mutation never finishes
 

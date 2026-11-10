@@ -2060,13 +2060,16 @@ introduced.
 21. *A typed key knows the type, not the definition.* An entry its
     `write` or `update` creates has the declared type, the client's and
     the key's defaults, none of the definition's options and no fetch
-    function: a refetch that reaches it before an observer or a `fetch`
-    through the reference supplied one fails that entry with
-    `MissingQueryFunctionError` and keeps its data. That is a `refetch`
-    over it, or an invalidation with `refetchType` `all` or `inactive`; a
-    default invalidation refetches only active entries and just marks it
-    stale. Create through the reference when the definition's options
-    matter (D1, D5, after TQ3; the trigger corrected by TQ5).
+    function: a refetch that reaches it before an observer of the
+    reference's options, or a `ref.fetch` that does fetch, supplied one
+    fails that entry with `MissingQueryFunctionError` and keeps its data.
+    That is a `refetch` over it, or an invalidation with `refetchType`
+    `all` or `inactive`; a default invalidation refetches only active
+    entries and just marks it stale. `ref.fetch` over data still fresh
+    under the definition's `staleTime` returns it and supplies nothing,
+    and `ref.read` only reads the cache. Create through the reference when
+    the definition's options matter (D1, D5, after TQ3; the trigger
+    corrected by TQ5, the cure by the second TQ5 review, R3).
 
 ## Implementation map
 
@@ -2616,8 +2619,9 @@ skipped), task manager 46 (+14 skipped), doc snippets 80, binding example
 files, 144 misuses, 152 observations per runtime); `dart doc
 --validate-links` 0 warnings for the three packages; site build green.
 Not run: the floor suites, the Playwright and native end-to-end suites
-(no code changed), and the TQ5 second reviewer's result, still pending
-when this was written.
+(no code changed). The second TQ5 review (GPT-6.1-Sol) was worked after
+this; its section under "Whole-feature review (TQ5)" has the result, one
+`lib/` fix (R1) and the counts after it.
 
 ## Acceptance and validation matrix
 
@@ -3146,3 +3150,39 @@ Gate on this change: core 1444 VM / 1438 browser, `dart doc
 task manager's Playwright suite was not run: the change re-applies options
 only when the app's api object is replaced, which the web build never
 does.
+
+#### GPT-6.1-Sol, over `320e922`
+
+A second whole-feature review of the same commit, by another model
+(reasoning effort xhigh), with its own scratch copy and probes. No P1,
+one P2 and two P3. Each was reproduced against the checkout (`0d83afc`)
+before anything changed, by running the reviewer's probes on Flutter
+3.38.8.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| R1 (P2) | After the typed write's commit guard (`canCommit`, asked by `_write`), `Query.setData`'s success reducer still read `clock.now()`. A `Clock` whose `now()` removes the entry let `ref.write`, `key.write`, both `update`s and `updateAll` store into the removed object and report success | yes: `ref.write removedByClock=true returned=42 error=none cached=null`, and the same for the other four calls (the reviewer measured three SDKs, VM and dart2js `-O1` to `-O4`) | Fixed in `query.dart`. `setData` reads `updatedAt ?? clock.now()` after structural sharing and before `canCommit`, and hands it to the reducer through `_dispatch(…, storedAt:)`, which no longer reads the clock. The action keeps the caller's `updatedAt` (`null` for "now"), so a cache listener hears what it heard before. Nothing of the caller's runs between the guard and the store any more: after it come the action, `_reduce` and `QueryState.copyWith`, none of which calls user code (no `==`, `toString` or `meta`). Twelve cases in the SC-1 groups: eight in `query_definition_test.dart` (the five calls, two controls, a fetch neighbour) and four in the infinite suite; the ten that test the rule are red against `0d83afc`'s `query.dart` and green after, the two controls (the raw `setQueryData`, what a listener hears) green on both. Details in PORTING_NOTES |
+| R2 (P3) | The guide's infinite normalisation and its limits did not state limit 15: a `structuralSharing` from the client's or a key's defaults, and a `structuralSharing` or `initialData` in a per-use `copyWith`, are stored as built, so a later correctly typed `copyWith` can throw `TypeError` | yes: `client defaults sharing exact=false copyWith=TypeError`, `per-use initialData` the same, `key defaults sharing` (added to the probe) the same; the definition's own sharing is the control (`exact=true copyWith=completed`) | The guide says it where normalisation is introduced, with the `copyWith(pages: <num>[1.5])` example, and in "What nothing checks". `InfiniteQueryRef.options` names the consequence; `InfiniteQueryDefinition`'s constructor doc points to it. Limit 15 already said it |
+| R3 (P3) | `errors.md`'s cure for an entry a typed key created, "read it through the reference before it is refetched", cures nothing: `ref.read` only reads the cache | yes: `key.write then ref.read=1 fetchCalls=0`, then `ref.refetch` fails with `MissingQueryFunctionError`; `ref.fetch` is the reviewer's control. A wider matrix found the reviewer's own cure partial: under `StaleTime.infinite`, `await ref.fetch(client)` returns the written data without fetching, and the refetch after it still fails. An observer built from `ref.options()` cures it at both stale times, subscribed or not | `errors.md` says: write through the reference; for an existing entry create an observer from `ref.options()` before the refetch, or `await ref.fetch(client)`, which supplies the function only when it fetches; `read` and `state` supply nothing. The same correction ("a `fetch` through the reference that does fetch") in the guide's typed-keys section, bulk section and limits, the troubleshooting page, the optimistic-update guide, `TypedQueryKey.write` and `updateAll`'s dartdoc, the library overview and limit 21. Not changed: the decision records D1/D5 (historical) and ADR-0007, which says "an observer or a fetch through the reference" and is not this change's to edit |
+
+R1 also moves the clock read on the fetch path, which goes through the
+same `setData` with an ownership guard: a `Clock` that removes the entry
+while a fetched result is dated now drops the result (the caller still
+gets it) instead of storing it into the removed object and notifying an
+update after the removal. Pinned by "a fetched result is not stored in the
+entry the clock removed". Upstream at the pin has no guard on either path;
+the raw `setQueryData` has none here either, and its behaviour is
+unchanged (same time, one clock read, the same events). No changelog
+line: the rule the 1.1.0 entry states now also holds against a clock
+with cache side effects, which no user is expected to meet.
+
+Gate on this change (Flutter 3.38.8 unless named): core 1456 VM / 1450
+browser (+12 each), 1456 on the floor; core line coverage 99.84 % (floor
+99.8 %); binding 659, hooks 361, hooks example 62 (+10 skipped), showcase
+345 (+25 skipped), task manager 46 (+14 skipped), doc snippets 80, all
+`--no-pub` after the last `lib/` edit; typed fixtures and their self-test
+OK on 3.38.8 and the floor (25 files, 144 misuses, 152 observations per
+runtime); analyzer and formatter clean; jargon scan clean; `dart doc
+--validate-links` 0 warnings for the core; site build green. Not run: the
+Playwright and native end-to-end suites (no screen's behaviour changed;
+the fix is reachable only by a `Clock` with cache side effects).

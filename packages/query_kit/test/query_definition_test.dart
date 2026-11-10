@@ -7,6 +7,7 @@ library;
 
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:query_kit/query_kit.dart';
 import 'package:test/test.dart';
 
@@ -1977,6 +1978,174 @@ void main() {
         expect(ref.state(client)!.dataUpdateCount, 2);
         client.clear();
       }
+    });
+
+    // Second whole-feature review, R1. A write dates the value it stores
+    // with `clock.now()`, and a `Clock` is the application's code as well:
+    // one that removes the entry when it is read must not see the write
+    // store into the removed object and report success.
+    group('a clock that removes the entry while the write dates it (R1)', () {
+      /// [act] on a client holding `d1` (and `d2`), under a clock whose
+      /// first read removes `d1`: what it returned or threw, whether the
+      /// clock ran, the events after it and what `d1` holds afterwards.
+      ({
+        Object? returned,
+        Object? thrown,
+        bool removed,
+        List<String> events,
+        Query<Object?>? held,
+      }) removedByClock(
+        Object? Function(
+          QueryClient client,
+          QueryFamily<String, Device> family,
+        ) act,
+      ) {
+        final client = testClient();
+        final family = deviceDetail();
+        final ref = family('d1');
+        ref.write(client, const Device('d1', name: 'before'));
+        family('d2').write(client, const Device('d2', name: 'before'));
+        final events = recordEvents(client);
+        var removed = false;
+        Object? returned;
+        Object? thrown;
+        withClock(
+          Clock(() {
+            if (!removed) {
+              removed = true;
+              ref.remove(client);
+            }
+            return DateTime.utc(2026);
+          }),
+          () {
+            try {
+              returned = act(client, family);
+            } on Object catch (error) {
+              thrown = error;
+            }
+          },
+        );
+        final held =
+            client.queryCache.findAll(filters: ref.filters()).firstOrNull;
+        final recorded = [
+          for (final event in events)
+            if (event.endsWith('/d1')) event,
+        ];
+        client.clear();
+        return (
+          returned: returned,
+          thrown: thrown,
+          removed: removed,
+          events: recorded,
+          held: held,
+        );
+      }
+
+      final typedWrites = <String,
+          Object? Function(
+        QueryClient client,
+        QueryFamily<String, Device> family,
+      )>{
+        for (final MapEntry(key: name, value: write) in writes.entries)
+          name: (client, family) => write(client, family('d1')),
+        'family.updateAll': (client, family) => family.updateAll(
+              client,
+              (previous) => previous!.id == 'd1' ? value : null,
+            ),
+      };
+
+      for (final MapEntry(key: name, value: act) in typedWrites.entries) {
+        test('$name: StateError, nothing stored', () {
+          final result = removedByClock(act);
+          expect(result.removed, isTrue);
+          expect(result.thrown, isStateError);
+          expect(result.returned, isNull);
+          expect(result.held, isNull);
+          // No update of an entry that is gone.
+          expect(result.events, ['removed devices/detail/d1']);
+        });
+      }
+
+      // The control: the client's write stays upstream's. It dates the value
+      // after sharing, as before, and stores it in the object it holds.
+      test('the control: setQueryData stores into the removed object', () {
+        final result = removedByClock(
+          (client, _) => client.setQueryData<Device>(rawKey, value),
+        );
+        expect(result.removed, isTrue);
+        expect(result.thrown, isNull);
+        expect(result.returned, value);
+        expect(result.held, isNull);
+        expect(result.events, [
+          'removed devices/detail/d1',
+          'updated devices/detail/d1',
+        ]);
+      });
+
+      // The neighbour: a fetch commits only while its run owns the entry,
+      // and the clock dates a fetched result through the same `setData`.
+      test('a fetched result is not stored in the entry the clock removed',
+          () async {
+        final client = testClient();
+        final events = <String>[];
+        var armed = false;
+        var removed = false;
+        final ref = deviceDetail(
+          queryFn: (id, _) async {
+            armed = true;
+            return Device(id);
+          },
+        )('d1');
+        client.queryCache.subscribe((event) {
+          if (armed) events.add(eventName(event));
+        });
+        final fetched = await withClock(
+          Clock(() {
+            if (armed && !removed) {
+              removed = true;
+              ref.remove(client);
+            }
+            return DateTime.utc(2026);
+          }),
+          () => ref.fetch(client),
+        );
+        expect(removed, isTrue);
+        // The caller still gets what the source answered; the cache holds
+        // nothing and heard no update after the removal.
+        expect(fetched, const Device('d1'));
+        expect(ref.state(client), isNull);
+        expect(events, ['removed']);
+        client.clear();
+      });
+
+      test('what a listener hears is the caller\'s timestamp, or none', () {
+        final at = DateTime.utc(2030);
+        final heard = <DateTime?>[];
+        final stored = <DateTime?>[];
+        final client = testClient();
+        final ref = deviceDetail()('d1');
+        client.queryCache.subscribe((event) {
+          if (event
+              case QueryUpdated(:final QuerySuccessAction<Object?> action)) {
+            heard.add(action.dataUpdatedAt);
+          }
+        });
+        withClock(Clock.fixed(at), () {
+          for (final write in <void Function({DateTime? updatedAt})>[
+            ({updatedAt}) => client.setQueryData<Device>(rawKey, value,
+                updatedAt: updatedAt),
+            ({updatedAt}) => ref.write(client, other, updatedAt: updatedAt),
+          ]) {
+            write();
+            stored.add(ref.state(client)!.dataUpdatedAt);
+            write(updatedAt: DateTime.utc(2000));
+            stored.add(ref.state(client)!.dataUpdatedAt);
+          }
+        });
+        expect(heard, [null, DateTime.utc(2000), null, DateTime.utc(2000)]);
+        expect(stored, [at, DateTime.utc(2000), at, DateTime.utc(2000)]);
+        client.clear();
+      });
     });
 
     // The control for all of the above: the client's own write reports a

@@ -284,12 +284,16 @@ types.
 ### An entry a typed key created
 
 A typed key's `write` creates an entry from the key and its type alone, with
-no fetch function. A refetch of it before an observer or a `fetch` through
-the reference has supplied the definition's function fails with
-`MissingQueryFunctionError` and keeps the data.
+no fetch function. A refetch of it before the definition's function is
+supplied fails with `MissingQueryFunctionError` and keeps the data.
 
-**Fix.** Write through the reference when the entry may not exist yet, or
-read it through the reference before it is refetched.
+**Fix.** Write through the reference when the entry may not exist yet. For
+an entry that already exists, create an observer from the reference's
+`options()` (any call style that reads it does) before the refetch, or
+`await ref.fetch(client)`. A `fetch` supplies the function only when it
+fetches, which it does not while the data is fresh under the definition's
+`staleTime`. Reading through the reference (`read`, `state`) does not
+supply it: those only look at the cache.
 
 ## How this differs from TanStack Query
 

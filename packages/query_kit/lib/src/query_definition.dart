@@ -280,12 +280,16 @@ final class TypedQueryKey<T> {
   /// key's own (`QueryClient.setQueryDefaults`) apply, as they do to an
   /// entry the client's `setQueryData` creates, and the definition's
   /// `gcTime`, `structuralSharing` and `initialData` do not. It has no
-  /// fetch function either, until an observer or a fetch through the
-  /// reference brings the definition's: a refetch that reaches it before
-  /// then fails it with [MissingQueryFunctionError] and keeps its data.
-  /// That is a `refetch` over it, or an invalidation with a `refetchType`
-  /// of `all` or `inactive`; a default invalidation refetches only the
-  /// entries an observer reads, so it only marks this one stale.
+  /// fetch function either, until an observer of the reference's options,
+  /// or a fetch through the reference that does fetch, brings the
+  /// definition's: a refetch that reaches it before then fails it with
+  /// [MissingQueryFunctionError] and keeps its data. That is a `refetch`
+  /// over it, or an invalidation with a `refetchType` of `all` or
+  /// `inactive`; a default invalidation refetches only the entries an
+  /// observer reads, so it only marks this one stale. A fetch while the
+  /// written data is fresh under the definition's `staleTime` returns that
+  /// data and brings nothing, and a read through the reference only looks
+  /// at the cache.
   /// Its type is the key's, whatever the value's own type is: a `Device`
   /// written through a `TypedQueryKey<Device?>` creates an entry of
   /// `Device?`. To create an entry with the definition's options, write
@@ -435,9 +439,12 @@ sealed class QueryEntryRef<T> extends QueryTarget {
   ///   a [StateError]. What sharing returned was shared against the entry
   ///   that is gone, so there is nothing left to store it in.
   ///
-  /// The last two write nothing. What a listener does once the value is
-  /// stored, in answer to the write, comes after it: the call returns what
-  /// it stored.
+  /// The last two write nothing. A `Clock` installed with `withClock` is
+  /// held to the same rule: without [updatedAt] the write asks it for the
+  /// time before it stores, and an entry the clock's code removed or
+  /// replaced is treated as one `structuralSharing` removed or replaced.
+  /// What a listener does once the value is stored, in answer to the
+  /// write, comes after it: the call returns what it stored.
   T write(QueryClient client, T value, {DateTime? updatedAt}) =>
       _writeEntry<T>(client, key, value, updatedAt, _entryOptions);
 
@@ -605,7 +612,10 @@ abstract final class InfiniteQueryRef<TPageData, TPageParam>
   /// through such a `copyWith` is used as it is, and so is a
   /// `structuralSharing` from the client's defaults or from
   /// [QueryClient.setQueryDefaults]; only the definition's own are held to
-  /// the declared page types.
+  /// the declared page types. What one of the others returns is stored with
+  /// the type arguments it was built with: an `InfiniteData<int, int>` in
+  /// an `InfiniteData<num, num>` entry reads as the declared type, and a
+  /// later `copyWith(pages: <num>[1.5])` on it throws a [TypeError].
   ///
   /// An [InfiniteQueryDefinition] hands out the paging functions it was
   /// declared with, so the options of one that is held are equal once
@@ -960,7 +970,8 @@ final class QueryFamily<TInput, T> extends QueryTarget {
   /// not the input, so an entry made again is built as a [TypedQueryKey]'s
   /// write builds one: with the key's bare options and no fetch function.
   /// A refetch of it then fails with [MissingQueryFunctionError] until an
-  /// observer or a fetch through the reference supplies the definition's.
+  /// observer of the reference's options, or a fetch through the reference
+  /// that does fetch, supplies the definition's.
   List<(TypedQueryKey<T>, T?)> updateAll(
     QueryClient client,
     T? Function(T? previous) updater, {
@@ -1044,7 +1055,8 @@ final class InfiniteQueryDefinition<TPageData, TPageParam>
   /// A `structuralSharing` or an `initialData` that [configure] sets is
   /// held to the declared page types: what it produces is stored as an
   /// `InfiniteData<TPageData, TPageParam>` even when it was built with
-  /// narrower type arguments.
+  /// narrower type arguments. One from the client's defaults or from a
+  /// per-use `copyWith` is not, as [InfiniteQueryRef.options] says.
   ///
   /// In a debug build the constructor refuses `dynamic`, `Object?` and
   /// `void` for either type argument, which is what a page type left to
@@ -1411,13 +1423,17 @@ T? _updateEntry<T>(
 /// It also differs in which entry that is. The entry is looked up here, by
 /// key, after every piece of the caller's code that runs before it (an
 /// updater, a bulk update's earlier writes and whoever heard them), and
-/// two more pieces run between the lookup and the stored value:
+/// three more pieces run between the lookup and the stored value:
 ///
 /// * the cache's listeners hear `QueryAdded` for an entry made here, and
 ///   one may remove it or put another in its place: [_created] looks again;
 /// * the entry's `structuralSharing` is handed the value, and may do the
-///   same to the entry it is running for. `canCommit` is what `setData`
-///   asks after sharing and before it stores.
+///   same to the entry it is running for;
+/// * the clock dates the value when the caller gave no `updatedAt`, and a
+///   `Clock` installed with `withClock` is code as well.
+///
+/// `canCommit` is what `setData` asks after sharing and the clock, and
+/// nothing of the caller's runs between it and the stored value.
 ///
 /// Without those two a value went into an entry the cache had dropped and
 /// was returned as stored, where the next read found nothing or an entry
@@ -1443,7 +1459,7 @@ T _write<T>(
     // What sharing returned was computed against the entry that is gone,
     // its previous value and its own callback: there is no entry left that
     // it could be stored in.
-    _gone<T>(cache, rawKey, 'structuralSharing');
+    _gone<T>(cache, rawKey, 'structuralSharing or clock');
   }
   return stored;
 }

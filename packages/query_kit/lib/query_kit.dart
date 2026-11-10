@@ -177,7 +177,8 @@
 /// * **A typed key knows the type, not the definition.** An entry its
 ///   `write` creates has the key's data type and the client's defaults,
 ///   and none of the definition's options, its fetch function included,
-///   until an observer or a fetch through the reference brings them.
+///   until an observer of the reference's options, or a fetch through the
+///   reference that does fetch, brings them.
 ///   Write through the reference to create an entry with them.
 /// * **A family's reference makes new options every time.** It binds its
 ///   input into a new fetch function per `options()` call, so an observer

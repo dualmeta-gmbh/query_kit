@@ -7,6 +7,7 @@ library;
 
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:query_kit/query_kit.dart';
 import 'package:test/test.dart';
 
@@ -1408,6 +1409,40 @@ void main() {
           expect(entry(client, rawKey).dataType, narrower);
           expect(pagesOf(client, rawKey), narrow(9).pages);
           client.clear();
+        });
+
+        // Second whole-feature review, R1: the clock that dates the value
+        // is the caller's code as well.
+        test('a clock that removes its entry or puts narrower pages there (R1)',
+            () {
+          for (final replace in [false, true]) {
+            final client = testClient();
+            final definition = feed();
+            definition.write(client, exact());
+            var ran = 0;
+            withClock(
+              Clock(() {
+                if (ran++ == 0) {
+                  remove(client);
+                  if (replace) client.setQueryData(rawKey, narrow(9));
+                }
+                return DateTime.utc(2026);
+              }),
+              () => expect(
+                () => write(client, definition),
+                replace
+                    ? throwsA(dataTypeError(rawKey, typeOf<Feed>(), narrower))
+                    : throwsStateError,
+              ),
+            );
+            if (replace) {
+              expect(entry(client, rawKey).dataType, narrower);
+              expect(pagesOf(client, rawKey), narrow(9).pages);
+            } else {
+              expect(client.queryCache.findAll(), isEmpty);
+            }
+            client.clear();
+          }
         });
       });
     }
