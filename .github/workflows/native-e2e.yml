@@ -78,7 +78,7 @@ jobs:
           script: |
             e2e-native/run.sh android && MODE=profile e2e-native/run.sh android
             ../../packages/query_kit_hooks/example/e2e-native/run.sh android && MODE=profile ../../packages/query_kit_hooks/example/e2e-native/run.sh android
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: native-e2e-android-logs
@@ -121,7 +121,7 @@ jobs:
           echo "simulator: $device"
           IOS_DEVICE="$device" e2e-native/run.sh ios
           IOS_DEVICE="$device" ../../packages/query_kit_hooks/example/e2e-native/run.sh ios
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: native-e2e-ios-logs
@@ -179,7 +179,7 @@ jobs:
               echo 'Only the by-hand run on an unlocked Mac does (docs/releasing.md).'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: native-e2e-macos-logs
@@ -219,7 +219,7 @@ jobs:
         if: success() || failure()
         working-directory: packages/query_kit_hooks/example
         run: e2e-native/run.sh linux
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: native-e2e-linux-logs
@@ -265,7 +265,7 @@ jobs:
           CHROMEDRIVER: ${{ steps.chrome.outputs.chromedriver-path }}
           CHROME_EXECUTABLE: ${{ steps.chrome.outputs.chrome-path }}
         run: e2e-native/run.sh web && MODE=release e2e-native/run.sh web
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: native-e2e-web-logs
@@ -329,7 +329,7 @@ jobs:
       - name: end-to-end tests
         run: E2E_BROWSERS=all npx playwright test
         working-directory: ${{ matrix.dir }}/e2e
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: playwright-all-${{ matrix.app }}
