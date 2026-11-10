@@ -1618,6 +1618,66 @@ void main() {
       client.clear();
     });
 
+    // The rollback above skips `null`, which means "no data" only for a
+    // non-null data type. For a nullable one a cached `null` reads as
+    // `null` too; the snapshot `readAll`'s dartdoc gives for that case keeps
+    // each key's state, whose `hasData` tells the two apart.
+    test('a nullable family\'s snapshot is put back from each key\'s state',
+        () {
+      final client = testClient();
+      final paired = QueryFamily<String, Device?>(
+        namespace: devices,
+        name: 'paired',
+      );
+      final at = DateTime.utc(2020);
+      paired('none').write(client, null, updatedAt: at); // a cached null
+      paired('lamp').write(client, const Device('lamp'), updatedAt: at);
+      // An entry without data.
+      client.queryCache.build<Device?>(
+        client,
+        client.defaultQueryOptions<Device?>(paired('empty').options()),
+      );
+
+      // `readAll` reads the cached null and the missing data alike.
+      final values = paired.readAll(client);
+      expect(values, [
+        (paired('none').key, null),
+        (paired('lamp').key, const Device('lamp')),
+        (paired('empty').key, null),
+      ]);
+      final states = [
+        for (final (key, _) in paired.readAll(client)) (key, key.state(client)),
+      ];
+
+      // Every entry overwritten, the cached null included.
+      void patch() =>
+          paired.updateAll(client, (device) => const Device('patched'));
+
+      // The rollback over the values cannot put the cached null back.
+      patch();
+      expect(paired('none').read(client), const Device('patched'));
+      for (final (key, data) in values) {
+        if (data != null) key.write(client, data, updatedAt: at);
+      }
+      expect(paired('none').read(client), const Device('patched'));
+      expect(paired('lamp').read(client), const Device('lamp'));
+
+      // The rollback over the states puts every entry back as it was.
+      patch();
+      for (final (key, state) in states) {
+        if (state != null && state.hasData) {
+          key.write(client, state.data, updatedAt: at);
+        }
+      }
+      expect(paired('none').state(client)!.hasData, isTrue);
+      expect(paired('none').read(client), isNull);
+      expect(paired('lamp').read(client), const Device('lamp'));
+      // An updater sees no data as `null` as well, so it patched the entry
+      // without data too, and neither rollback can take data away again.
+      expect(paired('empty').read(client), const Device('patched'));
+      client.clear();
+    });
+
     test('the keys updateAll returns write as well', () {
       final client = testClient();
       final detail = deviceDetail();

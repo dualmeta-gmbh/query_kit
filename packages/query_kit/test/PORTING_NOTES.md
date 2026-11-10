@@ -8045,3 +8045,24 @@ compiled twin for every sample, the type arguments written on every
 definition shown, the limits in one section of the typed-queries guide,
 and the raw API second and not deprecated. The plan's "Phase 4" record
 lists the pages.
+
+### Whole-feature review (TQ5)
+
+Reviewer: Opus 5.5 (second reviewer; the first, Fable 5.2, was cut off by
+a usage limit and its probes were reused), over `320e922`. Seven P3s and
+one wording point, all reproduced before anything changed; no code under
+`lib/` changed apart from dartdoc. The plan's review record has the
+evidence per row.
+
+| # | What it was | Reproduced | Outcome |
+|---|---|---|---|
+| F1 | `prefetching.md`: a typed prime's entry "holds the data and nothing else" | yes | corrected: the reference's write builds it with the definition's options; only the raw write's entry holds the data alone |
+| F2 | `typed-queries.md`: `rawKey` "on a reference" | yes (`undefined_getter`) | `ref.key.rawKey`; no other instance in the site, READMEs or dartdoc |
+| F3 | a narrower `configure` said to make "every read and fetch" throw | yes | the two reference pages name `options()` and a creating `write`/`update`; reads, `state`, lifecycle calls, a write into an existing entry and `key.write` work |
+| F4 | a typed key's entry said to fail "at the next invalidation" | yes | "at a refetch that reaches it" (`refetch`, or `refetchType` `all`/`inactive`); a default invalidation only marks it stale. Site, dartdoc, plan limit 21 |
+| F5 | a nullable family's `readAll` cannot tell a cached `null` from no data, so the documented rollback misses it | yes | dartdoc and one sentence beside each shown rollback: for a nullable `T` snapshot each key's `state` and write back where `hasData`. Regression: "a nullable family's snapshot is put back from each key's state" in `query_definition_test.dart` |
+| F6 | the task manager's list controller kept a replaced api's fetcher under a search filter | yes (old backend refetched) | `didUpdateWidget` re-applies the list options for new `queries`; acceptance case "a transport replaced under a filtered list serves its refetch", red before |
+| F7 | `updateAll` did not say what an entry it makes again is built with | yes (no fetch function, refetch fails) | dartdoc: the key's bare options, no fetch function (no paging functions on the infinite side) |
+| F8 | a held definition's options "equal from call to call" | yes (`==` false, defaulted equal) | "equal once defaulted", with the family caveat, in the guide and four dartdoc places |
+
+Core 1444 VM / 1438 browser, task manager 46 (+14), doc snippets 80.

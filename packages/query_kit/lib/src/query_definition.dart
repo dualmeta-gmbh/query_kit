@@ -11,7 +11,7 @@
 /// client's, reached through the client each operation is handed. The one
 /// thing remembered is a wrapper: an infinite definition finds the one it
 /// made for a callback of its `configure` again by that callback, weakly,
-/// so that its options are equal from call to call.
+/// so that its options are equal from call to call once defaulted.
 library;
 
 import 'dart:async';
@@ -207,6 +207,10 @@ final class QueryNamespace extends QueryTarget {
 /// }
 /// ```
 ///
+/// That `null` means "no data" only for a non-null data type. For a
+/// nullable one, a cached `null` reads as `null` too, and the snapshot
+/// keeps each key's [state] instead; [QueryFamily.readAll] shows how.
+///
 /// A typed key knows the entry's key and its data type, and not the
 /// definition. That shows in one place: an entry a [write] creates is
 /// built from the key and the type alone, where a reference builds it with
@@ -259,6 +263,10 @@ final class TypedQueryKey<T> {
   /// }
   /// ```
   ///
+  /// With a nullable data type that rollback skips a cached `null`, which
+  /// reads as `null` as well; [QueryFamily.readAll] shows the snapshot
+  /// that puts one back.
+  ///
   /// An entry that exists is written as the reference writes it: it must
   /// hold exactly the key's data type, and the timestamp ([updatedAt],
   /// default: now), structural sharing and the notification are the same.
@@ -273,8 +281,11 @@ final class TypedQueryKey<T> {
   /// entry the client's `setQueryData` creates, and the definition's
   /// `gcTime`, `structuralSharing` and `initialData` do not. It has no
   /// fetch function either, until an observer or a fetch through the
-  /// reference brings the definition's: a refetch of every entry before
+  /// reference brings the definition's: a refetch that reaches it before
   /// then fails it with [MissingQueryFunctionError] and keeps its data.
+  /// That is a `refetch` over it, or an invalidation with a `refetchType`
+  /// of `all` or `inactive`; a default invalidation refetches only the
+  /// entries an observer reads, so it only marks this one stale.
   /// Its type is the key's, whatever the value's own type is: a `Device`
   /// written through a `TypedQueryKey<Device?>` creates an entry of
   /// `Device?`. To create an entry with the definition's options, write
@@ -505,14 +516,17 @@ abstract final class QueryRef<T> extends QueryEntryRef<T> {
   /// and a `copyWith(queryKey: ...)` or `copyWith(queryFn: ...)` leaves the
   /// definition behind: the options then describe another query.
   ///
-  /// Whether two calls return equal options depends on the definition. A
-  /// [QueryDefinition] hands out the fetch function it was declared with,
-  /// so the options of one that is held, in a top-level `final` or a
-  /// field, are equal from call to call, and an observer handed them again
-  /// sees no change. A [QueryFamily]'s reference binds its input into a
-  /// new function on every call, so its options never equal the ones
-  /// before, as options written inline with a closure do not: the observer
-  /// takes them as changed, and starts no fetch for that alone. A
+  /// Two calls never return `==` objects. What an observer compares is
+  /// the options once the client has defaulted them, and whether those are
+  /// equal depends on the definition. A [QueryDefinition] hands out the
+  /// fetch function it was declared with, so the options of one that is
+  /// held, in a top-level `final` or a field, are equal once defaulted,
+  /// and an observer handed them again sees no change. A [QueryFamily]'s
+  /// reference binds its input into a new fetch function on every call, so
+  /// its options never equal the ones before, as options written inline
+  /// with a closure do not: the observer takes them as changed, and starts
+  /// no fetch for that alone. A family declared without a fetch function
+  /// has nothing to bind, and its options are equal once defaulted. A
   /// `configure` that builds something new on every call, an
   /// `Enabled.when` over a closure say, makes either kind's options
   /// differ.
@@ -594,10 +608,10 @@ abstract final class InfiniteQueryRef<TPageData, TPageParam>
   /// the declared page types.
   ///
   /// An [InfiniteQueryDefinition] hands out the paging functions it was
-  /// declared with, so the options of one that is held are equal from call
-  /// to call; an [InfiniteQueryFamily]'s reference binds its input into
-  /// new ones on every call. What that means to an observer is on
-  /// [QueryRef.options].
+  /// declared with, so the options of one that is held are equal once
+  /// defaulted, though two calls never return `==` objects; an
+  /// [InfiniteQueryFamily]'s reference binds its input into new ones on
+  /// every call. What that means to an observer is on [QueryRef.options].
   ///
   /// That holds with a `structuralSharing` or an `InitialData.compute`
   /// from `configure` when it is the same function every time `configure`
@@ -883,6 +897,22 @@ final class QueryFamily<TInput, T> extends QueryTarget {
   /// The cached data of every input, each with its typed key; `null` where
   /// an entry holds no data yet.
   ///
+  /// That `null` means "no data" only for a non-null `T`. For a nullable
+  /// `T` a cached `null` reads as `null` too, so a rollback that writes
+  /// back each non-null value leaves an overwritten cached `null`
+  /// overwritten. Snapshot each key's state instead, whose `hasData` tells
+  /// the two apart; for a `QueryFamily<String, Device?>` called `paired`:
+  ///
+  /// ```dart
+  /// final snapshot = [
+  ///   for (final (key, _) in paired.readAll(client)) (key, key.state(client)),
+  /// ];
+  /// // ...then, to roll back:
+  /// for (final (key, state) in snapshot) {
+  ///   if (state != null && state.hasData) key.write(client, state.data);
+  /// }
+  /// ```
+  ///
   /// Throws [QueryDataTypeError] when an entry under the family's prefix
   /// holds another data type.
   List<(TypedQueryKey<T>, T?)> readAll(QueryClient client) =>
@@ -926,7 +956,11 @@ final class QueryFamily<TInput, T> extends QueryTarget {
   /// A cache listener that throws stops nothing: its error is reported to
   /// the zone and the writes go on. An entry removed since the updaters
   /// ran is created again by its write, and one replaced by an entry of
-  /// the same data type is written.
+  /// the same data type is written. The family has only the key there,
+  /// not the input, so an entry made again is built as a [TypedQueryKey]'s
+  /// write builds one: with the key's bare options and no fetch function.
+  /// A refetch of it then fails with [MissingQueryFunctionError] until an
+  /// observer or a fetch through the reference supplies the definition's.
   List<(TypedQueryKey<T>, T?)> updateAll(
     QueryClient client,
     T? Function(T? previous) updater, {
@@ -1252,7 +1286,8 @@ final class InfiniteQueryFamily<TInput, TPageData, TPageParam>
   }
 
   /// The cached pages of every input, each with its typed key; `null`
-  /// where an entry holds no data yet.
+  /// where an entry holds no data yet. An `InfiniteData` is never `null`
+  /// itself, so here `null` always means "no data".
   ///
   /// Throws [QueryDataTypeError] when an entry under the family's prefix
   /// holds another data type.
@@ -1271,9 +1306,10 @@ final class InfiniteQueryFamily<TInput, TPageData, TPageParam>
   /// Runs [updater] over the cached pages of every input and writes what
   /// it returns, as [QueryFamily.updateAll] does and with the same rules:
   /// nothing is written unless every entry and every result has the
-  /// family's type, returning `null` leaves an entry as it is, and a write
-  /// that fails leaves the ones before it made. Each result is stored
-  /// under the declared page types.
+  /// family's type, returning `null` leaves an entry as it is, a write
+  /// that fails leaves the ones before it made, and an entry removed
+  /// since the updaters ran is made again without the paging functions.
+  /// Each result is stored under the declared page types.
   List<
       (
         TypedQueryKey<InfiniteData<TPageData, TPageParam>>,

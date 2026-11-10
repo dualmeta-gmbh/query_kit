@@ -221,14 +221,18 @@ device.dispose();
 style is for. With `query_kit_hooks`, `useQuery(ref.options())` reads the
 same entry; see [hooks](hooks.md).
 
-`options()` makes new options on every call. A family's reference binds its
-input into a new fetch function each time, so an observer handed them again
-on a rebuild takes them as changed options, as it does with options written
-inline in `build`. That costs [one defaulting pass and nothing
-else](query-options.md#options-built-in-build-are-fine). A definition
-without an input hands out the function it was declared with, and its
-options are equal from call to call as long as its `configure` builds
-nothing new each time it runs.
+`options()` makes new options on every call, and two calls never return
+`==` objects. What an observer compares on a rebuild is the options once
+defaulted. A definition without an input hands out the function it was
+declared with, so its options are equal once defaulted, as long as its
+`configure` builds nothing new each time it runs. A family's reference binds
+its input into a new fetch function each time, so its options differ even
+then, and an observer handed them again on a rebuild takes them as changed
+options, as it does with options written inline in `build`. That costs [one
+defaulting pass and nothing
+else](query-options.md#options-built-in-build-are-fine). A family declared
+without a fetch function has nothing to bind, and its options are equal
+once defaulted, as a definition's are.
 
 ## Reading and writing
 
@@ -286,11 +290,14 @@ A typed key knows the entry's key and data type, and not the definition.
 That shows in one place: an entry that a typed key's `write` or `update`
 **creates** is built from the key and the type alone. It gets the client's
 defaults and the key's own (`setQueryDefaults`), none of the definition's
-options, and no fetch function. A refetch of every entry before an observer
-or a `fetch` through the reference supplies one fails that entry with
-`MissingQueryFunctionError` and keeps its data. Write through the reference
-to create an entry with the definition's options. An entry that already
-exists is written exactly as the reference writes it.
+options, and no fetch function. A refetch of it before an observer or a
+`fetch` through the reference supplies one fails it with
+`MissingQueryFunctionError` and keeps its data: a `refetch` that reaches it,
+or an invalidation with a `refetchType` of `all` or `inactive`. A default
+invalidation refetches only the entries an observer reads, so it only marks
+this one stale. Write through the reference to create an entry with the
+definition's options. An entry that already exists is written exactly as
+the reference writes it.
 
 Only a definition or a reference makes a typed key: there is no public
 constructor, because the data type would then be whatever the caller
@@ -538,9 +545,14 @@ MutationOptions<void, RoomRename, ChangedDevices> renameRoom(
 The rollback puts back the devices this rename changed and no others, so a
 write to a neighbour in the meantime survives it. An entry removed while the
 request ran is created again by its key's `write`, and such an entry has no
-fetch function until the query is used again (see [typed
-keys](#typed-keys)). The [optimistic updates](optimistic-updates.md) guide
-has the single-entry form.
+fetch function until an observer or a `fetch` through the reference brings
+one (see [typed keys](#typed-keys)). The [optimistic
+updates](optimistic-updates.md) guide has the single-entry form.
+
+`readAll`'s `null` means "no data" only for a non-null data type. For a
+family of a nullable type, `Device?` say, a cached `null` reads as `null`
+too, so the snapshot keeps each key's `state(client)` and the rollback writes
+back `state.data` wherever `state.hasData` is true.
 
 `updateAll` checks the types before it writes anything: every entry under
 the prefix must hold exactly the family's data type, every updater runs, and
@@ -574,9 +586,10 @@ It fits where no definition does: a key built at run time from parts the
 app does not know in advance, a [default query
 function](default-query-function.md) that serves many keys, `setQueryDefaults`
 for a prefix, a filter with a `predicate` over entries of many types, or
-`getQueriesData` across definitions. `rawKey` on a reference, a typed key, a
-family or a namespace hands the plain key to any of these. From there on the
-type argument is yours to get right again.
+`getQueriesData` across definitions. `rawKey` hands the plain key to any of
+these: on a typed key, so `ref.key.rawKey` for a reference, and on a family
+or a namespace directly. From there on the type argument is yours to get
+right again.
 
 ## Limits
 

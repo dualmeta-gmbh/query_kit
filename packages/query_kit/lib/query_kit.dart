@@ -177,14 +177,15 @@
 /// * **A typed key knows the type, not the definition.** An entry its
 ///   `write` creates has the key's data type and the client's defaults,
 ///   and none of the definition's options, its fetch function included,
-///   until the query is next used. Write through the reference to create
-///   an entry with them.
+///   until an observer or a fetch through the reference brings them.
+///   Write through the reference to create an entry with them.
 /// * **A family's reference makes new options every time.** It binds its
 ///   input into a new fetch function per `options()` call, so an observer
 ///   handed them again takes them as changed options, as it does options
 ///   written inline. A definition without an input hands out the function
-///   it was declared with, and its options are equal from call to call
-///   unless its `configure` builds something new each time it runs.
+///   it was declared with, and its options are equal once defaulted,
+///   which is what an observer compares, unless its `configure` builds
+///   something new each time it runs.
 /// * **Nothing registers definitions.** Two that share a namespace and a
 ///   name with different data types are found at the first read or write
 ///   of the second type, with a [QueryDataTypeError]. Two with the same

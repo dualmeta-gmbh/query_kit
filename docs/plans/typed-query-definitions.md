@@ -2060,10 +2060,13 @@ introduced.
 21. *A typed key knows the type, not the definition.* An entry its
     `write` or `update` creates has the declared type, the client's and
     the key's defaults, none of the definition's options and no fetch
-    function: a refetch of every entry before an observer or a `fetch`
+    function: a refetch that reaches it before an observer or a `fetch`
     through the reference supplied one fails that entry with
-    `MissingQueryFunctionError` and keeps its data. Create through the
-    reference when the definition's options matter (D1, D5, after TQ3).
+    `MissingQueryFunctionError` and keeps its data. That is a `refetch`
+    over it, or an invalidation with `refetchType` `all` or `inactive`; a
+    default invalidation refetches only active entries and just marks it
+    stale. Create through the reference when the definition's options
+    matter (D1, D5, after TQ3; the trigger corrected by TQ5).
 
 ## Implementation map
 
@@ -3056,3 +3059,30 @@ the hooks' fence test for its guide and README), and the mutation recipes
 are the functions `query_definition_mutation_test.dart` runs. The four
 call styles stay equal: a reference's `options()` goes into the style a
 page already shows. Site build, fence tests and the jargon scan are green.
+
+### Whole-feature review (TQ5)
+
+Reviewer: Opus 5.5 (second reviewer; the first, Fable 5.2, was cut off by
+a usage limit and its probes were reused), over `320e922`. Seven P3s and
+one wording point, no P1 or P2. Each was reproduced against the checkout
+before anything changed: the behavioural ones by running the probes, the
+wording ones by reading the code they describe. No library code changed;
+dartdoc did.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| F1 | `prefetching.md` said an entry a typed prime creates "holds the data and nothing else" | yes: the entry a reference's `write` creates carries the definition's fetch function, `gcTime` (7 s) and `meta`, and a `refetchQueries` before any screen succeeds; the raw `setQueryData` entry has none of them | The sentence says the reference's write builds the entry with the detail's options, and that the raw write's entry holds the data alone |
+| F2 | `typed-queries.md` said `rawKey` exists "on a reference" | yes: `ref.rawKey` does not analyze on a definition, a family's reference or an infinite definition (`undefined_getter`) | Reworded to `ref.key.rawKey`; a family and a namespace have their own. No getter added. Swept the site, the three READMEs and the dartdoc: no other instance |
+| F3 | `errors.md` and `troubleshooting.md` said a `configure` returning another options type makes "every read and fetch" throw | yes: `read`, `state`, `invalidate`, a write into an existing entry and `key.write` work; `options()` and a `write` or `update` that creates the entry throw `StateError` | Both pages name exactly what throws and what still works. The dartdoc of `configure` and limit 19 already said "making the options throws" and were right |
+| F4 | `troubleshooting.md` said an entry a typed key created fails "at the next invalidation" | yes: a default `invalidate` only marks it stale (`success`, `isInvalidated`); `refetchType: all` fails it with `MissingQueryFunctionError`, data kept | The page, the guide, the optimistic-update guide, `TypedQueryKey.write`'s dartdoc, the library overview and limit 21 say: a refetch that reaches it, a `refetch` or an invalidation with `refetchType` `all` or `inactive`; a default invalidation refetches only active entries |
+| F5 | For a nullable `T`, `readAll`'s `null` is both a cached `null` and no data, so the documented rollback leaves an overwritten cached `null` overwritten | yes: the dartdoc rollback over a `QueryFamily<String, Device?>` left `Device(optimistic)` where a cached `null` was | No API change (product owner's decision). `readAll`'s dartdoc says `null` means no data only for a non-null `T` and shows the snapshot of each key's `state`, whose `hasData` tells the two apart; the infinite `readAll` says its `null` is always no data; one sentence beside each shown rollback (the two in `TypedQueryKey`'s dartdoc, the typed-queries and optimistic-update guides). One core test pins both rollbacks over a nullable family |
+| F6 | The task manager's overview gave its list controller new options only when the filters changed, so with a search active a replaced api kept the old fetcher | yes: with the probe's search filter the old backend got the refetch | `didUpdateWidget` hands the controller the new definitions' list options when `queries` is another object. A new acceptance case (search active, invalidation and the reload button) is red before (`Expected: length 2, Actual: 4` on the old backend) and green after. The header and the detail screen re-apply their options every build and were correct. SX-1's "the task manager was correct" held for `main.dart`'s remake, not for this controller |
+| F7 | `updateAll`'s dartdoc said an entry removed between the updaters and its write is made again, not with what | yes: the entry made again has no fetch function, and a refetch fails it | The dartdoc says it is built with the key's bare options and no fetch function, as a typed key's write builds one, until an observer or a fetch through the reference supplies the definition's; the infinite `updateAll` says it is made without the paging functions |
+| F8 | "Equal from call to call" for a held definition's options | yes: `options() == options()` is `false`; the defaulted options are equal; a family's with a fetch function are not, a family's without one are | The guide, `QueryRef.options`, `InfiniteQueryRef.options`, the library overview and the file's header say "equal once defaulted", which is what an observer compares; a family declared without a fetch function is named as equal once defaulted too |
+
+Gate on this change: core 1444 VM / 1438 browser, `dart doc
+--validate-links` 0 warnings, task manager 46 (+14 skipped), doc snippets
+80, analyzer and formatter clean, jargon scan clean, site build green. The
+task manager's Playwright suite was not run: the change re-applies options
+only when the app's api object is replaced, which the web build never
+does.

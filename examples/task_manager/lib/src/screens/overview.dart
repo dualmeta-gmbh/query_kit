@@ -66,6 +66,17 @@ class _TaskOverviewState extends State<TaskOverview> {
   }
 
   @override
+  void didUpdateWidget(TaskOverview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.queries != oldWidget.queries) {
+      // The app made its queries again, over another transport. The
+      // controller still holds the old fetch function, so it is handed the
+      // new list's options: the next refetch goes through the new transport.
+      _list!.setOptions(widget.queries.list(_filters!).options());
+    }
+  }
+
+  @override
   void dispose() {
     _list?.dispose();
     _search.dispose();

@@ -165,8 +165,12 @@ instead of under it. See [errors](errors.md#from-a-typed-write).
 
 ## "configure returned … whose definition makes …"
 
-**Symptom.** Every read and fetch through a definition throws a
-`StateError` that names `configure`, the key and two options types.
+**Symptom.** Everything that makes a definition's options throws a
+`StateError` that names `configure`, the key and two options types:
+`options()`, so every observer and every `fetch` through the definition,
+and a reference's `write` or `update` that creates the entry. A `read`, a
+`state`, an `invalidate`, a write into an entry that already exists and a
+typed key's `write` make no options, and still work.
 
 **Mechanism.** `configure` built new options of a narrower data type, such
 as `QueryObserverOptions<Device>` for a definition of `Device?`. The analyzer
@@ -194,8 +198,12 @@ definitions](../guides/typed-queries.md#why-the-type-arguments-are-written).
 ## A refetch fails with `MissingQueryFunctionError` after a typed key's write
 
 **Symptom.** An entry written through a typed key, from a rollback snapshot
-say, turns to an error with `MissingQueryFunctionError` at the next
-invalidation or refetch. The data is still there.
+say, turns to an error with `MissingQueryFunctionError` the next time it is
+refetched: a `refetch` that reaches it, or an invalidation with a
+`refetchType` of `all` or `inactive`. The data is still there. A default
+invalidation only marks it stale: it refetches only the entries an observer
+is reading, and an observer through the reference has brought the fetch
+function with it.
 
 **Mechanism.** A typed key knows the type, not the definition. When its
 `write` creates the entry, the entry has the key and the type and no fetch

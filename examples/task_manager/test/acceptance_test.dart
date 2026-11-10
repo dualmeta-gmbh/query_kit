@@ -478,6 +478,43 @@ void main() {
     expect(backend.requests.where((r) => r == 'GET /tasks'), hasLength(1));
   });
 
+  // The header reads the unfiltered list on every build, so the case above
+  // would pass on the header alone. With a search active the open list is a
+  // key only the overview's own controller observes, and that controller
+  // must be handed the new definitions' options, for an invalidation and for
+  // the reload button alike.
+  demoTest('a transport replaced under a filtered list serves its refetch',
+      (tester) async {
+    await start(tester);
+    await tester.enterText(find.byType(TextField).first, 'The');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    final before = backend.requests.where((r) => r == 'GET /tasks').length;
+
+    final replacement = FakeBackend();
+    final replacementApi = TaskApi(
+      dio: Dio(BaseOptions(baseUrl: 'http://backend.test/api'))
+        ..httpClientAdapter = replacement,
+    );
+    await tester.pumpWidget(
+      TaskManagerApp(api: replacementApi, client: client),
+    );
+    await tester.pumpAndSettle();
+    final refetch = tasks.list.invalidate(client);
+    await tester.pumpAndSettle();
+    await refetch;
+    await tester.tap(find.byTooltip('Reload'));
+    await tester.pumpAndSettle();
+
+    expect(backend.requests.where((r) => r == 'GET /tasks'), hasLength(before));
+    // The filtered list twice, through the new transport; the header's
+    // unfiltered list once, by the invalidation.
+    expect(
+      replacement.requests.where((request) => request == 'GET /tasks'),
+      hasLength(3),
+    );
+  });
+
   demoTest('a refused delete of the last visible task still shows its notice',
       (tester) async {
     await start(tester);

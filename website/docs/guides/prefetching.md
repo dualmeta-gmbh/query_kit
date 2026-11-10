@@ -157,9 +157,11 @@ for (final device in list) {
 }
 ```
 
-An entry written this way holds the data and nothing else: the detail's
-fetch function and options arrive with the screen that reads it. With raw
-keys, the write names the key and the type:
+An entry this write creates is built with the detail's options: its fetch
+function, `gcTime` and the rest, so a refetch of it works before any screen
+has read it. With raw keys, the write names the key and the type, and the
+entry it creates holds the data and nothing else; its fetch function and
+options arrive with the screen that reads it:
 
 ```dart snippet="guides/prefetching.md#prime"
 // The room list already holds every device's fields: seed each detail, so
