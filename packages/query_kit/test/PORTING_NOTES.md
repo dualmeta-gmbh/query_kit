@@ -7426,3 +7426,84 @@ changed in this round; the work is wording, the site, and tests.
   read-only review found no introduced defects. Existing website tests passed
   (13/13); the generated sitemap's 120 URLs all use the new self-canonical host.
   Package publication still follows the release gates in `docs/releasing.md`.
+
+
+## Typed query definitions (map #129)
+
+[Map #129](https://github.com/dualmeta-gmbh/query_kit/issues/129) adds typed
+query definitions to the core: a definition names its input, its cache
+identity and its fetch function once, and the reference it produces carries
+the data type to every read, write and invalidation. Nothing upstream is
+ported for it (TanStack types its keys with `queryOptions()` and `DataTag`,
+which have no Dart counterpart), so it has no ported suite and no row in the
+tables above; what each ticket did is recorded here, one section per ticket.
+The plan is `docs/plans/typed-query-definitions.md`.
+
+### TQ0 — the API proven by analyzer fixtures, before the facade exists (#131)
+
+**What.** No package code: nothing under `packages/` changes but this file.
+The surface is written once as a prototype against the core's *exported*
+API (`tool/typed_query_fixtures/prototype/typed_queries.dart`), and 24
+fixture files analyze and run against it:
+
+- `positive/` (6 files) must analyze clean, and every inferred type is
+  pinned by `expectStaticType`, which fails for a wider and for a narrower
+  type;
+- `negative/` (7 files) carries 114 marked lines, 105 misuses and nine
+  self-tests of that helper, each of which must be refused **at that line
+  with that diagnostic code**, so a fixture cannot pass by failing for
+  another reason;
+- `boundary/` (4 files) must compile: the generic setter that widens, the
+  widened receivers, the definitions without type arguments, the list of
+  two data types. Five of their lines carry a diagnostic only this
+  repository's stricter options produce;
+- `runtime/observations.dart` prints 98 observations, compared with a
+  recorded file per runtime.
+
+`tool/check_typed_query_fixtures.dart` copies them into a temporary
+consumer package and analyzes it per language version (3.6, and the running
+SDK's own) under the analyzer's defaults and under this repository's
+options, then runs the observations on the VM with and without assertions
+and compiled by dart2js at its default level, `-O3` and `-O4` under node.
+The fixtures are excluded from the repository's own analysis
+(`analysis_options.yaml`) and are formatted by the gate like everything
+under `tool/`.
+
+**Verified.** The runner is green on Dart 3.6.2, 3.10.7 and 3.13.4: on
+each, 114 errors and 5 optional diagnostics where expected and none
+elsewhere, and 98 observations as recorded on each of the five runtimes.
+It is a step of CI's `gates` and `floors` jobs.
+
+**What it found**, each recorded under its decision in the plan and listed
+in the plan's review record (P0-1 to P0-16):
+
+- The covariance check a widened receiver relies on is omitted by dart2js
+  at `-O3` and `-O4`, and a typed write that merely delegates to
+  `setQueryData<Device>` then stores a `String` in a `Query<Device>`; an
+  update stores an `int`; a bulk update writes nothing and raises nothing.
+  The explicit check through `Object?` refuses all three with
+  `QueryDataTypeError` before anything is written. The same widening
+  reaches a family's input, so binding checks it too.
+- A generic `setData<T>(key, value)` compiles with `T = Object` for a
+  wrong value and creates a `Query<Object>` the reference then refuses to
+  read. A generic *updater* does not widen: the claim is narrower than the
+  plan had it.
+- A family without type arguments infers an `Object?` input on all three
+  SDKs, silently under strict options when its fetcher ignores the input;
+  the debug backstop is the only refusal, and it is absent without
+  assertions. A zero-input definition with a fetcher infers exactly.
+- A list of references of two data types infers `List<QueryTarget>`, the
+  one supertype without a data type, so it can be invalidated and cannot
+  be written.
+- A record input holding a collection needs a `keyOf`; nothing detects
+  its absence.
+
+**Not proven here.** dart2wasm was not run. An AOT executable ran once by
+hand (Dart 3.10.7) and printed what the VM prints. The prototype does not
+wrap a definition's own `structuralSharing` and `initialData` for the
+infinite normalisation. Only the core's `QueriesObserver` was run over a
+mixed list; the binding and the hooks come with their tickets.
+
+**For TQ1.** The plan's "Final surface (TQ0)" is the signature list. The
+fixtures take the surface from one file, `surface.dart`, and deleting its
+second export line points all of them at the real exports.

@@ -6,17 +6,26 @@ the [review record](#review-record) at the end says what each finding
 became). Round 2 found that three decisions of round 1 rested on wrong claims
 about the current code; round 3, scoped to round 2's diff, found no P1 and
 closed the gaps round 2's fixes left. Further plan reviews were judged to
-give diminishing returns; the remaining questions are Phase 0's. No feature code or type-safety spike has been implemented or
-validated by this document.
+give diminishing returns; the remaining questions were Phase 0's.
 
-Date: 2026-10-18. Repository baseline: `a5afe7d` (`main`).
+**Phase 0 is done (TQ0, [#131](https://github.com/dualmeta-gmbh/query_kit/issues/131),
+2026-11-10).** The analyzer fixtures, their runner and a working prototype of
+the surface are in `tool/` ([Phase 0](#phase-0--prove-the-dart-api-before-implementing-the-facade)
+says how to run them). Open-1, Open-2 and Open-7 are answered under their
+decisions, each answer marked **Phase 0**; [Final surface (TQ0)](#final-surface-tq0)
+is what Phase 1 implements; the [review record](#phase-0-tq0-2026-11-10)
+lists every change Phase 0 made to this plan and why. No package code has
+changed: nothing under `packages/` is touched but PORTING_NOTES.
+
+Date: 2026-10-18. Repository baseline: `a5afe7d` (`main`). Phase 0 ran over
+`51ab8ad`.
 
 Decider: the agent, under the AFK rule of map
 [#1](https://github.com/dualmeta-gmbh/query_kit/issues/1). Every decision
 below names the options, the answer and the reason, so it can be reopened
-from this document alone. Only what needs an analyzer to answer stays open
-for Phase 0, and the [open questions](#open-questions-for-phase-0) list says
-which those are.
+from this document alone. Only what needed an analyzer to answer was left
+for Phase 0; the [open questions](#open-questions-for-phase-0) list says
+which those were and where each answer is.
 
 ## Goal and scope
 
@@ -92,9 +101,11 @@ blocks TQ0 (decided 2026-10-18). A generator stays outside this plan.
 
 ## Proposed developer experience
 
-All names and Dart examples below describe a proposed API, not working code.
-Phase 0 must settle signatures and prove inference before these examples become
-public documentation.
+The names and examples below are the surface Phase 0 settled; every line of
+them is a fixture (`tool/typed_query_fixtures/support/models.dart` holds the
+declaration, `positive/plain_reference.dart` the call sites,
+`negative/dx_misuses.dart` the six refused lines). The exact signatures are
+under [Final surface (TQ0)](#final-surface-tq0).
 
 One explicit declaration per operation, with a normal Dart namespace:
 
@@ -111,7 +122,6 @@ final class DeviceQueries {
   late final detail = QueryFamily<String, Device>(
     namespace: namespace,
     name: 'detail',
-    keyOf: (id) => [id],
     queryFn: (id, context) =>
         _repository.device(id, signal: context.signal),
   );
@@ -124,8 +134,9 @@ final device = queries.devices.detail('d1'); // QueryRef<Device>
 ```
 
 The definition above produces the structural raw key
-`['devices', 'detail', 'd1']`. Namespace and operation strings occur in the
-definition, not throughout the application. Static queries need an equally
+`['devices', 'detail', 'd1']`: the input is the one key part after the name
+unless the family is given a `keyOf` (D3). Namespace and operation strings
+occur in the definition, not throughout the application. Static queries need an equally
 typed zero-input definition (`QueryDefinition<T>` is the working name), without
 invented `null` or `dynamic` arguments at each call site.
 
@@ -144,15 +155,16 @@ await queries.devices.detail.invalidate(client); // Every detail input
 await queries.devices.invalidate(client);        // Whole namespace
 ```
 
-These ordinary call sites must be rejected statically:
+These ordinary call sites are rejected statically, each with the analyzer
+error named beside it, on Dart 3.6.2, 3.10.7 and 3.13.4 alike (Phase 0):
 
 ```dart
-queries.devces.detail('d1');
-queries.devices.detial('d1');
-queries.devices.detail(123);
-device.write(client, 'not a device');
-device.update(client, (_) => 42);
-String? wrongRead = device.key.read(client);
+queries.devces.detail('d1');                 // undefined_getter
+queries.devices.detial('d1');                // undefined_method
+queries.devices.detail(123);                 // argument_type_not_assignable
+device.write(client, 'not a device');        // argument_type_not_assignable
+device.update(client, (_) => 42);            // return_of_invalid_type_from_closure
+String? wrongRead = device.key.read(client); // invalid_assignment
 ```
 
 Ordinary Dart classes or typed records provide member autocomplete. A map with
@@ -194,7 +206,7 @@ invalidation without lying about a data type.
     `write`, `update` and the exact lifecycle operations, and no `options()`;
   - `QueryRef<T>` is the plain reference and owns `options()` (a
     `QueryObserverOptions<T>`) and `fetch`;
-  - `InfiniteQueryRef<TPageData, TPageParam>` implements
+  - `InfiniteQueryRef<TPageData, TPageParam>` is a
     `QueryEntryRef<InfiniteData<TPageData, TPageParam>>` and owns its own
     `options()` (an `InfiniteQueryObserverOptions<TPageData, TPageParam>`)
     and `fetch` over `client.infiniteQuery`.
@@ -213,9 +225,53 @@ invalidation without lying about a data type.
   so the infinite side needs the zero-input form as much as the plain one.
 - The name `QueryRef` sits beside the public `QueryObserverRef`; both are
   references to a query from a different side, and the docs say which is
-  which. Renaming is Phase 0's call if the fixtures read badly.
+  which.
 - `QueryNamespace` selects entries by prefix without claiming a data type.
   It supports lifecycle operations and filters, not typed data reads/writes.
+
+**Phase 0 (the name):** `QueryRef` stays. Options: keep it; `QueryHandle`;
+`QueryEntry`; `BoundQuery`. The two names never meet where a reader could
+confuse them: `QueryObserverRef` is the cache's name for an observer inside
+its events (`QueryObserverAdded.observer`), an interface whose every member
+is `@internal`, while `QueryRef` is what an application declares and passes
+around. `positive/reference_names.dart` uses both from one import in one
+function, neither shadows the other, and
+`final QueryObserverRef observer = queries.devices.detail('d1');` is an
+`invalid_assignment` (`negative/surface_limits.dart`). `Ref` is also the
+word the reader brings along: the plan, the map and every ticket say
+"reference", and `ref.write(client, …)` reads as what it does. A rename
+would buy nothing the fixtures show a need for, and `QueryEntry` would sit
+one letter from `QueryEntryRef`. The docs introduce `QueryRef` as "a
+reference to one cache entry" and mention `QueryObserverRef` only on the
+cache-events page, where it already is.
+
+**Phase 0 (one more type, `QueryTarget`):** the five lifecycle operations
+and the filters are the same on a namespace, a family, an infinite family
+and a reference, and D7 asks for "a typed filter adapter". Options: (a) the
+operations written out on each of the four, and a free function for the
+filters; (b) one sealed supertype, `QueryTarget`, that carries
+`invalidate`, `refetch`, `cancel`, `reset`, `remove` and
+`filters({type, stale, fetchStatus, status, predicate})`, and no data type.
+Answer: (b). It is the adapter D7 names, it is the type a helper takes that
+invalidates "whatever it is given", and the fixtures found a third use
+nobody planned: a list of references of two data types infers
+`List<QueryTarget>`, not `List<QueryRef<Object>>`, so it can be invalidated
+and its elements cannot be written (`boundary/mixed_list.dart`,
+`negative/surface_limits.dart`). The cost is one more public name. It is
+sealed, like `QueryEntryRef`, so a switch over "what is this aimed at" is
+exhaustive (`positive/reference_names.dart`) and nothing outside the
+library can pose as a target (`invalid_use_of_type_outside_library`).
+
+**Phase 0 (Open-2, what the surface does not offer):** a namespace has no
+`read`, `state`, `write`, `update`, `options` or `key`; a family has no
+`read`, `write`, `options`, `fetch` or `key`; `QueryEntryRef` has no
+`options` and no `fetch`; a plain reference is not an infinite one and the
+reverse; `TypedQueryKey` has no public constructor, no `fromRaw`, no
+`write`, is not assignable from a `QueryKey` and is not accepted where a
+raw key is; `QueryRef<Device>()` does not exist; and none of
+`QueryTarget`, `QueryEntryRef`, `QueryRef`, `TypedQueryKey` can be
+implemented outside the library. Each is an analyzer error at its line
+(`negative/surface_limits.dart`).
 
 `QueryKey` and its equality/hashing stay unchanged. It is final, so the typed
 key wraps it. No `T`, closure identity or definition instance identity enters
@@ -254,10 +310,80 @@ widened receivers as well as natural calls, and one fixture compiles with
 that every expressible Dart program fails statically. Existing raw client
 methods are not widened to `Object` or `dynamic` to simulate overloads.
 
+**Phase 0 (Open-2, the generic setter):** option (a) was written out as
+`T setData<T>(QueryClient client, TypedQueryKey<T> key, T value)`
+(`support/client_style_setter.dart`). `setData(client, device.key, 'not a
+device')` **compiles**, and `expectStaticType` pins its result as `Object`;
+the same as a method of the client; `42` under a `Device?` key solves
+`T = Object?`; an `InfiniteData<String, String>` under the feed's key solves
+`InfiniteData<Object, Object>` (`boundary/generic_setter.dart`, clean under
+the analyzer's defaults and under this repository's strict options, on
+Dart 3.6.2, 3.10.7 and 3.13.4). Run, it creates a `Query<Object>` holding a
+`String` under the device's key, after which the reference's own `read`
+throws `QueryDataTypeError` (observations `D2-setter-1`, `-2`). The same
+value written through the reference is `argument_type_not_assignable`.
+
+The claim is narrower than round 2 wrote it, and the fixture says so: the
+widening is a property of the **value** setter. A generic *updater*,
+`updateData(client, device.key, (previous) => 42)`, is refused
+(`return_of_invalid_type_from_closure`), because Dart solves `T` from the
+non-closure arguments before it infers the closure; and an explicit
+`setData<Device>(…)` is refused too (`negative/generic_setter.dart`). D2's
+answer stands on `write` alone, which is the operation an optimistic update
+and a server-response write use.
+
+**Phase 0 (Open-7):** `runtime/observations.dart` runs the surface with
+widened receivers on five runtimes per SDK (the VM with and without
+assertions, dart2js at its default level, at `-O3` and at `-O4`, under
+node), and the runner compares what each prints with a recorded file. On
+Dart 3.6.2, 3.10.7 and 3.13.4 alike:
+
+| Observation | VM, dart2js default | dart2js `-O3`, `-O4` |
+|---|---|---|
+| a `String` into a `Box<Device>` held as `Box<Object?>` (no library code) | `TypeError` | no check: the box holds a `String` |
+| naive `write`, plain delegation to `setQueryData<Device>` | `TypeError` | completes: a `Query<Device>` holding a `String` |
+| naive `update`, delegation to `updateQueryData<Device>` | `TypeError` | completes: a `Query<Device>` holding an `int` |
+| naive bulk update, delegation to `updateQueriesData<Device>` | `TypeError` | completes, nothing written, nothing raised |
+| `write` of a `String` through `QueryRef<Device>` as `QueryRef<Object?>`, entry absent or present | `TypeError` | `QueryDataTypeError`; no entry made, a cached value kept |
+| the same through `QueryEntryRef<Object?>`, and under a nullable type | `TypeError` | `QueryDataTypeError` |
+| `update` returning an `int`, entry absent or present; an updater typed `Object? Function(Object?)` | `TypeError` | `QueryDataTypeError`; cached value kept |
+| family `updateAll` returning a `String` over two entries; an updater valid for the first entry only | `TypeError` | `QueryDataTypeError`; both entries kept |
+| `write` of an `InfiniteData<String, String>` through a widened infinite reference; a widened infinite family's `updateAll` | `TypeError` | `QueryDataTypeError`; cache unchanged |
+| the valid value, and `null` under a nullable type, through the widened reference | written | written |
+
+So the covariance check is omitted at `-O3`/`-O4`, a plain delegation then
+corrupts the cache (rows 2 and 3 are round 3's finding, reproduced), and
+the explicit check through `Object?` fires for the single `write`, the
+single `update` and the family bulk update, before anything is written. An
+AOT executable of the same program (`dart compile exe`, Dart 3.10.7, run
+once by hand, not part of the runner) printed what the VM prints.
+
+**Phase 0 (the input, an addition):** the same widening reaches a family's
+*input*. `QueryFamily<String, Device>` held as `QueryFamily<Object?,
+Object?>` accepts `family(42)` statically; at `-O3`/`-O4` nothing would
+refuse it, `42` would become a key part and reach the fetcher as a `String`.
+Options: (a) document it as a limit, since the data type of the entry is
+still right; (b) check the input through `Object?` in `call`, as D2 checks
+the value. Answer: (b). It is one `is` test per binding, and it keeps "a
+wrong input does not reach the fetcher" true where Flutter's web release
+runs. It throws `ArgumentError`, not `QueryDataTypeError`: no cache data is
+involved. Observed: `TypeError` on the VM and dart2js default,
+`ArgumentError` at `-O3`/`-O4`, no entry created, for both family kinds
+(`O7-input-1`, `-2`).
+
+What stays a boundary compiles, and the fixtures hold that it does
+(`boundary/widened_receiver.dart`): the upcasts above, a raw `QueryRef`
+(`strict_raw_type` under this repository's options, clean under the
+defaults), a `dynamic` value (`argument_type_not_assignable` under
+`strict-casts` only), a `dynamic` receiver (`avoid_dynamic_calls` under
+this repository's lints only), a cast, `rawKey` handed to the raw client,
+and a per-use `copyWith(queryKey: …)`.
+
 ### D3. Identity is structural, and nothing else
 
 **Options:** (a) raw identity from namespace parts, operation name and the
-frozen parts of `keyOf(input)`, with no metadata; (b) the same identity plus a
+frozen parts of `keyOf(input)` (the input itself as one part when the
+family has no `keyOf`), with no metadata; (b) the same identity plus a
 client-local registry of definitions that detects duplicate declarations,
 ordinary-versus-infinite conflicts and incompatible cache types; (c) identity
 that includes the definition instance or closure.
@@ -292,13 +418,55 @@ IDs, tenant/account, locale, filters, backend environment. A captured
 repository object is a dependency, not an identity component. Switching
 accounts must not reuse another account's data.
 
-`keyOf` is explicit for general inputs: Dart cannot inspect record fields
-generically or prove that captured dependencies are included. Primitive inputs
-are straightforward; records and custom models need documented value equality
-or explicit conversion to supported parts. Collection key parts are frozen once
-when binding. Inputs must be immutable, or the caller takes a snapshot; a
-retained input must not change what is fetched after its key was computed.
-`keyOf` freezing does not clone a user model.
+`keyOf` is optional, and without it the input is the one key part after the
+name: `[...namespace, name, input]`, which is what a raw key would hold.
+(Until Phase 0 the plan made it a required parameter; the product owner
+asked for the default, and the fixtures were to say whether it holds.)
+**Options:** (a) required, so every family states its parts; (b) optional,
+defaulting to `(input) => [input]`. **Answer:** (b). **Why:** for the
+inputs that are the common case the required form is a line that can only
+be written one way, `keyOf: (id) => [id]`, and a line that can only be
+written one way is where a typo hides. `keyOf` stays for what the default
+cannot do: spreading an input over several parts so a prefix selects a
+subset, converting an input without value equality, leaving a field out of
+the identity.
+
+**Phase 0 (does the default hold):**
+
+- *Inference is unchanged.* A family without type arguments infers
+  `QueryFamily<Object?, …>` with a `keyOf` and without one, on all three
+  SDKs (`boundary/untyped_definition.dart`); D10's limit and its backstop
+  are untouched, and so are the declared-type and typed-closure anchors
+  (`positive/typed_inputs.dart`).
+- *What the default produces* (observations `K-1` to `K-8`): a `String`
+  input gives `[k, byId, d1]`, and its reference is `==` the one of a
+  family that spells `keyOf: (id) => [id]`; a value object with `==` gives
+  equal references for equal inputs; a `List` input is frozen at binding
+  (changing the caller's list afterwards changes nothing, and a binding of
+  the changed list is another entry); a `Map` input is equal whatever the
+  order of its entries; a record of scalars is equal field by field; `null`
+  is the part `null` under a nullable input type.
+- *Where `keyOf` is still needed, and it is a documented limit, not a
+  check:* a **record holding a collection**. Two equal such inputs give two
+  unequal references and two cache entries, because a record compares its
+  fields with `==` and a list is `==` only to itself; `QueryKey` freezes
+  collections but cannot look inside a record, and its debug assertion does
+  not see it (`K-6`: no `keyOf` unequal, `keyOf: (input) => [input.ids]`
+  equal). This is the raw key's own documented limit, neither added nor
+  removed by the default; the required form had the same trap in
+  `keyOf: (input) => [input]`. The guide states the rule where it
+  introduces a record input.
+- *An input with identity equality* (a class without `==`) is refused by
+  `QueryKey`'s existing debug assertion at binding and is silently a new
+  entry per binding in a release build, exactly as in a raw key (`K-8`);
+  a `keyOf` that converts it is the cure.
+
+Dart cannot inspect record fields generically or prove that captured
+dependencies are included, so nothing here is checked beyond what `QueryKey`
+checks. Collection key parts are frozen once when binding. Inputs must be
+immutable, or the caller takes a snapshot; a retained input must not change
+what is fetched after its key was computed. Freezing does not clone a user
+model.
 
 Raw entries with the same key and type are shared with typed consumers;
 nothing marks them as adopted. Structural identity is not a serialisation
@@ -336,11 +504,20 @@ first one's fetcher, keeping a stale repository alive.
 Consequences:
 
 - Every reference's `==` (`QueryRef`, `InfiniteQueryRef`, the definitions
-  that are references) is namespace, name, kind, the cache type and the raw key;
+  that are references) is its kind, plain or infinite, and its typed key;
   `TypedQueryKey.==` is the raw key and `TCacheData`. A hook or a user may
   key on a reference. The fetcher is not part of it, so two definitions of
   one operation with different fetchers produce equal references, and the
   observer takes the fetcher it was last handed.
+- Namespace and name are in that equality as parts of the raw key and in no
+  other way (Phase 0; the plan had listed them as fields of their own).
+  Options: (a) compare them separately; (b) only through the raw key.
+  Answer: (b). A reference keeps nothing of them but the key they produced
+  (D3: no metadata), and (a) would make two references to one cache entry
+  of one type unequal because their declarations split the same parts
+  differently, a distinction the cache does not make and no operation acts
+  on. So a reference bound by a family and a zero-input definition whose
+  key and type coincide are equal (`D4-10`).
 - `ref.options()` returns fresh options with a fresh bound closure each call,
   as an options function does today; nothing memoises them.
 - A changed fetcher or a changed definition default is an options change and
@@ -358,6 +535,36 @@ Consequences:
   raw options.
 
 Open-4 of round 1 is closed by this decision.
+
+**Phase 0 (the fixture that is not about types):** observations `D4-1` to
+`D4-15` in `runtime/observations.dart`, the same on every runtime of every
+SDK.
+
+| Observed | Result |
+|---|---|
+| two references from equal inputs of one family, and of a recreated family | `==`, same `hashCode` (`D4-1`, `D4-2`) |
+| references from different inputs; their typed keys | unequal; keys equal for equal inputs only (`D4-3`, `D4-4`) |
+| a zero-input definition and its recreation; the infinite twins | `==`, not identical (`D4-5`, `D4-6`) |
+| a value object and a record as equal inputs | `==` (`D4-7`) |
+| one raw key declared as `Device` and as `Device?` | raw keys equal, typed keys unequal, references unequal (`D4-8`) |
+| a plain and an infinite definition of one key and one data type | typed keys equal, references unequal: the kind (`D4-9`) |
+| a family's reference and a zero-input definition of one key and type | `==` both ways, same `hashCode` (`D4-10`) |
+| references and typed keys as set members and map keys | found (`D4-11`) |
+| the options of one reference, asked for twice | not identical, another fetcher closure, the same key (`D4-12`) |
+| binding references and asking for options before a client is used | no entry in either client (`D4-13`) |
+| one reference written through one client, read through two | the first holds the value, the second nothing; then each its own (`D4-14`, `D4-15`) |
+
+That a reference holds no client is also what the signatures say: every
+operation takes the client as its first argument, and a reference has no
+other way to reach one.
+
+A reference promises `==` and never identity, in either direction. Two
+bindings of one input are two objects on the VM, and dart2js may make them
+one: compiled at its default level by Dart 3.10.7,
+`identical(detail('d1'), detail('d1'))` is the constant `true` (a probe
+run by hand; the VM prints `false`). So no observation asks whether two
+bindings are identical, and nothing in the surface may rely on either
+answer.
 
 ### D5. Declared cache types, absence and null
 
@@ -422,6 +629,41 @@ must create an entry of the declared type, or the next typed read throws.
 - Writes keep structural sharing, timestamps and synchronous notification.
   Runtime mismatches use the existing diagnostic and name key, expected type
   and actual type.
+- `write` returns `TCacheData`, what the cache holds after sharing, and
+  `update` returns `TCacheData?`, as the raw calls they stand for do
+  (Phase 0; the plan had not said).
+
+**Phase 0 (what the prototype does, run):** observations `D5-1` to `D5-17`
+and `D5-infinite-1` to `-6`. Where a line differs between runtimes the
+table says so; the rest is the same on all five runtimes of all three SDKs.
+
+| Observed | Result |
+|---|---|
+| first typed write of a `Temperature` under `QueryFamily<String, Reading>` (a sealed base) | a `Query<Reading>` (`D5-1`) |
+| the raw `setQueryData` of the same value with no type argument, the control | a `Query<Temperature>`, which the typed read would refuse (`D5-2`) |
+| a `List<Thermostat>` under `QueryDefinition<List<Device>>`; a `Device` under `Device?` | `Query<List<Device>>`, `Query<Device?>` (`D5-3`, `D5-4`) |
+| `write(null)` on a nullable definition | the entry holds `null`; `read` is `null`, `state.hasData` is `true` (`D5-5`) |
+| a reference nothing was written for | no entry; `read` and `state` are `null` (`D5-6`) |
+| `update` returning `null` with no entry | returns `null`, creates no entry (`D5-7`) |
+| `update` returning a value with no entry; over a cached value; `write` with `updatedAt` | creates the entry; sees the cached value; `dataUpdatedAt` is the given time (`D5-8` to `D5-10`) |
+| typed `write`, `update` and `read` over a raw `Query<Device?>` | `QueryDataTypeError`, the entry unchanged (`D5-11`, `D5-12`) |
+| the raw `setQueryData<Device>` over the same entry | writes: the leniency is the raw path's and stays (`D5-13`) |
+| typed write of a `Device` over a raw `Query<Thermostat>` | `QueryDataTypeError` (`D5-14`) |
+| `gcTime` of an entry a typed write created, the definition configured with `GcTime.never`; of one a raw write created | the definition's; the default (`D5-15`) |
+| declaring `QueryDefinition<Null>` | `AssertionError` with assertions on, constructed without (`D5-17`): debug-only, as the decision says |
+| an `InfiniteData<List<Thermostat>, int>` written under `InfiniteQueryDefinition<List<Device>, int>` | stored as `InfiniteData<List<Device>, int>`, a rebuilt value with the same pages (`D5-infinite-1`) |
+| adding a page of plain `Device`s to what is cached; to the narrower value itself | works; `TypeError` on the VM and dart2js default, unchecked at `-O3`/`-O4` (`D5-infinite-2`, `-3`), which is what the normalisation is for |
+| an exact `InfiniteData` | stored as given, the same instance (`D5-infinite-4`) |
+| an updater returning `InfiniteData<List<Never>, int>`, single and through the family | stored under the declared page types (`D5-infinite-5`, `-6`) |
+
+Two things the prototype does not do, so Phase 0 proves neither. It does
+not wrap the definition's own `structuralSharing` and `initialData` for the
+infinite normalisation (round 3's A-1): that needs the core's internals and
+tests of its own, and it is Phase 2's. And it builds the entry through the
+public `QueryCache.build` on every write, where the module inside the core
+builds it only when the entry is absent and writes through
+`Query.setData(manual: true)` directly; the observable result is the one
+above.
 
 ### D6. Options, defaults and execution are reused, not rebuilt
 
@@ -482,6 +724,28 @@ subscriptions, and ADR-0001's two shapes already anchor the output type.
   request. Cancel, remove, reset, refetch and invalidate call the exact client
   operations.
 
+**Phase 0:**
+
+- `queryFn` is an optional parameter of `QueryFamily` and `QueryDefinition`:
+  that is the key-only definition above. Its types then have no source, so
+  they are written out; left out, the declaration infers `dynamic`, which
+  `strict-inference` reports and the debug backstop refuses (D10). The
+  infinite definitions keep `pageFn` required, as the infinite options do.
+- `fetch(client, {revalidateIfStale = false})` on both reference kinds is
+  `client.query` and `client.infiniteQuery` with their parameter and its
+  default. Run: a family's reference, a zero-input definition, an infinite
+  definition and an infinite family's reference each fetch through their
+  definition's function and leave an entry of the declared type, and an
+  observer made from `options()` sees it (`F-1` to `F-5`).
+- The re-pin holds: a `configure` that returns options with another key and
+  another fetcher produces options with the definition's key (`D5-16`).
+- The signatures spell their function types out and add no public typedef.
+  Options: (a) names such as `QueryFamilyFn<TInput, T>`; (b) inline types.
+  Answer: (b). Nobody writes these types down (the closures are inferred
+  from the constructor), so a name would be public surface with no user.
+- No `isFetching` on a target: `client.isFetching(filters: x.filters())` is
+  one call, and `filters()` (D7) is what every count and listener takes.
+
 ### D7. Exact for a reference, prefix for a family or namespace; bulk keeps the cache's check
 
 **Options:** (a) typed family bulk reads and updates need a membership
@@ -522,6 +786,40 @@ list write).
   back; this is not a transaction.
 - A namespace exposes invalidation and other non-data operations only.
 
+**Phase 0 (names, shapes, and what ran):**
+
+- The bulk operations are `family.readAll(client)` and
+  `family.updateAll(client, updater, {updatedAt})`, on both family kinds,
+  and both return `List<(TypedQueryKey<T>, T?)>`: the raw calls' list of
+  key and value with the key typed, so a result can be read again without
+  leaving the surface. Options for the names: `read` / `update` as on a
+  reference (a family would then have a `read` that returns a list, and
+  "a family has no `read`" would stop being a compile error for the
+  commonest slip, a forgotten input); `readAll` / `updateAll`. Answer: the
+  latter.
+- The typed filter adapter is `QueryTarget.filters({type, stale,
+  fetchStatus, status, predicate})` (D1): the key and its exactness are the
+  target's, the rest narrows it, and the result is an ordinary
+  `QueryFilters` for the client, `IsFetchingController`, `QueryListener`
+  and the hooks' counts. The lifecycle operations take the parameters of
+  the client calls they are (`invalidate(client, {refetchType,
+  cancelRefetch})`, `cancel(client, {revert, silent})`, and so on).
+- Run (`D7-1` to `D7-13`, the same on every runtime). With two details, a
+  list and a lookup cached, `updateAll` returns and writes the two details
+  and leaves the list and the lookup alone; the family's filters select 2
+  entries, the namespace's 4, one reference's 1. With a key nested under
+  one detail added, `invalidate` marks 1 of 5 entries on that detail's
+  reference (not the nested one), 3 of 5 on the family (the nested one,
+  not the list) and 5 of 5 on the namespace; `remove` on the family leaves
+  the list and the lookup. A `Query<String>` without data under the
+  prefix, and a raw `Query<Device?>` under it, each make `updateAll` throw
+  `QueryDataTypeError` with every entry kept (`readAll` throws over the
+  first as well), where the raw `updateQueriesData<Device>` completes and
+  writes, the wider entry included. An updater that throws for the second
+  entry leaves the first unwritten.
+- The nested key in that run is invalidated and removed with the family,
+  as the decision says: an authoring rule, not a check.
+
 ### D8. Infinite queries keep all three types
 
 **Options:** (a) one `InfiniteQueryFamily<TInput, TPageData, TPageParam>`
@@ -545,6 +843,25 @@ wrong page parameters and wrongly typed `InfiniteData` writes are negative
 analyzer cases. The raw path's refusal to widen `InfiniteData` on write
 stays, and first writes with narrow literals are tested.
 
+**Phase 0:** `positive/infinite.dart` holds the inferred types: the
+reference, its options, an `InfiniteQueryObserver` of all three types from
+the options alone, `read`, `fetch`, a `write` whose literal takes its type
+arguments from the receiver, the selected shape, the family's `readAll`
+and `updateAll`, and the declared types inside every callback of both
+infinite definitions. `negative/definitions.dart` holds the refused
+declarations (a page function returning other page data or using its
+param as another type, an initial or a next page param of another type,
+an infinite family's function that leaves out the input, a missing
+required paging function) and `negative/surface_limits.dart` the refused
+uses (an `InfiniteData` of other page data or other params written, a
+list of pages written or returned by an updater, a wrong element in a
+literal page, a read assigned to other types, a plain reference where an
+infinite one is expected and the reverse, plain options handed to an
+infinite observer). A zero-input infinite definition without type
+arguments infers both types exactly, from `initialPageParam` and the page
+function's return; an infinite family without them has D10's `Object?`
+input.
+
 ### D9. Every consumer, no new state layer
 
 The options a reference produces work with controllers, builders, mixins,
@@ -559,6 +876,25 @@ exact typed read then rejects; that is outside the guarantee, the docs say so
 (the hook's already do), and a compiling boundary fixture with a runtime
 assertion pins it, apart from the analyzer-negative fixtures. Namespace and family filters also feed `IsFetchingController`,
 `QueryListener` and the hooks' counts.
+
+**Phase 0:** `boundary/mixed_list.dart` compiles on all three SDKs under
+both option sets, and pins what is inferred: `[device.options(),
+list.options()]` is a `List<QueryObserverOptions<Object>>` and the observer
+over it a `QueriesObserver<Object, Object>`; two references of one data
+type give `QueriesObserver<Device, Device>`. Run (`D9-1` to `D9-3`): the
+mixed observer creates a `Query<Object>` under each key, after which the
+references' own `read` and `write` throw `QueryDataTypeError`; the
+same-type list creates a `Query<Device>` the reference reads. Only the
+core's `QueriesObserver` ran here; the binding's and the hooks' lists are
+Phase 3's.
+
+One thing the fixture found that the plan had not asked: a list of the
+*references* themselves, `[device, list]`, is not a
+`List<QueryRef<Object>>` but a `List<QueryTarget>` (D1), because the
+nearest common supertype of the two is the one without a data type. Its
+elements can be invalidated and cannot be read or written
+(`negative/surface_limits.dart`). So the hole is the options list and
+nothing wider.
 
 Mutation definitions are outside this feature. Existing mutation callbacks
 use typed references for cancellation, optimistic writes, snapshots, rollback,
@@ -598,6 +934,55 @@ alike.
 [the inference research](../research/dynamic-inference-guards.md) here; that
 research is about an optional output slot and does not establish this case.
 
+**Phase 0 (Open-1, the record):** what a declaration without type arguments
+infers, pinned by `expectStaticType` in `boundary/untyped_definition.dart`,
+`positive/typed_inputs.dart`, `positive/infinite.dart` and
+`positive/declaration_forms.dart`. Dart 3.6.2 (language 3.6), 3.10.7
+(language 3.6 and 3.10) and 3.13.4 (language 3.6 and 3.13) infer the same
+in every row.
+
+| Declaration, no type arguments | Inferred | Analyzer, defaults | Analyzer, this repository's options |
+|---|---|---|---|
+| `QueryFamily(queryFn: (id, context) => …)`, the input unused | `QueryFamily<Object?, List<Device>>` | clean | clean |
+| the same with `keyOf: (id) => [id]` | the same | clean | clean |
+| `InfiniteQueryFamily(pageFn: (id, context) => …, …)` | `InfiniteQueryFamily<Object?, List<Device>, int>` | clean | clean |
+| a key-only `QueryFamily(namespace: …, name: …)` | `QueryFamily<dynamic, dynamic>` | clean | `inference_failure_on_instance_creation` |
+| a key-only `QueryDefinition(namespace: …, name: …)` | `QueryDefinition<dynamic>` | clean | `inference_failure_on_instance_creation` |
+| `QueryDefinition(queryFn: (context) => …)` | `QueryDefinition<List<Device>>`, exact | clean | clean |
+| `InfiniteQueryDefinition(pageFn: …, initialPageParam: 0, …)` | `InfiniteQueryDefinition<List<Device>, int>`, exact | clean | clean |
+| `QueryFamily(queryFn: (String id, QueryFunctionContext context) => …)` | `QueryFamily<String, Device>`, exact | clean | clean |
+| `final QueryFamily<String, Device> x = QueryFamily(…)` | exact | clean | clean |
+
+So the decision is narrower than its heading, and better: **the limit is a
+family's input slot.** A zero-input definition with a fetcher has no slot
+that lacks a source, and it infers exactly; the examples may leave its type
+arguments out, and the guide says a family's are written. The output types
+are exact in every row that has a fetcher.
+
+What an untyped family costs, measured:
+
+- The ordinary one does not compile. Its fetcher hands the input to a typed
+  parameter, and an `Object?` is not a `String`:
+  `argument_type_not_assignable` inside the declaration, at the use of the
+  input; using a member of the input is `unchecked_use_of_nullable_value`
+  (it is `Object?`, not `dynamic`); assigning it where the typed family is
+  expected is `invalid_assignment` (`negative/untyped_definition.dart`,
+  five cases, an infinite family among them).
+- The one that never looks at its input compiles, under the strict options
+  as well, and then accepts `42`, `null` and a `Device` as inputs
+  (`boundary/untyped_definition.dart`). That is the documented limit.
+- The backstop is a debug assertion and nothing more (`D10-1` to `D10-8`).
+  With assertions on, the untyped family, the key-only `dynamic` one,
+  `QueryFamily<void, …>`, `QueryDefinition<Object?>`, the untyped infinite
+  family and `InfiniteQueryDefinition` with a top page type or page-param
+  type each throw `AssertionError` at construction, and
+  `QueryFamily<Object, …>`, `QueryFamily<String?, …>` and
+  `QueryDefinition<Object>` pass. Without assertions (the VM without them,
+  dart2js at every level) every one of them is constructed. No compile
+  error was promised here, and none is claimed: the guarantee is the
+  explicit form, the limit is stated where definitions are introduced, and
+  the assertion's message names the cure.
+
 ### D11. Showcase and versions
 
 A new or changed showcase screen for the infinite flow follows the showcase's
@@ -612,17 +997,91 @@ Phase 4 updates every README, and the hooks README is fence-tested. Round 2's
 |---|---|---|
 | core | `1.1.0` | additive API |
 | binding | `1.2.0`, `query_kit: ^1.1.0` | it re-exports the whole core, so raising the floor makes the new API reachable through the binding's import: a feature, hence a minor under "Semantic versioning holds" |
-| hooks | `0.1.1`, `query_kit_flutter: ^1.2.0` | it re-exports the binding; in 0.x a minor is the breaking bump (`docs/releasing.md`), so an addition is a patch |
+| hooks | `0.1.3`, `query_kit_flutter: ^1.2.0` | it re-exports the binding; in 0.x a minor is the breaking bump (`docs/releasing.md`), so an addition is a patch |
+
+Phase 0 corrected the hooks row: the plan said `0.1.1`, and `0.1.1` and
+`0.1.2` have been published since it was written (tags
+`query_kit_hooks-v0.1.1` and `-v0.1.2`; the pubspec is at `0.1.2`). Core
+is at `1.0.4` and the binding at `1.1.4`, so `1.1.0` and `1.2.0` are still
+the next minors. The numbers are the next free ones when Phase 4 bumps,
+and are read off the pubspecs again then.
 
 The shipped examples name the first release that has what they use (a
 constraint names the oldest version that works, `docs/releasing.md`): the
 binding's example `query_kit_flutter: ^1.2.0`, the hooks example
-`query_kit_hooks: ^0.1.1`. Each is resolved without its workspace override
+`query_kit_hooks: ^0.1.3`. Each is resolved without its workspace override
 and at its lowest allowed dependency set (`pub downgrade`) before tagging,
 because resolving the latest versions would not notice a floor that is too
 low. Publish in dependency order: core, binding, hooks.
 
+### D12. One declaration form: the constructors
+
+Added in Phase 0. The product owner asked whether a declaration should be
+spelled as a constructor that names its namespace
+(`QueryFamily<String, Device>(namespace: devices, name: 'detail', …)`) or
+as a factory method on the namespace
+(`devices.family<String, Device>('detail', …)`), and for one documented
+form.
+
+**Options:** (a) constructors only; (b) factory methods only, the
+constructors private; (c) both.
+
+**Answer:** (a).
+
+**Why:** the two were written side by side for all four definitions
+(`support/namespace_factories.dart`, `positive/declaration_forms.dart`) and
+no guarantee separates them.
+
+- With type arguments both infer the same types and their callbacks see the
+  same parameter types. Without, both infer `QueryFamily<Object?, …>`
+  (`boundary/untyped_definition.dart`), both fail the same way when the
+  fetcher uses its input (`negative/untyped_definition.dart`), both anchor a
+  zero-input definition by its fetcher and a family by typed closure
+  parameters, and both hit the same debug backstop (`D10-1`, `D10-2`). On
+  all three SDKs.
+- What the factory saves is the `namespace:` argument, one line per
+  declaration.
+- What it costs: `devices.query('list', …)` and
+  `devices.infiniteQuery('feed', …)` would declare, one receiver away from
+  `client.query(…)` and `client.infiniteQuery(…)`, which fetch. The
+  constructor form is how every options object in the package is written,
+  and the class name at the declaration is the word the reference, the
+  search and the API index use.
+- (c) is two spellings of one thing in every guide and every example,
+  and a reader has to find out that they are one thing.
+- (b) or (c) is not foreclosed for a user: the fixture's factory is an
+  extension of some ninety lines over the public constructors, and needs
+  nothing from the library.
+
 ### Open questions for Phase 0
+
+**All three are answered (Phase 0, 2026-11-10):** Open-1 under D10 (the
+record for a definition without type arguments), D8 and the positive
+fixtures named in the [Phase 0](#phase-0--prove-the-dart-api-before-implementing-the-facade)
+section; Open-2 under D1 (what the surface does not offer), D2 (the generic
+setter) and D9 (the mixed list); Open-7 under D2. Nothing is open for an
+analyzer any more.
+
+Open-1's positive half, which has no decision of its own to sit under:
+every shape below infers its exact type with no annotation and no type
+argument at the call site, on Dart 3.6.2, 3.10.7 and 3.13.4, under the
+analyzer's defaults and this repository's options. Each is pinned by
+`expectStaticType`, which fails for a wider and for a narrower type.
+
+| Shape | Inferred | Fixture |
+|---|---|---|
+| `detail('d1')`; its `options()`, `key`, `filters()` | `QueryRef<Device>`; `QueryObserverOptions<Device>`, `TypedQueryKey<Device>`, `QueryFilters` | `positive/plain_reference.dart` |
+| `read`, `key.read`; `state`; `fetch`; `write`; `update` and its updater's parameter | `Device?`; `QueryState<Device>?`; `Future<Device>`; `Device`; `Device?` and `Device?` | the same |
+| `QueryObserver(client, device.options())`, `client.observe`, `client.query`, a per-use `copyWith` | `QueryObserver<Device, Device>`, `Future<Device>`, `QueryObserverOptions<Device>` | the same |
+| `device.options().withSelect((data) => data.name)` and its selector's parameter; the observer over it | `QuerySelectOptions<Device, String>`, `Device`; `QueryObserver<Device, String>` | `positive/selection_nullable_subtypes.dart` |
+| a nullable definition's `read`, `state`, `write(null)`; a sealed base written with a variant and switched over exhaustively; an empty and a narrow collection literal written under the declared type; an updater declared with a wider parameter | exact | the same |
+| inputs: a `String`, an enum, an `int`, a value object, a record with a named field, a nullable enum, `Object`, a list | a reference of the family's data type each | `positive/typed_inputs.dart` |
+| the parameters of `keyOf`, `queryFn` and `configure` inside a declaration, inline and extracted | the declared types | the same |
+| a family's `readAll` and `updateAll` | `List<(TypedQueryKey<Device>, Device?)>` | the same |
+| an infinite definition, its `options()`, `read`, `fetch`, `pages`, `pageParams`, `write` of a literal, `update`, the observer, the selected shape, a family's reference, the parameters of every paging callback | exact in page data and page param | `positive/infinite.dart` |
+| the sealed types in a `switch` | exhaustive without a default | `positive/reference_names.dart` |
+
+The questions as they were asked:
 
 Only these stay open; each needs an analyzer or a measurement, not a
 decision. Round 1's Open-3 to Open-6 are closed: Open-3 by D2, Open-4 by D4,
@@ -643,6 +1102,223 @@ which already fit `[namespace, name, ...input]` and need no adapter.
   show D2's explicit check firing where the covariance check is omitted, for
   a single `write`, a single `update` and a family bulk update (D7).
 
+## Final surface (TQ0)
+
+What Phase 1 implements. These are the public signatures of
+`tool/typed_query_fixtures/prototype/typed_queries.dart`, which every
+fixture analyzes against; a signature that changes fails a fixture. Ten
+types, no new typedef, no new top-level function, nothing added to
+`QueryClient`. The names of the type parameters are not part of the
+contract.
+
+```dart
+/// What a lifecycle operation is aimed at. No data type.
+sealed class QueryTarget {
+  QueryFilters filters({
+    QueryTypeFilter? type,
+    bool? stale,
+    FetchStatus? fetchStatus,
+    QueryStatus? status,
+    bool Function(Query<Object?> query)? predicate,
+  });
+  Future<void> invalidate(QueryClient client,
+      {RefetchType? refetchType, bool cancelRefetch = true});
+  Future<void> refetch(QueryClient client, {bool cancelRefetch = true});
+  Future<void> cancel(QueryClient client,
+      {bool revert = true, bool silent = false});
+  Future<void> reset(QueryClient client, {bool cancelRefetch = true});
+  void remove(QueryClient client);
+}
+
+final class QueryNamespace extends QueryTarget {
+  QueryNamespace(List<Object?> parts);
+  final QueryKey rawKey;
+}
+
+/// No public constructor. `==` is the raw key and `T`.
+final class TypedQueryKey<T> {
+  final QueryKey rawKey;
+  Type get dataType;
+  T? read(QueryClient client);
+  QueryState<T>? state(QueryClient client);
+}
+
+sealed class QueryEntryRef<T> extends QueryTarget {
+  final TypedQueryKey<T> key;
+  T? read(QueryClient client);
+  QueryState<T>? state(QueryClient client);
+  T write(QueryClient client, T value, {DateTime? updatedAt});
+  T? update(QueryClient client, T? Function(T? previous) updater,
+      {DateTime? updatedAt});
+}
+
+/// No public constructor. `==` is the kind and the typed key.
+abstract final class QueryRef<T> extends QueryEntryRef<T> {
+  QueryObserverOptions<T> options();
+  Future<T> fetch(QueryClient client, {bool revalidateIfStale = false});
+}
+
+abstract final class InfiniteQueryRef<TPageData, TPageParam>
+    extends QueryEntryRef<InfiniteData<TPageData, TPageParam>> {
+  InfiniteQueryObserverOptions<TPageData, TPageParam> options();
+  Future<InfiniteData<TPageData, TPageParam>> fetch(QueryClient client,
+      {bool revalidateIfStale = false});
+}
+
+final class QueryDefinition<T> extends QueryRef<T> {
+  QueryDefinition({
+    required QueryNamespace namespace,
+    required String name,
+    FutureOr<T> Function(QueryFunctionContext context)? queryFn,
+    QueryObserverOptions<T> Function(QueryObserverOptions<T> base)? configure,
+  });
+}
+
+final class QueryFamily<TInput, T> extends QueryTarget {
+  QueryFamily({
+    required QueryNamespace namespace,
+    required String name,
+    List<Object?> Function(TInput input)? keyOf,
+    FutureOr<T> Function(TInput input, QueryFunctionContext context)? queryFn,
+    QueryObserverOptions<T> Function(
+            QueryObserverOptions<T> base, TInput input)?
+        configure,
+  });
+  final QueryKey rawKey;
+  QueryRef<T> call(TInput input);
+  List<(TypedQueryKey<T>, T?)> readAll(QueryClient client);
+  List<(TypedQueryKey<T>, T?)> updateAll(
+      QueryClient client, T? Function(T? previous) updater,
+      {DateTime? updatedAt});
+}
+
+final class InfiniteQueryDefinition<TPageData, TPageParam>
+    extends InfiniteQueryRef<TPageData, TPageParam> {
+  InfiniteQueryDefinition({
+    required QueryNamespace namespace,
+    required String name,
+    required FutureOr<TPageData> Function(
+            InfinitePageContext<TPageParam> context)
+        pageFn,
+    required TPageParam initialPageParam,
+    required TPageParam? Function(TPageData page, List<TPageData> pages,
+            TPageParam pageParam, List<TPageParam> pageParams)
+        getNextPageParam,
+    TPageParam? Function(TPageData page, List<TPageData> pages,
+            TPageParam pageParam, List<TPageParam> pageParams)?
+        getPreviousPageParam,
+    InfiniteQueryObserverOptions<TPageData, TPageParam> Function(
+            InfiniteQueryObserverOptions<TPageData, TPageParam> base)?
+        configure,
+  });
+}
+
+final class InfiniteQueryFamily<TInput, TPageData, TPageParam>
+    extends QueryTarget {
+  InfiniteQueryFamily({
+    required QueryNamespace namespace,
+    required String name,
+    List<Object?> Function(TInput input)? keyOf,
+    required FutureOr<TPageData> Function(
+            TInput input, InfinitePageContext<TPageParam> context)
+        pageFn,
+    required TPageParam Function(TInput input) initialPageParam,
+    required TPageParam? Function(TInput input, TPageData page,
+            List<TPageData> pages, TPageParam pageParam,
+            List<TPageParam> pageParams)
+        getNextPageParam,
+    TPageParam? Function(TInput input, TPageData page, List<TPageData> pages,
+            TPageParam pageParam, List<TPageParam> pageParams)?
+        getPreviousPageParam,
+    InfiniteQueryObserverOptions<TPageData, TPageParam> Function(
+            InfiniteQueryObserverOptions<TPageData, TPageParam> base,
+            TInput input)?
+        configure,
+  });
+  final QueryKey rawKey;
+  InfiniteQueryRef<TPageData, TPageParam> call(TInput input);
+  List<(TypedQueryKey<InfiniteData<TPageData, TPageParam>>,
+      InfiniteData<TPageData, TPageParam>?)> readAll(QueryClient client);
+  List<(TypedQueryKey<InfiniteData<TPageData, TPageParam>>,
+      InfiniteData<TPageData, TPageParam>?)> updateAll(
+      QueryClient client,
+      InfiniteData<TPageData, TPageParam>? Function(
+              InfiniteData<TPageData, TPageParam>? previous)
+          updater,
+      {DateTime? updatedAt});
+}
+```
+
+Behaviour that belongs to the signatures:
+
+- A raw key is `[...namespace, name]` for a zero-input definition and
+  `[...namespace, name, ...keyOf(input)]` for a family, `[...namespace,
+  name, input]` without a `keyOf` (D3).
+- `TypedQueryKey.==` is the raw key and `T`; a reference's `==` is its kind
+  and its typed key; a family, a namespace and options have identity
+  equality (D4).
+- `write`, `update` and `updateAll` check the entry for the exact type
+  first, then the value or every updater result through `Object?`, then
+  write; they throw `QueryDataTypeError`. `call` checks the input the same
+  way and throws `ArgumentError` (D2, D5, D7).
+- Every definition constructor asserts that none of its type arguments is a
+  top type, and the plain ones that the data type is not `Null` (D10, D5).
+  Debug builds only.
+- `options()` returns fresh options on every call, with the definition's
+  key and functions pinned after `configure` (D4, D6).
+
+**The limits, stated.** Each is measured in Phase 0 unless it says
+otherwise, and each belongs in the guide where the feature it limits is
+introduced.
+
+1. *Widening compiles.* A reference, a family or an updater upcast to a
+   wider type argument, a raw type, `dynamic` and a cast are all accepted
+   by the analyzer (three of them reported only under this repository's
+   stricter options). The misuse is then refused at runtime before
+   anything is written: by Dart's `TypeError` on the VM and dart2js at its
+   default level, by `QueryDataTypeError` or `ArgumentError` at dart2js
+   `-O3`/`-O4` (D2).
+2. *dart2wasm at `-O3`/`-O4`* was not run in Phase 0; round 3's probe says
+   it traps uncatchably there. Flutter's wasm default is `-O2`.
+3. *No generic client-style setter*, because one widens (D2).
+4. *A family without type arguments has an `Object?` input.* It fails to
+   compile when its fetcher uses the input as a type, and compiles
+   silently when it does not, under strict options too; the refusal is
+   then a debug assertion and absent from a release build. The assertion
+   also refuses a deliberate `Object?` or `void` input; `Object`, a
+   nullable or a sealed type pass (D10).
+5. *A key-only definition without type arguments is `dynamic`*; only
+   `strict-inference` reports it, and the same debug assertion (D10).
+6. *`QueryDefinition<Null>`* is refused by a debug assertion only (D5).
+7. *A list of options of two data types* infers `Object`, and an observer
+   over it creates `Object` entries the references then refuse (D9).
+8. *A record input holding a collection needs a `keyOf`*, and nothing
+   detects its absence; an input with identity equality is refused by
+   `QueryKey`'s debug assertion only (D3).
+9. *Two definitions of one raw key and one type* are one entry and give
+   equal references, whatever their fetchers; a plain and an infinite
+   definition of one key and one `InfiniteData` type share the entry and
+   give unequal references (D3, D4).
+10. *A key nested under a family's prefix* is a member of the family to
+    its bulk and lifecycle operations when it has the family's type, and
+    makes the typed bulk calls throw when it has another (D7).
+11. *The exits are spelled and stay open:* `rawKey` handed to the raw
+    client, a per-use `copyWith(queryKey: …)` or `copyWith(queryFn: …)`,
+    and any raw call on the same key. The raw writes keep their leniency,
+    so a raw first write still creates an entry of the value's own type,
+    which a typed read then refuses (D5).
+12. *`read` cannot tell a cached `null` from no data*; `state` can (D5).
+13. *A per-use `copyWith` cannot unset a definition's default* (D6).
+14. *Options carry no equality*, and each `options()` call makes a new
+    fetcher closure (D4).
+15. *A narrower `InfiniteData` supplied through a per-use `copyWith`* is
+    outside the normalisation. The definition's own `structuralSharing`
+    and `initialData` are inside it by decision and **not in the
+    prototype**: Phase 2 builds and tests that (D5).
+16. *A bulk update is not a transaction:* every result is validated before
+    the first write, but a callback that writes re-entrantly is not rolled
+    back (D7).
+
 ## Implementation map
 
 Paths are the baseline integration points; new file names are provisional.
@@ -650,6 +1326,10 @@ Paths are the baseline integration points; new file names are provisional.
 - Core: introduce cohesive definition/reference/typed-key modules under
   [packages/query_kit/lib/src](../../packages/query_kit/lib/src/), exported by
   [query_kit.dart](../../packages/query_kit/lib/query_kit.dart).
+  Phase 0: it is **one library**. `QueryTarget` and `QueryEntryRef` are
+  sealed and `QueryRef` and `InfiniteQueryRef` are `abstract final`, and
+  Dart wants every direct subtype of those in the library that declares
+  them, so all ten types live together (the prototype is some 770 lines).
   Integrate with `query_client.dart`, `query_cache.dart`, `filters.dart`,
   `query_options.dart`, `query_state.dart` and `infinite_query.dart`.
   Inspect `query.dart`, both observer implementations and `queries_observer.dart`
@@ -663,8 +1343,10 @@ Paths are the baseline integration points; new file names are provisional.
 - Hooks: exercise `use_query.dart`, `use_queries.dart`,
   `use_infinite_query.dart`, `use_prefetch.dart` and mutation integration under
   [query_kit_hooks/lib/src](../../packages/query_kit_hooks/lib/src/).
-- Evidence: add analyzer fixtures and a focused runner under `tool/` with
-  intentional failures kept outside ordinary analyzed Dart source; extend core,
+- Evidence: the analyzer fixtures and their runner exist since Phase 0
+  (`tool/typed_query_fixtures/`, `tool/check_typed_query_fixtures.dart`),
+  the intentional failures excluded from the repository's own analysis by
+  `analysis_options.yaml`; extend core,
   Flutter and hooks tests, respecting the existing test organisation in
   [CONTRIBUTING](../../CONTRIBUTING.md). Feature-specific tests are separate
   from upstream cases; document the extension in
@@ -701,12 +1383,97 @@ fixture, a recorded final surface and explicit limits. If a desired syntax canno
 revise the syntax or narrow the claim before proceeding; do not replace a
 promised compile error with an undocumented debug assertion.
 
+**Done (TQ0, 2026-11-10).** What exists:
+
+| Path | What it is |
+|---|---|
+| `tool/check_typed_query_fixtures.dart` | the runner |
+| `tool/typed_query_fixtures/surface.dart` | the one import every fixture takes the surface from: the package, plus the prototype |
+| `…/prototype/typed_queries.dart` | a working prototype of the whole surface, written against the package's exported API only |
+| `…/positive/` | six files that must analyze clean; every inferred type pinned by `expectStaticType`, which a wider or a narrower type fails |
+| `…/negative/` | seven files, 114 marked lines: 105 misuses and nine self-tests of the type-pinning helper |
+| `…/boundary/` | four files that must compile: the generic setter, the widened receivers, the untyped definitions, the mixed list; five lines carry a diagnostic that only this repository's stricter options produce |
+| `…/support/` | the example domain, the type-pinning helper, the generic setter of D2's option (a), the namespace factories of D12's option (b) |
+| `…/runtime/observations.dart` and three `.expect` files | 98 printed observations, and what each runtime must print |
+
+```bash
+dart run tool/check_typed_query_fixtures.dart              # everything
+dart run tool/check_typed_query_fixtures.dart --no-runtime # the analyzer part
+dart run tool/check_typed_query_fixtures.dart --record     # rewrite the .expect files
+dart run tool/check_typed_query_fixtures.dart --keep       # keep the temporary package
+```
+
+The runner copies the fixtures into a temporary consumer package with a
+path dependency on the core, and analyzes it once per language version (the
+declared floor, and the running SDK's own when it is newer) and per option
+set: **minimal**, no `analysis_options.yaml` at all, which is what a
+consumer has before configuring anything, and **strict**, a copy of this
+repository's. A line under `// EXPECT error <code>` must carry exactly that
+diagnostic, as an error, in every configuration; a line under
+`// EXPECT strict <code>` only under the strict set; anything else the
+analyzer reports is a failure, and so is a marker nothing answers. That is
+how language errors and optional lints stay apart: all 114 `error` markers
+are errors of the language under the analyzer's defaults, and the five
+`strict` ones are `strict-raw-types`, `strict-casts`, `strict-inference`
+(twice) and the `avoid_dynamic_calls` lint. A negative file has to have at
+least one marker and a positive file may have none, so a fixture cannot
+pass by failing for another reason, or by not failing.
+
+Then it runs `runtime/observations.dart` five ways, on the VM with and
+without assertions and compiled by dart2js at its default level, at `-O3`
+and at `-O4` under node, and compares each output with a recorded file
+(`debug`, `release` for the VM without assertions and dart2js default,
+`unchecked` for `-O3` and `-O4`).
+
+It ran green on Dart 3.6.2 (the floor), 3.10.7 (CI) and 3.13.4 (stable at
+the time): on each, 114 errors and 5 optional diagnostics where expected
+and none elsewhere, per language version and option set, and 98
+observations as recorded on each of the five runtimes. In CI it is a step
+of `gates` (the CI SDK) and of `floors` (the floor), so the floor's own
+analyzer and dart2js are covered, not only its test run. `latest-stable.yml`
+does not run it yet.
+
+**Phase 1 points the fixtures at the real exports by deleting one line:**
+`surface.dart`'s `export 'prototype/typed_queries.dart';`. Nothing else
+imports the prototype.
+
 ### Phase 1 — Ordinary definitions and cache operations
 
 Implement namespaces, static definitions, families, references and typed keys.
 Thread them into the existing cache with typed reads/state, writes/updates,
 options, fetch and exact lifecycle operations. Identity is structural (D3):
 no registry, no metadata. Preserve runtime checking and raw compatibility.
+
+**Amended by Phase 0: Phase 1 lands the whole public surface, the infinite
+definitions and the family bulk operations included.** The exit below asks
+that all Phase 0 fixtures run against the real exports, the fixtures cover
+the infinite and bulk signatures, and the hierarchy is sealed: a prototype
+`InfiniteQueryRef` cannot extend the real `QueryEntryRef` from another
+library, so there is no state in which the plain half is real and the
+infinite half still the prototype. Options: (a) Phase 1 lands the plain
+half and the runner learns to skip fixtures until Phase 2, which leaves
+this exit unmet and the infinite signatures unguarded for a phase; (b)
+Phase 1 lands the plain half and unseals the hierarchy for a phase, which
+ships a weaker type than the one proven; (c) Phase 1 **promotes the
+prototype** into `packages/query_kit/lib/src/` whole and Phase 2 adds
+depth. Answer: (c). The prototype is working code for every signature and
+ran on fifteen runtime configurations; what it lacks is the package's
+internals and the package's tests, and Phase 1 supplies both:
+
+- move `prototype/typed_queries.dart` into the core as one library and
+  export its ten types; delete `prototype/` and the second export line of
+  `surface.dart`;
+- replace its two detours: build an entry only when it is absent and write
+  through `Query.setData(manual: true)`, and reuse the raw bulk update's
+  two passes instead of repeating them;
+- drop its `ignore_for_file`, and rewrite its doc comments, which cite
+  this plan's decision numbers (`tool/check_docs_jargon.dart` refuses
+  those under `packages/*/lib`);
+- tests for every member, the infinite and bulk ones too, so the core's
+  line-coverage floor holds; the runtime observations stay as they are and
+  become a second, cross-runtime proof;
+- the public shape recorded as **ADR-0007** (`docs/adr/` already holds
+  0005 and 0006, so the number the ticket was written with is taken).
 
 **Exit:** core tests demonstrate same-key sharing between typed/raw consumers,
 declared-type first writes, exact typed writes refusing a wider raw entry
@@ -721,6 +1488,13 @@ Implement family bulk operations as D7 says, infinite definitions,
 typed filters and mutation recipes. Keep all fetching and paging in the current
 client/observer machinery. Exercise cancellation and optimistic rollback with
 an in-flight request and validate stored type and state after each transition.
+
+**Amended by Phase 0:** the signatures of the bulk operations, the
+infinite definitions and the filter adapter exist after Phase 1 (above).
+Phase 2 is their depth: the definition's own `structuralSharing` and
+`initialData` wrapped for the infinite normalisation (D5, which the
+prototype does not do), the mutation recipes, and the runtime tests of
+this exit, every one of which still applies.
 
 **Exit:** page and input type fixtures pass; runtime tests cover an ordinary
 and an infinite definition on one key with different types (the cache's own
@@ -775,7 +1549,10 @@ deployment are separate explicitly authorised actions.
 ## Acceptance and validation matrix
 
 The following is future implementation acceptance, not results of writing this
-plan.
+plan. Phase 0 has since run the compile-time row, the widened receivers of
+the runtime row and parts of the identity and filtering rows against the
+prototype; they are acceptance again for the real module, and the same
+fixtures are what checks them.
 
 - **Compile-time:** wrong namespace/member, input shape, fetch return type,
   read assignment, write value, updater parameter/return, selector, page data
@@ -788,10 +1565,13 @@ plan.
   before any write: Dart's `TypeError` where Dart checks covariance (the VM,
   JIT and AOT, and dart2js at its default level, all at the call before the
   method body), `QueryDataTypeError` where dart2js `-O3`/`-O4` omits that
-  check and D2's explicit check fires. dart2wasm at `-O3`/`-O4` is an unsound
+  check and D2's explicit check fires. A wrong input bound through a
+  widened family is refused the same way, with `ArgumentError` at
+  `-O3`/`-O4` (D2). dart2wasm at `-O3`/`-O4` is an unsound
   opt-in that traps uncatchably on the same misuse; Flutter's wasm default is
-  `-O2`. That is a documented limit. No silent second cache entry created by
-  a type token.
+  `-O2`. That is a documented limit, and it rests on round 3's probe:
+  Phase 0 did not run dart2wasm, and ran an AOT executable once by hand.
+  No silent second cache entry created by a type token.
 - **Identity:** same input/recreated definition shares data and in-flight work;
   different IDs/filters/tenants do not. Structural maps, value models, record
   limitations and mutable inputs have documented tested outcomes. Equal inputs
@@ -820,8 +1600,9 @@ plan.
   [CONTRIBUTING](../../CONTRIBUTING.md#the-gate) and
   [CI](../../.github/workflows/ci.yml): analyzer, formatter, test/coverage floors,
   doc snippets, dartdoc links, publish dry-runs, web builds, website checks and
-  declared SDK-floor suites. Add analyzer fixture execution to both current and
-  floor coverage; the current floor job's runtime tests alone are insufficient
+  declared SDK-floor suites. Analyzer fixture execution is in both current and
+  floor coverage since Phase 0 (`gates`, `floors`); the floor job's runtime
+  tests alone are insufficient
   proof of static inference. Report local, CI and browser evidence separately.
 
 For this plan-only commit, validate repository references, Markdown structure,
@@ -865,7 +1646,9 @@ until that separate tool exists and is explicitly enabled.
   are distinct. The provisional naming and D7's nesting rule make that
   distinction explicit.
 - **Input omissions:** no Dart compiler can prove a hand-written `keyOf` includes
-  every dependency. Central declarations, immutable inputs and targeted identity
+  every dependency, and the default, the input itself as the key part,
+  includes all of it only when the input has value equality (D3: a record
+  holding a collection does not). Central declarations, immutable inputs and targeted identity
   tests reduce this risk; backend schema validation remains separate.
 - **Compatibility:** returning legacy options and exposing `rawKey` allow escape
   from the safe path. Document that boundary rather than claiming total lock-down
@@ -910,7 +1693,9 @@ and stricter project linting remain follow-ups.
 
 ## Review record
 
-Two rounds so far, all on 2026-10-18. Every claim about the current code was
+Three plan-review rounds, all on 2026-10-18, and then Phase 0's
+measurements (2026-11-10), which changed the plan where the analyzer or a
+run said otherwise. Every claim about the current code was
 checked against the baseline before it was accepted, and round 2's findings
 were each reproduced by the decider before the plan changed (the `-O4` case
 by compiling with `dart compile js -O4` and running under node; the
@@ -995,3 +1780,38 @@ memo), A3/F3 and F4 for ordinary calls, A5, A6, A9/F5 in D2's text (the
 explicit check survives `-O4` for values, updater results and nullable
 `T`), A10/F6, F8, F9, F11. With round 3 the plan review stops: the open
 questions are Open-1, Open-2 and Open-7, and Phase 0 answers them.
+
+### Phase 0 (TQ0, 2026-11-10)
+
+Every change Phase 0 made to this plan, with what showed it. "Run" means
+the fixture runner on Dart 3.6.2, 3.10.7 and 3.13.4; the paths are under
+`tool/typed_query_fixtures/`.
+
+| # | What changed | Evidence | Where |
+|---|---|---|---|
+| P0-1 | `keyOf` is optional; without it the input is the one key part after the name. The product owner's amendment, kept because it holds | inference unchanged with and without (`boundary/untyped_definition.dart`); observations `K-1` to `K-8` | D3, the DX example, the surface |
+| P0-2 | A new limit under P0-1: a record input holding a collection needs a `keyOf`, undetected | `K-6`: unequal without, equal with | D3, limit 8 |
+| P0-3 | One declaration form, the constructors; no factory methods on the namespace. The product owner's question | both forms side by side infer the same and hit the same backstop (`positive/declaration_forms.dart`, `D10-1`, `D10-2`) | D12 (new) |
+| P0-4 | `QueryRef` keeps its name | `positive/reference_names.dart`, an `invalid_assignment` between the two types | D1 |
+| P0-5 | A tenth type, the sealed `QueryTarget`: the lifecycle operations and the filter adapter in one place | a list of references of two data types infers `List<QueryTarget>` (`boundary/mixed_list.dart`); an exhaustive switch (`positive/reference_names.dart`) | D1, D7 |
+| P0-6 | D2's claim narrowed: the generic *value* setter widens, a generic *updater* does not | `boundary/generic_setter.dart` compiles with `T = Object`; `negative/generic_setter.dart` refuses the updater | D2 |
+| P0-7 | A family's `call` checks its input through `Object?` and throws `ArgumentError` | `O7-input-1`, `-2`: `TypeError` on the VM, `ArgumentError` at `-O3`/`-O4` | D2 |
+| P0-8 | A reference's `==` is its kind and its typed key; namespace and name only through the raw key | `D4-8` to `D4-10` | D4 |
+| P0-9 | `write` returns `T`, `update` returns `T?` | `positive/plain_reference.dart` | D5 |
+| P0-10 | `queryFn` is optional on the plain definitions (the key-only definition is a parameter, not another class); no public typedef; no `isFetching` on a target | `positive/typed_inputs.dart` (`seeded`) | D6 |
+| P0-11 | The bulk operations are named `readAll` and `updateAll` and return `List<(TypedQueryKey<T>, T?)>`; the filter adapter is `QueryTarget.filters()` | `positive/typed_inputs.dart`, `D7-1` to `D7-13` | D7 |
+| P0-12 | D10 narrowed to a family's input: a zero-input definition with a fetcher infers exactly, plain and infinite. The backstop is recorded as debug-only, with what a release build does | the table under D10; `D10-1` to `D10-8` | D10 |
+| P0-13 | The hooks release is `0.1.3`, its example `^0.1.3` | tags `query_kit_hooks-v0.1.1`, `-v0.1.2` | D11 |
+| P0-14 | Phase 1 lands the whole surface by promoting the prototype; Phase 2 adds depth. Phase 1's decision record is ADR-0007 | the sealed hierarchy needs one library, and Phase 1's exit asks for every fixture against the real exports; `docs/adr/` holds 0005 and 0006 | Phase 1, Phase 2, the implementation map |
+| P0-15 | The six refused DX lines carry their diagnostic codes; `detial` is `undefined_method`, not a getter | `negative/dx_misuses.dart` | the DX section |
+| P0-16 | Two things recorded as not proven: the definition's own `structuralSharing` and `initialData` are not wrapped by the prototype, and dart2wasm was not run | the prototype's source | D5, limits 2 and 15, the acceptance matrix |
+
+Three predictions made while writing the fixtures were wrong and are kept
+here because a wrong prediction is a finding too: that a generic updater
+would widen like the generic setter (it is refused, P0-6); that a list of
+two references would be a `List<QueryRef<Object>>` (it is a
+`List<QueryTarget>`, P0-5); and that node would run a dart2js program
+with timers as it is (it ends silently, exit code 0, after the first
+timer, because the compiled code reaches for `self`; the runner defines
+it, and an empty run would have compared as a failure against the
+recorded file either way).

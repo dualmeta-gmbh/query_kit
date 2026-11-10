@@ -7,6 +7,10 @@ analyzer:
     strict-raw-types: true
   exclude:
     - query/**
+    # Analyzer fixtures, half of them code that must not compile. They are
+    # analyzed by tool/check_typed_query_fixtures.dart, in a consumer package
+    # of their own.
+    - tool/typed_query_fixtures/**
 
 linter:
   rules:
