@@ -2559,6 +2559,66 @@ note accurately distinguishes compile-time guarantees from runtime checks.
 The bumps are D11's table. Tags, package publishing and website
 deployment are separate explicitly authorised actions.
 
+**Done (TQ6, 2026-11-10, [#137](https://github.com/dualmeta-gmbh/query_kit/issues/137)).**
+Release preparation only: **nothing was tagged, published, pushed or
+deployed.** The versions are D11's table, read off the pubspecs again
+first (core 1.0.4, binding 1.1.4, hooks 0.1.2, the last three tags all at
+`cfacdba`); the ticket's body still says hooks 0.1.1, P0-13 corrected it.
+
+| What | Where |
+|---|---|
+| Core `1.0.4` → `1.1.0` | `packages/query_kit/pubspec.yaml` |
+| Binding `1.1.4` → `1.2.0`, `query_kit: ^1.1.0` | `packages/query_kit_flutter/pubspec.yaml` |
+| Hooks `0.1.2` → `0.1.3`, `query_kit_flutter: ^1.2.0` (its comment says why: the first binding re-exporting the definitions the README, the guide and the example use) | `packages/query_kit_hooks/pubspec.yaml` |
+| Shipped examples: `query_kit_flutter: ^1.2.0`; `query_kit_hooks: ^0.1.3` (its `dio` and `flutter_hooks` floors unchanged; it imports neither core nor binding directly) | the two `example/pubspec.yaml` |
+| Repository-only examples: showcase and task manager `query_kit_flutter: ^1.2.0`, doc snippets `query_kit: ^1.1.0` and `query_kit_flutter: ^1.2.0` | their pubspecs |
+| A top entry per changelog: the core's says what the analyzer refuses, what only the runtime refuses and what nothing checks, the write-or-throw rule and the stable infinite wrappers, and that the raw API is unchanged and not deprecated; the binding's that a reference's options go into the four call styles unchanged; the hooks' that no hook changed, and that the examples' keys moved | the three `CHANGELOG.md` |
+| `query_kit_flutter: ^1.0.0` → `^1.2.0` on the installation page, the one hand-written constraint on the site | `website/docs/installation.md` |
+| The hooks README's "The hooks in 0.1.0" is "The hooks": the list is the same in 0.1.3, and nothing links the old anchor | `packages/query_kit_hooks/README.md` |
+| State and counts, the feature's paragraph, the fixture runner in the gate | `CLAUDE.md` |
+
+No code holds a version string: `1.0.4`, `1.1.4` and `0.1.2` appear
+nowhere under `packages/*/lib`, the tests, `tool/` or the site's pages, and
+no test reads a version. Left on purpose: the comparison page
+(`reference/other-dart-libraries.md`) names the versions read on pub.dev on
+its stated date, which a release does not change. The root `pubspec.lock`
+does not move with the bumps (workspace members are not in it); the
+3.38.8 resolution's changes to it are SDK noise and were not committed.
+
+**Resolution of the shipped examples.** In a clone of the release commit
+under the scratchpad, each package copied out of the workspace as pub.dev
+would hold it, each example's `pubspec_overrides.yaml` replaced by one onto
+those copies, then `flutter pub get`, `flutter pub downgrade`, `flutter
+analyze` and `flutter test` on Flutter 3.38.8. The binding's example
+resolved query_kit 1.1.0 and query_kit_flutter 1.2.0, downgraded nine
+packages (`lints` 5.1.1 among them), analyzed clean and passed its 1
+test. The hooks example resolved the three packages at 1.1.0, 1.2.0 and
+0.1.3, downgraded 23 (`dio` 5.7.0, `flutter_hooks` 0.21.2), analyzed
+clean, and passed 41 with 10 skipped once the files its `.pubignore`
+keeps out were gone; with `test/repository_test.dart` still there, its
+seed case fails for want of the showcase's `seed.json`, which is why it
+does not ship. An override takes no constraint into account, so this
+proves the floors of the third-party dependencies and that the code
+compiles against the new versions, not the constraints on query_kit's
+own packages; those name exactly the versions being released.
+
+**Publish dry-runs**, on the same clean clone with the workspace
+resolution (`dart pub publish --dry-run` for the core, `flutter pub
+publish --dry-run` for the binding and the hooks, Flutter 3.38.8): each
+ends `Package has 0 warnings.` The binding's `^1.1.0` and the hooks'
+`^1.2.0` resolve to the workspace members, which carry those versions,
+so no unpublished version had to be fetched.
+
+**Gate**, on Flutter 3.38.8 after the bumps: core 1444 VM / 1438 Chrome,
+binding 659, hooks 361, hooks example 62 (+10 skipped), showcase 345 (+25
+skipped), task manager 46 (+14 skipped), doc snippets 80, binding example
+1; analyzer and formatter clean; jargon scan clean; typed fixtures OK (25
+files, 144 misuses, 152 observations per runtime); `dart doc
+--validate-links` 0 warnings for the three packages; site build green.
+Not run: the floor suites, the Playwright and native end-to-end suites
+(no code changed), and the TQ5 second reviewer's result, still pending
+when this was written.
+
 ## Acceptance and validation matrix
 
 The following is future implementation acceptance, not results of writing this
