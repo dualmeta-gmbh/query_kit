@@ -1,9 +1,6 @@
 /// The wire contract, typed by hand — the client's copy of the route table in
-/// `server/server.ts`.
-///
-/// The key factory below is the other half of it: every query key in this app
-/// is minted there, so "which keys exist" has one answer and prefix
-/// invalidation has stable anchors.
+/// `server/server.ts`. The keys the responses are cached under are declared
+/// with the queries, in `queries.dart`.
 ///
 /// **The dio plumbing here is also in the showcase, and that is deliberate.**
 /// [defaultBackendBaseUrl], [BackendException], the `BaseOptions`, the
@@ -23,16 +20,6 @@ import 'package:flutter/foundation.dart';
 import 'package:query_kit_flutter/query_kit_flutter.dart';
 
 import 'models.dart';
-
-/// Every query key this app uses, in one place.
-abstract final class TaskKeys {
-  static QueryKey get all => QueryKey(const <Object?>['tasks']);
-  static QueryKey get lists => all.append(const <Object?>['list']);
-  static QueryKey list(TaskFilters filters) =>
-      lists.append(<Object?>[filters.toJson()]);
-  static QueryKey get details => all.append(const <Object?>['byId']);
-  static QueryKey detail(String id) => details.append(<Object?>[id]);
-}
 
 /// Where the backend lives.
 ///

@@ -83,14 +83,34 @@ second delete** fails. Both rollbacks are demonstrable on demand.
 The whole cache policy is [`lib/src/queries.dart`](lib/src/queries.dart) — one
 file. It opens with the client-wide defaults, `appDefaultOptions`: no refetch
 on focus or reconnect and one retry, because a backend that takes ~900 ms to
-answer should not be asked again every time the window regains focus. The shape
-the rest sets up:
+answer should not be asked again every time the window regains focus.
+
+Both queries are declared once, in `TaskQueries`: a namespace `['tasks']`, a
+family `list` keyed by the filters and a family `byId` keyed by the task's id,
+each with its data type and its fetch function. The rest of the app never
+spells a key, and names a cached type only where Dart wants a declared one (the
+overview's controller field). A screen observes `queries.byId(id).options()`;
+a mutation reads, patches, rolls back and invalidates through
+`queries.byId(id)`, and `queries.list` selects every list at once. The keys are
+`['tasks', 'list', {search, project}]` and `['tasks', 'byId', id]`, and
+[`test/query_definitions_test.dart`](test/query_definitions_test.dart) spells
+them out by hand, so a renamed definition fails a test instead of quietly
+starting a cold cache. One cache write still reaches past the definitions, and says
+why: the delete's rollback restores each list by its raw key, because the
+snapshot's keys cannot be turned back into filters.
+
+The detail's fallback seed from the lists needs a client to read them, and a
+definition holds none, so `taskQuery(client, queries, id)` adds it per use:
+the definition's options plus `initialData` and its timestamp, found through
+`queries.list.readAll(client)`. The rows and the detail screen both call it.
+
+The shape the rest sets up:
 
 - the **list** query owns *which* tasks exist; a **per-task** query owns
   *what each one is*, and the list's query function seeds every per-task entry
   as it arrives;
 - the overview rows and the detail screen read the **same** per-task query, so
-  a rename invalidating one key updates both — no cross-cache patching;
+  a rename invalidating that one task updates both — no cross-cache patching;
 - the header's "x of y synced" is `select` over the *same* cache entry the
   list uses: two widgets, two shapes, one request;
 - the reminder switch writes its requested value to a separate field, so the

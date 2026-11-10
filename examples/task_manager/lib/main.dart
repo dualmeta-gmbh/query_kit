@@ -76,6 +76,18 @@ class _TaskManagerAppState extends State<TaskManagerApp> {
       widget.client ?? QueryClient(defaultOptions: appDefaultOptions);
   final AppState _state = AppState();
 
+  /// The queries, made once over the app's transport and handed down to
+  /// every screen that reads or writes the cache.
+  late TaskQueries _queries = TaskQueries(widget.api);
+
+  @override
+  void didUpdateWidget(TaskManagerApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.api != oldWidget.api) {
+      _queries = TaskQueries(widget.api);
+    }
+  }
+
   @override
   void dispose() {
     _state.dispose();
@@ -91,16 +103,16 @@ class _TaskManagerAppState extends State<TaskManagerApp> {
             title: 'Task Manager',
             debugShowCheckedModeBanner: false,
             theme: buildAppTheme(),
-            home: _Home(api: widget.api),
+            home: _Home(queries: _queries),
           ),
         ),
       );
 }
 
 class _Home extends StatelessWidget {
-  const _Home({required this.api});
+  const _Home({required this.queries});
 
-  final TaskApi api;
+  final TaskQueries queries;
 
   @override
   Widget build(BuildContext context) {
@@ -108,11 +120,11 @@ class _Home extends StatelessWidget {
     // the query cache.
     final openTaskId = AppScope.of(context).openTaskId;
     if (openTaskId != null) {
-      return TaskDetail(id: openTaskId, api: api);
+      return TaskDetail(id: openTaskId, queries: queries);
     }
     return Scaffold(
-      appBar: AppHeader(api: api),
-      body: TaskOverview(api: api),
+      appBar: AppHeader(queries: queries),
+      body: TaskOverview(queries: queries),
     );
   }
 }
