@@ -15,11 +15,11 @@ class TodosTab extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final api = ApiScope.of(context);
+    final queries = ApiScope.todosOf(context);
     final client = useQueryClient();
-    final todos = useQuery(todosQuery(api, client));
-    final toggle = useMutation(toggleTodoMutation(client, api));
-    final add = useMutation(addTodoMutation(client, api));
+    final todos = useQuery(queries.list.options());
+    final toggle = useMutation(queries.toggle(client));
+    final add = useMutation(queries.add(client));
     // What every pending add was called with: the rows the list shows until
     // the backend has them.
     final adding = useTypedMutationState(
@@ -122,9 +122,8 @@ class OpenCount extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final client = useQueryClient();
     final open = useSelectQuery(
-      openTodosQuery(ApiScope.of(context), client),
+      ApiScope.todosOf(context).openCount(),
       buildWhen: (previous, current) =>
           previous.dataOrNull != current.dataOrNull,
     );

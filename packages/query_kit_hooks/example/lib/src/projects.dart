@@ -8,14 +8,15 @@ import 'package:query_kit_hooks/query_kit_hooks.dart';
 import 'app.dart';
 import 'group.dart';
 import 'models.dart';
-import 'queries.dart';
 
 class ProjectsTab extends HookWidget {
   const ProjectsTab({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final projects = useInfiniteQuery(projectsQuery(ApiScope.of(context)));
+    final projects = useInfiniteQuery(
+      ApiScope.projectsOf(context).list.options(),
+    );
     final pages = projects.value.dataOrNull?.pages ?? const <ProjectSlice>[];
     final items = [for (final page in pages) ...page.items];
 

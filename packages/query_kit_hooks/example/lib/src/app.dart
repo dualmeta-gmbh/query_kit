@@ -43,14 +43,26 @@ class HooksExampleApp extends HookWidget {
   }
 }
 
-/// The [ExampleApi] every screen talks to.
+/// The [ExampleApi] every screen talks to, and the query definitions of
+/// todos and projects, made once over it.
 class ApiScope extends InheritedWidget {
-  const ApiScope({super.key, required this.api, required super.child});
+  ApiScope({super.key, required this.api, required super.child})
+      : todos = TodoQueries(api),
+        projects = ProjectQueries(api);
 
   final ExampleApi api;
+  final TodoQueries todos;
+  final ProjectQueries projects;
 
-  static ExampleApi of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<ApiScope>()!.api;
+  static ExampleApi of(BuildContext context) => _of(context).api;
+
+  static TodoQueries todosOf(BuildContext context) => _of(context).todos;
+
+  static ProjectQueries projectsOf(BuildContext context) =>
+      _of(context).projects;
+
+  static ApiScope _of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ApiScope>()!;
 
   @override
   bool updateShouldNotify(ApiScope oldWidget) => api != oldWidget.api;
@@ -64,10 +76,9 @@ class HomeShell extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final api = ApiScope.of(context);
     // The Projects tab is built only when it is chosen. Its first page is
     // fetched now, so the tab opens on data and not on a spinner.
-    usePrefetchInfiniteQuery(projectsQuery(api));
+    usePrefetchInfiniteQuery(ApiScope.projectsOf(context).list.options());
 
     final tab = useState(0);
     final viewed = useState(const <int>[]);

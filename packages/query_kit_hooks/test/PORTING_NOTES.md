@@ -1234,3 +1234,120 @@ unfiltered keyless reads; hooks keep their own ordinary `RebuildRule`.
 Validation: hooks **335** (332 existing + 3 companion cases), binding **427**;
 full workspace analyzer and the exact CLAUDE formatting scope pass. The hooks
 example has **61** passing cases and its 10 existing server-dependent skips.
+
+## Typed query definitions (TQ3, map #129)
+
+A reference's `options()` returns the options every hook already takes, so
+the hooks needed **no library change**, and none was made. What proves it is
+`typed_definitions_test.dart` (21 cases, a package-own file that counts in no
+column of the status table), and the example's todos and projects, migrated.
+
+### What the cases pin
+
+- **Inference, no type argument at the call site**, each pinned exactly (an
+  invariant `Exactly<T>` bound, so a wider and a narrower type both fail to
+  compile): `useQuery(ref.options())`, with `copyWith`, over a family's
+  reference, `QueryResult<Device>`; `useSelectQuery(…withSelect(…))`
+  `QueryResult<String>`; a zero-input `QueryDefinition` without type
+  arguments `QueryResult<List<Device>>`; `useInfiniteQuery` over a definition
+  and over a family `InfiniteQueryController<List<int>, int,
+  InfiniteData<List<int>, int>>`, with `withSelect` `…<List<int>, int,
+  List<int>>`; `useQueries` `List<QueryResult<Device>>`; `useCombinedQueries`
+  and `(a, b).combine(…)` `CombinedResult<String>`. The prefetch hooks create
+  entries of exactly the declared type (the reference's typed read would
+  throw otherwise) and prefetch nothing on a rebuild over them.
+  `useIsFetching` counts a reference (1), its family (2) and its namespace
+  (3) at once, and nothing outside the namespace.
+- **Mutation callbacks through references**: `cancel`, `read`, `update`,
+  `write` for the rollback and for the server's answer, and the family's
+  `invalidate` returned from `onSettled`. Mutations have no definitions, so
+  their type arguments are written as before.
+- **Parity with raw options on rebuild**: a parent rebuilds the hook ten
+  times, 30 ms apart, with a new definition instance every build. The typed
+  run and its raw twin (the same key and fetcher as inline
+  `QueryObserverOptions`) record the same requests and the same builds:
+  with stale data, one request and 12 builds (two of the hook's own, ten
+  from the parent); with a 100 ms `refetchInterval`, the interval's
+  requests, which a timer restarted every 30 ms would never reach. Negative
+  control, run once by hand: the raw twin given another interval on every
+  build gets one request, and the case goes red. An infinite definition
+  recreated on every build fetches no page.
+- **A new definition instance with another fetcher**: the rebuild fetches
+  nothing; the next fetch (an invalidation through any equal reference)
+  uses the new fetcher.
+- **`Enabled.when` over outside state**, set by the definition's
+  `configure` and set for one use by `copyWith`: off, then on with a
+  rebuild and no other change, which fetches (#84: `setOptions` still runs
+  on every build).
+- **Lifecycle**: an input change moves the one observer to the other entry;
+  a provider's client switch re-creates it on the other client, which the
+  same reference then reads; unmount drops the observer and the entry goes
+  after its `gcTime`; `ref.cancel` stops the fetch in flight and reverts to
+  pending, and `ref.refetch` loads it afterwards.
+- **Writes and invalidation reach exactly their hooks**, over three readers
+  (`detail('a')`, `detail('b')`, `list`): `write` and `update` rebuild one,
+  `updateAll` the family's two; invalidating a reference, a family and a
+  namespace refetches and rebuilds one, two and three.
+- **A reference as a hook key**: with a new definition and reference every
+  build, a `useEffect` and a `useMemoized` keyed on `detail(id)` run once
+  over four builds, and again on an id change.
+- **A list of two data types to `useQueries`** (outside the guarantee):
+  inferred `List<QueryResult<Object>>`, entries created as `Object`, and the
+  references' `read` and `write` then throw `QueryDataTypeError`. HB-4, its
+  debug check, stays backlog.
+
+### The example
+
+Todos and projects moved to definitions; posts keep the raw form on purpose
+(a comment at `postsQuery` says so), so the example stays a compatibility
+proof. `TodoQueries` holds the namespace `['todos']`, the list (key
+`['todos', 'list']`, was `['todos']`), the open count as
+`list.options().withSelect(…)`, and both writes, whose callbacks cancel,
+update and invalidate through `list`. `ProjectQueries` holds a zero-input
+`InfiniteQueryDefinition` (`['projects', 'list']`, was `['projects']`).
+`ApiScope` makes both once over its api. The gate that holds the list's
+refetches back while a write is in flight now finds its client through the
+query it is handed (`query.client`) instead of a closure over the hook's,
+which is what lets the definition carry it: the same client, so the same
+count.
+
+Tests touched, only where they named the removed `Keys.todos`: in
+`todo_interleavings_test.dart`, the refetch, remove and read calls on the
+exact list key go through `TodoQueries(api).list` (`filters()`, `remove`,
+`read`); in `widget_test.dart` the open-count case's prefix refetch over
+`['todos']` is `TodoQueries.namespace.filters()`, the same filter. No
+assertion changed. The interleavings suite, which holds the "every write
+cancels the list's reads when its answer arrives" fix, is green.
+
+### What using it from hooks found
+
+- **An infinite definition whose `getNextPageParam` reads its page does not
+  infer the page type.** `InfiniteQueryDefinition(pageFn: (c) =>
+  api.projects(c.pageParam), initialPageParam: 0, getNextPageParam: (page,
+  _, __, ___) => page.nextId)` types `page` as `Object?`
+  (`unchecked_use_of_nullable_value`), on Dart 3.10.7 and 3.13.4 alike, and
+  raw `InfiniteQueryObserverOptions(…)` without type arguments does the
+  same. Each closure needs a type the other's return fixes (`pageFn` the
+  page param, `getNextPageParam` the page type), so Dart infers both in one
+  step. The TQ0 fixture's `getNextPageParam` never reads `page`, which is
+  why it inferred. Cure: the type arguments, or a typed `page` parameter;
+  the example writes the arguments.
+- **Options handed through a wider parameter type create a wider entry.** A
+  helper taking `QueryObserverOptions<Object>` and calling `useQuery` with
+  it observes a `Query<Object>`, and the family's `updateAll` then throws
+  `QueryDataTypeError`. Raw options do the same; a generic helper
+  (`<T>(QueryObserverOptions<T> options)`) is the cure.
+- **Mutation options without type arguments** leave `onMutate`'s parameter
+  `Object?`, even beside a typed `mutationFn` parameter: existing
+  behaviour, untouched by definitions.
+
+### Runs
+
+- `flutter test` here: 356 (335 + 21), on Flutter 3.38.8 and on the 3.27.4
+  floor.
+- The example: 61 and 10 skipped without a server; 71 with the showcase's
+  server; Playwright 19 of 19 in Chromium against that server. Port 5178
+  was held by an unrelated development server on this machine, so the
+  server ran on 5198, and the suite from a copy whose hard-coded `5178`s
+  (and font path) pointed there, against a web build with
+  `BACKEND=http://localhost:5198/api`. The native suite was not run.

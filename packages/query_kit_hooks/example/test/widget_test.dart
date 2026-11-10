@@ -9,7 +9,6 @@
 // the file is already there.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:query_kit_hooks/query_kit_hooks.dart';
 import 'package:query_kit_hooks_example/src/queries.dart';
 import 'package:query_kit_hooks_example/src/todos.dart';
 
@@ -295,7 +294,7 @@ void main() {
 
       // A refetch the list shows running, and that changes no number.
       run.client
-          .refetchQueries(filters: QueryFilters(queryKey: Keys.todos))
+          .refetchQueries(filters: TodoQueries.namespace.filters())
           .ignore();
       await run.tester.pump();
       expect(run.textsIn('activity'), contains('fetching 1'));
