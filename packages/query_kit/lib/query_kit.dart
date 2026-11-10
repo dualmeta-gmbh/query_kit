@@ -127,7 +127,9 @@
 ///   gives the options for an observer, fetches, reads and writes with the
 ///   declared type. A definition without an input is its own reference.
 /// * A **typed key**, [TypedQueryKey], is a reference's key with its data
-///   type: a value for a map or a set that can still read its entry.
+///   type: a value for a map or a set that can still read and write its
+///   entry. A family's `readAll` returns one per entry, which is how a
+///   snapshot of many entries is put back.
 /// * A **namespace**, [QueryNamespace], is the key prefix a group of
 ///   definitions shares. It claims no data type, so it invalidates and
 ///   removes, and neither reads nor writes.
@@ -142,11 +144,14 @@
 ///
 /// What they cannot do for you:
 ///
-/// * **Write a family's type arguments out**:
-///   `QueryFamily<String, Device>(...)`. Dart infers the data type from the
-///   fetch function and nothing tells it the input type. A debug build
-///   refuses a definition whose type argument was left to become `dynamic`
-///   or `Object?`.
+/// * **Write the type arguments on every definition**:
+///   `QueryDefinition<List<Device>>(...)`, `QueryFamily<String, Device>(...)`,
+///   `InfiniteQueryDefinition<List<Post>, int>(...)`. Nothing tells Dart a
+///   family's input type, and an infinite definition left to inference
+///   loses its page type: a `getNextPageParam` that reads its page does
+///   not compile, and with a `configure` the page type becomes `Object?`
+///   without a diagnostic. A debug build refuses a definition whose type
+///   argument was left to become `dynamic` or `Object?`.
 /// * **A reference assigned to a wider type is checked when it runs.**
 ///   Through a `QueryRef<Object?>` a write of the wrong type compiles; it
 ///   throws before anything is written, a `TypeError` from the language
@@ -167,6 +172,16 @@
 /// * **A plain key leaves the typed surface.** `rawKey` is there for an
 ///   API that takes a [QueryKey]; with `client.setQueryData(ref.key.rawKey,
 ///   ...)` the type argument is yours to get right again.
+/// * **A typed key knows the type, not the definition.** An entry its
+///   `write` creates has the key's data type and the client's defaults,
+///   and none of the definition's options, its fetch function included,
+///   until the query is next used. Write through the reference to create
+///   an entry with them.
+/// * **A family's reference makes new options every time.** It binds its
+///   input into a new fetch function per `options()` call, so an observer
+///   handed them again takes them as changed options, as it does options
+///   written inline. A definition without an input hands out the function
+///   it was declared with, and its options are equal from call to call.
 /// * **Nothing registers definitions.** Two that share a namespace and a
 ///   name with different data types are found at the first read or write
 ///   of the second type, with a [QueryDataTypeError]. Two with the same

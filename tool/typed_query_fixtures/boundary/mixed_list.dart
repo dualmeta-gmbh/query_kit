@@ -118,8 +118,9 @@ void mixedReferences(QueryClient client) {
   final families = [queries.devices.detail, queries.devices.reading];
   families.expectStaticType<Exactly<List<QueryFamily<String, Object>>>>();
   families.first.updateAll(client, (previous) => const Temperature(21));
-  [device.key, reading.key]
-      .expectStaticType<Exactly<List<TypedQueryKey<Object>>>>();
+  final keys = [device.key, reading.key];
+  keys.expectStaticType<Exactly<List<TypedQueryKey<Object>>>>();
+  keys.first.write(client, const Temperature(21));
 
   // The control: one data type stays exact, and so does the write.
   final same = [device, queries.devices.detail('d2')];

@@ -24,6 +24,7 @@ import '../surface.dart';
 Future<void> main() async {
   _open7Controls();
   _open7Surface();
+  _typedKeyWrites();
   _d2GenericSetter();
   _d4Values();
   _d5DeclaredTypes();
@@ -296,6 +297,211 @@ void _open7Surface() {
   }
 }
 
+/// The typed key's own `write` and `update`: the same explicit check as a
+/// reference's through a widened key, and what an entry the key makes is.
+void _typedKeyWrites() {
+  final queries = DeviceQueries(const DeviceRepository());
+
+  // A write through a widened key.
+  {
+    final client = _client();
+    final device = queries.detail('d1');
+    final TypedQueryKey<Object?> widened = device.key;
+    _note(
+      'O7-key-1',
+      'write of a String through a TypedQueryKey<Device> held as '
+          'TypedQueryKey<Object?>, no entry yet',
+      '${_attempt(() => widened.write(client, 'not a device'))}; '
+          'cache: ${_entry(client, device.key.rawKey)}',
+    );
+    _note(
+      'O7-key-2',
+      'the valid write through the widened key, no entry yet',
+      '${_attempt(() => widened.write(client, const Device('d1', name: 'kept')))}; '
+          'cache: ${_entry(client, device.key.rawKey)}',
+    );
+    _note(
+      'O7-key-3',
+      'write of a String through the widened key over that Device',
+      '${_attempt(() => widened.write(client, 'not a device'))}; '
+          'cache: ${_entry(client, device.key.rawKey)}, '
+          'kept: ${device.read(client)?.name == 'kept'}',
+    );
+    _note(
+      'O7-key-4',
+      'update returning an int through the widened key',
+      '${_attempt(() => widened.update(client, (previous) => 42))}; '
+          'cache: ${_entry(client, device.key.rawKey)}, '
+          'kept: ${device.read(client)?.name == 'kept'}',
+    );
+    _note(
+      'O7-key-5',
+      'an updater typed Object? Function(Object?) returning a String',
+      '${_attempt(() => widened.update(client, _toString))}; '
+          'kept: ${device.read(client)?.name == 'kept'}',
+    );
+  }
+
+  // An update through a widened key with nothing cached.
+  {
+    final client = _client();
+    final device = queries.detail('d1');
+    final TypedQueryKey<Object?> widened = device.key;
+    _note(
+      'O7-key-6',
+      'update returning an int through the widened key, no entry yet',
+      '${_attempt(() => widened.update(client, (previous) => 42))}; '
+          'cache: ${_entry(client, device.key.rawKey)}',
+    );
+  }
+
+  // The entry a key makes has the key's type, not the value's.
+  {
+    final client = _client();
+    final device = queries.detail('d1');
+    device.key.write(client, const Thermostat('d1'));
+    final rawKey = QueryKey(const ['raw', 'inferred']);
+    client.setQueryData(rawKey, const Thermostat('d1'));
+    _note(
+      'O7-key-7',
+      'a Thermostat written through a TypedQueryKey<Device>, no entry yet; '
+          'and through setQueryData with no type argument',
+      'key: ${_entry(client, device.key.rawKey)}; '
+          'raw: ${_entry(client, rawKey)}',
+    );
+    final lookup = queries.lookup('d1');
+    lookup.key.write(client, const Device('d1'));
+    _note(
+      'O7-key-8',
+      'a Device written through a TypedQueryKey<Device?>, no entry yet',
+      _entry(client, lookup.key.rawKey),
+    );
+    final TypedQueryKey<Object?> widened = lookup.key;
+    _note(
+      'O7-key-9',
+      'null, then a String, through that key held as TypedQueryKey<Object?>',
+      '${_attempt(() => widened.write(client, null))}, '
+          '${_attempt(() => widened.write(client, 'not a device'))}; '
+          'cache: ${_entry(client, lookup.key.rawKey)}',
+    );
+  }
+
+  // A wider entry under the key is refused, where the raw client writes.
+  {
+    final client = _client();
+    final device = queries.detail('d1');
+    client.setQueryData<Object>(device.key.rawKey, const Device('d1'));
+    _note(
+      'O7-key-10',
+      'a Device written through a TypedQueryKey<Device> over a '
+          'Query<Object>; then through setQueryData<Device>',
+      '${_attempt(() => device.key.write(client, const Device('d1')))}, '
+          '${_attempt(() => client.setQueryData<Device>(device.key.rawKey, const Device('d1')))}; '
+          'cache: ${_entry(client, device.key.rawKey)}',
+    );
+  }
+
+  // Paged data: the key of an infinite reference stores what the
+  // reference stores.
+  {
+    final client = _client();
+    final feed = queries.feed;
+    final TypedQueryKey<Object?> widened = feed.key;
+    _note(
+      'O7-key-11',
+      'write of an InfiniteData<String, String> through the key of an '
+          'InfiniteQueryDefinition<List<Device>, int> held as '
+          'TypedQueryKey<Object?>',
+      '${_attempt(
+        () => widened.write(
+          client,
+          InfiniteData<String, String>(
+            pages: const ['a page'],
+            pageParams: const ['a param'],
+          ),
+        ),
+      )}; cache: ${_entry(client, feed.key.rawKey)}',
+    );
+    final narrow = InfiniteData<List<Thermostat>, int>(
+      pages: const [
+        [Thermostat('t1')],
+      ],
+      pageParams: const [0],
+    );
+    final stored = feed.key.write(client, narrow);
+    _note(
+      'O7-key-12',
+      'write of an InfiniteData<List<Thermostat>, int> through that key',
+      '${_entry(client, feed.key.rawKey)}; '
+          'the value given back is the given one: '
+          '${identical(stored, narrow)}',
+    );
+    _note(
+      'O7-key-13',
+      'the same value through the widened key, and an update returning it',
+      '${_attempt(() => widened.write(client, narrow))}, '
+          '${_attempt(() => widened.update(client, (previous) => narrow))}; '
+          'cache: ${_entry(client, feed.key.rawKey)}',
+    );
+  }
+
+  // The keys a family's `readAll` returns write as the reference does.
+  {
+    final client = _client();
+    final history = queries.history('d1');
+    history.write(client, InfiniteData(pages: const [], pageParams: const []));
+    final narrow = InfiniteData<List<Never>, int>(
+      pages: const [],
+      pageParams: const [],
+    );
+    for (final (key, _) in queries.history.readAll(client)) {
+      key.write(client, narrow);
+    }
+    _note(
+      'O7-key-14',
+      'an InfiniteData<List<Never>, int> written through a key from the '
+          'readAll of an InfiniteQueryFamily<String, List<DeviceEvent>, int>',
+      _entry(client, history.key.rawKey),
+    );
+    final plain = QueryDefinition<InfiniteData<List<DeviceEvent>, int>>(
+      namespace: DeviceQueries.namespace,
+      name: 'plainHistory',
+    );
+    plain.key.write(client, narrow);
+    _note(
+      'O7-key-15',
+      'the same value through the key of a plain '
+          'QueryDefinition<InfiniteData<List<DeviceEvent>, int>>',
+      _entry(client, plain.key.rawKey),
+    );
+  }
+
+  // A snapshot put back through its keys.
+  {
+    final client = _client();
+    queries.detail('a').write(client, const Device('a', name: 'kept'));
+    queries.detail('b').write(client, const Device('b', name: 'kept'));
+    final snapshot = queries.detail.readAll(client);
+    queries.detail.updateAll(client, (previous) => const Device('x'));
+    final changed = _allKept(client, queries);
+    queries.detail('b').remove(client);
+    for (final (key, data) in snapshot) {
+      if (data != null) {
+        key.write(client, data);
+      }
+    }
+    _note(
+      'O7-key-16',
+      'a readAll snapshot of two Devices, both changed, one removed, put '
+          'back through its keys',
+      'kept after the change: $changed; '
+          'kept after the restore: ${_allKept(client, queries)}, '
+          'entries: ${queries.detail.readAll(client).length}, '
+          'the removed one: ${_entry(client, queries.detail('b').key.rawKey)}',
+    );
+  }
+}
+
 Object? _toString(Object? previous) => 'not a device';
 
 /// `==` between two static types the analyzer knows to be unrelated.
@@ -444,7 +650,7 @@ void _d4Values() {
   final reference = first.detail('d1');
   _note(
     'D4-12',
-    'the options of one reference, asked for twice',
+    'the options of the reference of a family, asked for twice',
     'identical ${identical(reference.options(), reference.options())}, '
         'same fetcher '
         '${reference.options().queryFn == reference.options().queryFn}, '
@@ -477,6 +683,51 @@ void _d4Values() {
     'first holds its own: ${reference.read(one)?.name == 'one'}, '
         'second holds its own: ${reference.read(two)?.name == 'two'}',
   );
+
+  // A definition without an input has nothing to bind: it hands out the
+  // functions it was declared with, so its options are equal call to call.
+  _note(
+    'D4-16',
+    'the options of a zero-input definition, asked for twice',
+    'identical ${identical(first.list.options(), first.list.options())}, '
+        'same fetcher '
+        '${first.list.options().queryFn == first.list.options().queryFn}, '
+        'equal once resolved by a client '
+        '${one.defaultQueryObserverOptions<List<Device>, List<Device>>(first.list.options()) == one.defaultQueryObserverOptions<List<Device>, List<Device>>(first.list.options())}; '
+        'of the same definition made again: same fetcher '
+        '${first.list.options().queryFn == second.list.options().queryFn}',
+  );
+  _note(
+    'D4-17',
+    'the paging functions of an infinite definition, and of the reference '
+        'of an infinite family, asked for twice',
+    'definition: same page function '
+        '${first.feed.options().pageFn == first.feed.options().pageFn}, '
+        'same getNextPageParam '
+        '${first.feed.options().getNextPageParam == first.feed.options().getNextPageParam}; '
+        'family: same page function '
+        '${first.history('d1').options().pageFn == first.history('d1').options().pageFn}',
+  );
+  final held = QueryObserver(one, first.list.options());
+  final bound = QueryObserver(one, reference.options());
+  var updates = 0;
+  final unsubscribe = one.queryCache.subscribe((event) {
+    if (event is QueryObserverOptionsUpdated) {
+      updates++;
+    }
+  });
+  held.setOptions(first.list.options());
+  final afterHeld = updates;
+  bound.setOptions(reference.options());
+  _note(
+    'D4-18',
+    'an observer handed the options again: of a held zero-input '
+        'definition, then of the reference of a family',
+    'options updates heard: $afterHeld, then ${updates - afterHeld}',
+  );
+  unsubscribe();
+  held.destroy();
+  bound.destroy();
 }
 
 // --------------------------------------------------------------------- D5
@@ -1178,6 +1429,23 @@ void _d9MixedList() {
           'kept: ${_allKept(client, queries)}',
     );
   }
+
+  // Two typed keys meet at `TypedQueryKey<Object>`, and write as two
+  // references do.
+  {
+    final client = _client();
+    final reading = queries.reading('d1');
+    final keys = [device.key, reading.key];
+    _note(
+      'D9-12',
+      'a Temperature written through the first of '
+          '[TypedQueryKey<Device>, TypedQueryKey<Reading>], then the last',
+      '${_attempt(() => keys.first.write(client, const Temperature(21)))}, '
+          '${_attempt(() => keys.last.write(client, const Temperature(21)))}; '
+          'cache: ${_entry(client, device.key.rawKey)}, '
+          '${_entry(client, reading.key.rawKey)}',
+    );
+  }
 }
 
 // -------------------------------------------------------------------- D10
@@ -1252,6 +1520,36 @@ void _d10Backstop() {
     'InfiniteQueryDefinition<Object?, int> and <List<Device>, dynamic>',
     '${_attempt(() => InfiniteQueryDefinition<Object?, int>(namespace: namespace, name: 'page', pageFn: (context) => null, initialPageParam: 0, getNextPageParam: (page, pages, pageParam, pageParams) => null))}, '
         '${_attempt(() => InfiniteQueryDefinition<List<Device>, dynamic>(namespace: namespace, name: 'param', pageFn: (context) => const [], initialPageParam: 0, getNextPageParam: (page, pages, pageParam, pageParams) => null))}',
+  );
+  _note(
+    'D10-9',
+    'an infinite definition without type arguments and with a configure '
+        '(inferred InfiniteQueryDefinition<Object?, int>)',
+    _attempt(
+      () => InfiniteQueryDefinition(
+        namespace: namespace,
+        name: 'untypedConfigured',
+        pageFn: (context) => repository.page(context.pageParam),
+        initialPageParam: 0,
+        getNextPageParam: (page, pages, pageParam, pageParams) => pageParam + 1,
+        configure: (base) => base.copyWith(maxPages: 3),
+      ),
+    ),
+  );
+  _note(
+    'D10-10',
+    'the same without the configure (inferred exactly), and with type '
+        'arguments and the configure',
+    '${_attempt(() => InfiniteQueryDefinition(namespace: namespace, name: 'inferred', pageFn: (context) => repository.page(context.pageParam), initialPageParam: 0, getNextPageParam: (page, pages, pageParam, pageParams) => pageParam + 1))}, '
+        '${_attempt(() => InfiniteQueryDefinition<List<Device>, int>(namespace: namespace, name: 'written', pageFn: (context) => repository.page(context.pageParam), initialPageParam: 0, getNextPageParam: (page, pages, pageParam, pageParams) => page.isEmpty ? null : pageParam + 1, configure: (base) => base.copyWith(maxPages: 3)))}',
+  );
+  _note(
+    'D10-11',
+    'a key-only definition without type arguments and with a configure '
+        '(inferred QueryDefinition<Object?>), and a plain one with a '
+        'fetcher and a configure (inferred exactly)',
+    '${_attempt(() => QueryDefinition(namespace: namespace, name: 'bareConfigured', configure: (base) => base.copyWith(staleTime: StaleTime.infinite)))}, '
+        '${_attempt(() => QueryDefinition(namespace: namespace, name: 'listConfigured', queryFn: (context) => repository.devices(), configure: (base) => base.copyWith(staleTime: StaleTime.infinite)))}',
   );
 }
 

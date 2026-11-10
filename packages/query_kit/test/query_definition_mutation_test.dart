@@ -307,25 +307,35 @@ MutationOptions<List<Device>, String, void> moveAllDevices(
 // `updateAll` runs over the family's entries and writes what the updater
 // returns; `null` leaves an entry alone.
 //
-// The rollback puts back the devices this mutation changed and no others,
-// found by their own id: another write may have touched a neighbour in
-// the meantime.
+// `readAll` returns each entry's typed key with its data, and that pair is
+// the snapshot: the rollback writes every device back through the key it
+// was read with. It puts back the devices this mutation changed and no
+// others, because another write may have touched a neighbour in the
+// meantime.
+//
+// The key knows the entry's type and nothing else of the definition. An
+// entry that is still there is written as its reference would write it.
+// One that was removed in the meantime is made again from the key alone:
+// the right type, the client's defaults, and no fetch function until the
+// query is used again.
 
 typedef RoomRename = ({String from, String to});
 
-MutationOptions<void, RoomRename, Map<String, Device>> renameRoom(
+typedef ChangedDevices = List<(TypedQueryKey<Device>, Device)>;
+
+MutationOptions<void, RoomRename, ChangedDevices> renameRoom(
   QueryClient client,
   DeviceQueries queries,
   DeviceApi api,
 ) =>
-    MutationOptions<void, RoomRename, Map<String, Device>>(
+    MutationOptions<void, RoomRename, ChangedDevices>(
       mutationFn: (rename) => api.renameRoom(rename.from, rename.to),
       onMutate: (rename) async {
         await queries.detail.cancel(client);
-        final changed = {
-          for (final (_, device) in queries.detail.readAll(client))
-            if (device != null && device.room == rename.from) device.id: device,
-        };
+        final changed = [
+          for (final (key, device) in queries.detail.readAll(client))
+            if (device != null && device.room == rename.from) (key, device),
+        ];
         queries.detail.updateAll(
           client,
           (device) => device?.room == rename.from
@@ -336,7 +346,9 @@ MutationOptions<void, RoomRename, Map<String, Device>> renameRoom(
       },
       onError: (error, stackTrace, rename, changed) {
         if (changed != null) {
-          queries.detail.updateAll(client, (device) => changed[device?.id]);
+          for (final (key, device) in changed) {
+            key.write(client, device);
+          }
         }
       },
       onSettled: (data, error, stackTrace, rename, changed) =>
@@ -1058,6 +1070,44 @@ void main() {
       expect(rooms(it), {'d1': 'hall', 'd2': 'hall', 'd3': 'kitchen'});
       expect(queries.detail('d3').read(client)!.name, 'new kettle');
       expect(queries.detail('d1').read(client), api.rows['d1']);
+      client.clear();
+    });
+
+    testFakeAsync(
+        'refused, a changed device removed in between: the rollback makes '
+        'its entry again, from the key alone', (time) async {
+      final it = await cached(time);
+      final (:client, :api, :queries) = it;
+      api.refuseNextWrite = true;
+      final outcome = run(
+        client,
+        renameRoom(client, queries, api),
+        (from: 'hall', to: 'lobby'),
+      );
+      await time.flushMicrotasks();
+      queries.detail('d2').remove(client);
+      expect(rooms(it), {'d1': 'lobby', 'd3': 'kitchen'});
+
+      await time.advance(ms(10));
+      expect(await outcome, isStateError);
+      expect(rooms(it), {'d1': 'hall', 'd2': 'hall', 'd3': 'kitchen'});
+      expect(entries(client), [
+        'devices/detail/d1: Query<Device>',
+        'devices/detail/d2: Query<Device>',
+        'devices/detail/d3: Query<Device>',
+        'devices/list: Query<List<Device>>',
+      ]);
+      // The entry that stayed kept the definition's fetch function; the one
+      // made again has none, until the query is used again.
+      expect(entryOf(client, queries.detail('d1')).options.queryFn, isNotNull);
+      expect(entryOf(client, queries.detail('d2')).options.queryFn, isNull);
+      final calls = api.calls['device d2'];
+      expect(
+        await fetched(time, queries.detail('d2').fetch(client)),
+        api.rows['d2'],
+      );
+      expect(api.calls['device d2'], calls! + 1);
+      expect(entryOf(client, queries.detail('d2')).options.queryFn, isNotNull);
       client.clear();
     });
 

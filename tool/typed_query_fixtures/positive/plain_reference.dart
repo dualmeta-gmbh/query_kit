@@ -70,6 +70,26 @@ Future<void> plainReference(QueryClient client, Device updated) async {
       .write(client, const Thermostat('d1', target: 21))
       .expectStaticType<Exactly<Device>>();
 
+  // The typed key writes under the same types: it knows the data type,
+  // and nothing else of the definition.
+  final writtenByKey = key.write(client, updated);
+  final Device typedWrittenByKey = writtenByKey;
+  writtenByKey.expectStaticType<Exactly<Device>>();
+  final nextByKey = key.update(client, (previous) {
+    previous.expectStaticType<Exactly<Device?>>();
+    return previous?.copyWith(isOn: true);
+  });
+  final Device? typedNextByKey = nextByKey;
+  nextByKey.expectStaticType<Exactly<Device?>>();
+  key
+      .write(client, const Thermostat('d1', target: 21), updatedAt: DateTime(1))
+      .expectStaticType<Exactly<Device>>();
+  queries.devices
+      .lookup('d1')
+      .key
+      .write(client, null)
+      .expectStaticType<Exactly<Device?>>();
+
   // The existing consumers infer from the options alone.
   QueryObserver(client, device.options())
       .expectStaticType<Exactly<QueryObserver<Device, Device>>>();
@@ -115,6 +135,8 @@ Future<void> plainReference(QueryClient client, Device updated) async {
     typedFetched,
     typedWritten,
     typedNext,
+    typedWrittenByKey,
+    typedNextByKey,
   ]);
 }
 

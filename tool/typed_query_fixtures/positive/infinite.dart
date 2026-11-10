@@ -89,6 +89,30 @@ Future<void> infinite(QueryClient client) async {
     return previous;
   }).expectStaticType<Exactly<List<(TypedQueryKey<_History>, _History?)>>>();
 
+  // The typed key of paged data writes it: the literal takes its type
+  // arguments from the key, as it does from the reference.
+  feed.key
+      .write(
+        client,
+        InfiniteData(
+          pages: [
+            [const Thermostat('t1')],
+          ],
+          pageParams: [0],
+        ),
+      )
+      .expectStaticType<Exactly<_Feed>>();
+  feed.key.update(client, (previous) {
+    previous.expectStaticType<Exactly<_Feed?>>();
+    return previous?.copyWith(pages: [...previous.pages.skip(1)]);
+  }).expectStaticType<Exactly<_Feed?>>();
+  for (final (key, data) in queries.devices.history.readAll(client)) {
+    key.expectStaticType<Exactly<TypedQueryKey<_History>>>();
+    if (data != null) {
+      key.write(client, data).expectStaticType<Exactly<_History>>();
+    }
+  }
+
   // The callbacks of a declaration see the declared types.
   final namespace = QueryNamespace(['events']);
   InfiniteQueryDefinition<List<DeviceEvent>, String>(
@@ -141,7 +165,10 @@ Future<void> infinite(QueryClient client) async {
       .expectStaticType<Exactly<InfiniteQueryRef<List<Device>, int>>>();
 
   // A zero-input infinite definition without type arguments is anchored by
-  // its initial page param and by what its page function returns (D10).
+  // its initial page param and by what its page function returns, as long
+  // as no closure reads the page and there is no `configure` (D10). It is
+  // measured here; the documented form writes both type arguments
+  // (`written_type_arguments.dart`).
   InfiniteQueryDefinition(
     namespace: namespace,
     name: 'inferred',

@@ -7712,3 +7712,191 @@ application; the binding, the hooks and the examples have their own
 tickets. A rollback of an entry that held no data restores it with
 `reset`, which is not the state it had when it held an error; the exact
 restore needs the raw cache, and no helper was added for it.
+
+### TQ3 — the binding, the hooks and the examples on definitions (#134)
+
+**What.** Four consumers, one commit each, and **nothing changed in this
+package**: a reference's `options()` returns the options the observers
+already take, so the binding and the hooks needed no library change
+either. This section records what they proved and what they reported,
+because two of the reports changed the core (the next section).
+
+| Consumer | Commit | What exists | Counts |
+|---|---|---|---|
+| `packages/query_kit_flutter` | `f357e6e` | `typed_parity_test.dart` (56), `typed_lifecycle_test.dart` (32), `typed_consumers_test.dart` (17) over `typed_support.dart`: every consumer and all four call styles on a reference's options, each parity case one script run over typed and raw sources and their traces compared | suite 546 → 651 |
+| `packages/query_kit_hooks` | `0d9fb87` | `typed_definitions_test.dart`, 21 cases; the example's todos and projects on `TodoQueries` and `ProjectQueries.list`, keys `['todos', 'list']` and `['projects', 'list']`; its own notes have the section | suite 335 → 356; example 61 and 10 skipped |
+| `examples/task_manager` | `6613558` | `TaskQueries`: `list = QueryFamily<TaskFilters, TaskListResponse>` with `keyOf: (f) => [f.toJson()]`, `byId = QueryFamily<String, Task>`; `taskQuery(client, queries, id)` adds the detail's seed per use | 44 and 14 skipped; 29 contract cases against the real server; Playwright 26 |
+| `examples/showcase` | `7a449a4`, `ba475cf` | the 31st screen `typed-queries` (9 widget cases, 8 Playwright), `load-more` and `max-pages` on infinite definitions | 342 and 25 skipped; contract 50; Playwright 214; native macOS green |
+
+Re-run when this was written, on Flutter 3.38.8: the binding 651, the
+hooks 356, the hooks example 61 and 10 skipped, the task manager 44 and
+14 skipped, the showcase 342 and 25 skipped. Not re-run: the floors, the
+Chrome runs, the showcase's and the hooks example's Playwright suites,
+the native suite; those counts are the implementers'.
+
+**What they measured about the core.**
+
+- *Options events.* An observer handed options again on a rebuild emits
+  `QueryObserverOptionsUpdated` once for inline raw options, for a
+  family's reference and for a definition recreated in `build`, and
+  **not at all** for a zero-input definition that is held. The plan and
+  the dartdoc said every `options()` call makes another fetcher closure.
+- *A list of options of two data types* given to a
+  `QueriesController<Object, Object>` creates `Object` entries, and the
+  references' typed reads and writes then throw `QueryDataTypeError`:
+  the documented boundary, now seen through two consumers.
+- *An infinite definition without type arguments* does not compile once
+  its `getNextPageParam` reads the page, and with a `configure` its page
+  type is `Object?` without a diagnostic. TQ0's fixture did neither.
+- *A bulk snapshot has no typed way back.* The task manager's delete
+  rollback wrote with `client.setQueryData(key.rawKey, …)`.
+
+### After TQ3 — a typed key writes, and every definition's type arguments (#134)
+
+**What.** The product owner's two decisions on those reports, a wording
+correction a measurement forced, and the record of the reports that were
+left. One compatible addition to `lib/src/query_definition.dart` and an
+internal refactor under it; no existing signature and no existing case
+changed. The plan's rows are T3-1 to T3-6 and L3-1 to L3-5.
+
+**1. `TypedQueryKey.write` and `update`.** Signatures and return types
+are `QueryEntryRef`'s. Both pairs now call one private pair,
+`_writeEntry` and `_updateEntry`, which differ by one argument: the
+options a missing entry is built with.
+
+| An entry created by | Type | Options | Fetch function |
+|---|---|---|---|
+| `ref.write`, `ref.update` | the declared one | the definition's `options()`, over the key's and the client's defaults | the definition's |
+| `key.write`, `key.update`, and `updateAll` for an entry an updater removed | the declared one | `QueryOptions<T>(queryKey: rawKey)`: the key's and the client's defaults only | none |
+| raw `setQueryData` without a type argument | the value's own | the same defaults | none |
+
+An entry that exists is written identically by all of them
+(`Query.setData(manual: true)`). The infinite normalisation moved from a
+method of the reference to a private method of the key,
+`TypedQueryKey._stored`, which `_InfiniteTypedQueryKey<P, Q>` overrides;
+an infinite reference's `key` and every key of an infinite family's
+`readAll` and `updateAll` are of that subclass. It adds no field, and
+`==`, `hashCode` and `toString` are the base's.
+
+*Options weighed for the carrier:* a function field on the key (a
+contravariant field read through a widened key can throw for a valid
+value, and it is a held closure); a type-erased function with casts
+(dart2js `-O4` omits casts); the subclass. *For a created entry:* carry
+the definition in the key (a value that is compared and kept in
+snapshots would keep a fetch function alive, and a family's bulk calls
+have no input to bind one with); refuse to create (the restore loop
+would fail for the entry a rollback most needs back); build it bare.
+
+*Blast radius.* The change is additive for the key and a refactor for
+the reference, so the fact it is safe because of is: **a reference's
+write and update do what they did.** Control: every case of the two
+typed files that existed before passes unedited, and the 113
+observations recorded before print the results they printed, in the
+three recorded outputs, on five runtimes of three SDKs (one of them,
+`D4-12`, was renamed to say that its reference is a family's; its
+result is the same). A new member has no "red
+before", so the new cases were checked by changing the library in a
+scratch copy; each of eight changes fails at least one case:
+
+| Change | Cases that fail |
+|---|---|
+| the key's `write` delegates to the lenient `setQueryData<T>` | 5 |
+| the infinite key does not normalise | 10 |
+| an infinite family's `readAll` returns plain keys | 1 |
+| an infinite family's `updateAll` returns plain keys | 2 |
+| `update` writes into the entry found before the updater ran | 4 |
+| the shared write takes any entry of a fitting type | 4 |
+| an infinite reference's `key` is a plain key | 9 |
+| a key-created entry takes the value's own type | 12 |
+
+*Self-review (no second agent read this; the ticket ends in a review).*
+Read against `ba475cf`: the value still reaches `_checked` as `Object?`
+on both paths; `key` is a covariant field read, so a widened reference
+reads it safely; `_bareOptions` and `_entryOptions` are passed as method
+tear-offs of an exactly typed receiver; the second lookup after an
+updater and the bulk update's second look are where they were. One
+thing found and recorded, not changed: the typed key of an infinite
+definition and of a plain definition typed `InfiniteData` on one raw key
+are `==` and write differently (T3-6).
+
+**What a key-created entry costs.** It has no fetch function until an
+observer or `ref.fetch` supplies the definition's. A refetch of every
+entry before then (`family.refetch(client)`) ends for that entry in
+`MissingQueryFunctionError`,
+status `error`, data kept; that is what the raw client does with an
+entry `setQueryData` made. One case holds it and its repair.
+
+**2. Every definition's type arguments are written out.** No code
+changed: dartdoc, the barrel's limits and fixtures. Measured, identical
+on Dart 3.6.2, 3.10.7 and 3.13.4:
+
+| Declaration without type arguments | Result |
+|---|---|
+| `InfiniteQueryDefinition`, page not read, no `configure` | exact |
+| its `getNextPageParam` reads `page` or `pages` | the declaration exact, `page` is `Object?`: `unchecked_use_of_nullable_value`. The same for an infinite family and for raw `InfiniteQueryObserverOptions` |
+| with a `configure` | `InfiniteQueryDefinition<Object?, int>`, no diagnostic under defaults or strict options; `AssertionError` in a debug build only |
+| an infinite family with a `configure` | `InfiniteQueryFamily<Object?, Object?, int>`, silently |
+| `QueryDefinition` with a fetcher and a `configure` | exact |
+| `QueryDefinition` with a `configure` and no fetcher | `QueryDefinition<Object?>`, silently |
+| `QueryFamily` with typed closure parameters and a `configure` | exact |
+
+| Cure | page read | `configure` |
+|---|---|---|
+| the type arguments; a declared field type | yes | yes |
+| the `pageFn` parameter typed; a named page function | yes | yes |
+| the page parameter typed where it is read | yes | **no**: `could_not_infer`, `argument_type_not_assignable` |
+| the `configure` parameter typed | not needed | yes |
+
+The hooks' notes name "a typed `page` parameter" as a cure; it is one
+for the first failure only.
+
+**3. Which options are equal.** `QueryDefinition.options()` and
+`InfiniteQueryDefinition.options()` pass on the functions the
+constructor was given; `QueryFamily` and `InfiniteQueryFamily` wrap each
+in a closure over the input, per call. Resolved options compare
+functions with `==`. So a held zero-input definition's options are equal
+from call to call and its observer hears no options event; a family
+reference's never are. Nothing was changed to align them (nothing gates
+on the equality, #84). Three cases and observations `D4-16` to `-18`.
+
+**4. The recipes and the task manager.** Recipe 5 keeps
+`(TypedQueryKey<Device>, Device)` pairs from `readAll` and rolls back
+with `key.write`; the id-based variant is gone, its three cases pass
+unchanged, and a fourth holds an entry removed in between being made
+again. The task manager's delete rollback does the same (its own
+commit).
+
+**Counts.**
+
+| File | Cases | Before |
+|---|---|---|
+| `query_definition_test.dart` | 114 | 94 |
+| `infinite_query_definition_test.dart` | 54 | 46 |
+| `query_definition_mutation_test.dart` | 23 | 22 |
+
+The fixture tree: 25 files (24), 144 `error` markers (119) and 5
+`strict` ones, 136 observations per recorded output (113). `barrel_test`
+still pins ten exported names.
+
+**Verified.** Core 1367 VM / 1362 browser on Dart 3.10.7 (1338 / 1333
+before), the VM suite also on 3.6.2. The fixture runner and its
+self-test on 3.6.2, 3.10.7 and 3.13.4. Line coverage 3796 of 3802,
+99.84 % against a floor of 99.8 %; `query_definition.dart` 270 of 272,
+the same two lines as before. The binding (651), the hooks (356), the
+hooks example, the showcase and the doc snippets pass over the changed
+core; the task manager's 44 widget and contract cases and its 26
+Playwright cases against the real server pass with the rollback on the
+typed key.
+
+**Not proven here.** dart2wasm is still not run. The typed key's writes
+are used by one application flow, the task manager's delete rollback;
+the binding's and the hooks' suites do not call them. No guide shows
+them yet (Phase 4).
+
+**Reported and left** (the plan's L3-1 to L3-5 have the options):
+`updateAll`'s updater takes `T?`; a definition whose fetcher needs a
+dependency is built with it for cache-only operations too, so one holder
+class per resource; `MutationOptions` without type arguments leaves an
+untyped `onMutate` parameter `Object?`; options handed through a wider
+parameter type create a wider entry; no typed single-entry snapshot and
+restore.

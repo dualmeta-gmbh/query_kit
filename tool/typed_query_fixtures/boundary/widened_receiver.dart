@@ -36,9 +36,11 @@ void upcasts(QueryClient client) {
     InfiniteData<String, String>(pages: const [], pageParams: const []),
   );
 
-  // A widened typed key reads as the wider type.
+  // A widened typed key reads as the wider type, and takes any value.
   final TypedQueryKey<Object?> key = device.key;
   key.read(client);
+  key.write(client, 'not a device');
+  key.update(client, (previous) => 42);
 }
 
 void rawGenerics(QueryClient client) {

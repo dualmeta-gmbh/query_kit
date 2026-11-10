@@ -119,9 +119,17 @@ void typedKeys(QueryClient client) {
   // EXPECT error argument_type_not_assignable
   client.invalidateQueries(filters: QueryFilters(queryKey: key));
 
-  // A typed key reads and tells the state; it does not write.
+  // A typed key reads, tells the state and writes. It knows the type and
+  // not the definition: it makes no options, fetches nothing and selects
+  // nothing for the lifecycle operations.
   // EXPECT error undefined_method
-  key.write(client, const Device('d1'));
+  key.options();
+  // EXPECT error undefined_method
+  key.fetch(client);
+  // EXPECT error undefined_method
+  key.invalidate(client);
+  // EXPECT error undefined_method
+  key.filters();
 
   // A reference has no public constructor either.
   // EXPECT error new_with_undefined_constructor_default

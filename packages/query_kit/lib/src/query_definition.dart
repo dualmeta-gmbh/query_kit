@@ -180,21 +180,38 @@ final class QueryNamespace extends QueryTarget {
 
 /// A [QueryKey] that remembers the data type cached under it.
 ///
-/// A reference's [QueryEntryRef.key] is one. It reads the entry and its
-/// state with the right type and no type argument, and it is a value: two
-/// typed keys are equal when their raw keys and their data types are, so it
-/// can be a map key or a member of a set.
+/// A reference's [QueryEntryRef.key] is one, and a family's `readAll` and
+/// `updateAll` return one for every entry they found. It reads and writes
+/// the entry with the right type and no type argument, and it is a value:
+/// two typed keys are equal when their raw keys and their data types are, so
+/// it can be a map key or a member of a set.
 ///
 /// ```dart
 /// final key = devices.detail('d1').key; // TypedQueryKey<Device>
 /// final Device? cached = key.read(client);
 /// final QueryState<Device>? state = key.state(client);
+/// key.write(client, updated);
 /// ```
+///
+/// It is what puts back what a bulk read returned, the rollback of an
+/// optimistic update over a whole family:
+///
+/// ```dart
+/// final snapshot = devices.detail.readAll(client);
+/// // ...patch every detail with updateAll; then, when the request fails:
+/// for (final (key, data) in snapshot) {
+///   if (data != null) key.write(client, data);
+/// }
+/// ```
+///
+/// A typed key knows the entry's key and its data type, and not the
+/// definition. That shows in one place: an entry a [write] creates is
+/// built from the key and the type alone, where a reference builds it with
+/// the definition's options.
 ///
 /// Only a definition or a reference makes one: there is no public
 /// constructor and no conversion from a plain key, because the data type
-/// would then be whatever the caller claimed. It has no write either; a
-/// write goes through the reference, which knows how to create the entry.
+/// would then be whatever the caller claimed.
 ///
 /// {@category Typed queries}
 final class TypedQueryKey<T> {
@@ -207,6 +224,14 @@ final class TypedQueryKey<T> {
 
   /// The data type the entry under [rawKey] holds, exactly.
   Type get dataType => T;
+
+  /// The value as the entry stores it. Identity, except for the key of an
+  /// infinite reference.
+  T _stored(T value) => value;
+
+  /// The options of an entry made for this key alone: what the client's
+  /// `setQueryData` builds one with, under the key's data type.
+  QueryOptions<T> _bareOptions() => QueryOptions<T>(queryKey: rawKey);
 
   /// The cached data, or `null` when there is none: [QueryClient.getQueryData]
   /// with the key's data type. Throws [QueryDataTypeError] when the entry
@@ -221,6 +246,58 @@ final class TypedQueryKey<T> {
   /// `hasData` is what tells a cached `null` from no data.
   QueryState<T>? state(QueryClient client) => client.getQueryState<T>(rawKey);
 
+  /// Writes [value] into the entry under this key and returns what the
+  /// cache then holds: [QueryEntryRef.write], for a caller that holds the
+  /// key and not the reference.
+  ///
+  /// ```dart
+  /// for (final (key, data) in snapshot) {
+  ///   if (data != null) key.write(client, data);
+  /// }
+  /// ```
+  ///
+  /// An entry that exists is written as the reference writes it: it must
+  /// hold exactly the key's data type, and the timestamp ([updatedAt],
+  /// default: now), structural sharing and the notification are the same.
+  /// A key that came from an infinite reference or an infinite family
+  /// stores the value under the declared page types, as that reference
+  /// does.
+  ///
+  /// An entry the write creates is where the two differ. The key has no
+  /// definition to take options from, so the entry is built with the key
+  /// and the data type and nothing else: the client's defaults and the
+  /// key's own (`QueryClient.setQueryDefaults`) apply, as they do to an
+  /// entry the client's `setQueryData` creates, and the definition's
+  /// `gcTime`, `structuralSharing` and `initialData` do not. It has no
+  /// fetch function either, until an observer or a fetch through the
+  /// reference brings the definition's: a refetch of every entry before
+  /// then fails it with [MissingQueryFunctionError] and keeps its data.
+  /// Its type is the key's, whatever the value's own type is: a `Device`
+  /// written through a `TypedQueryKey<Device?>` creates an entry of
+  /// `Device?`. To create an entry with the definition's options, write
+  /// through the reference.
+  ///
+  /// Throws [QueryDataTypeError], and writes nothing, when the entry holds
+  /// another data type, or when [value] is not of the key's type, which
+  /// only a key held under a wider type argument lets through the analyzer.
+  T write(QueryClient client, T value, {DateTime? updatedAt}) =>
+      _writeEntry<T>(client, this, value, updatedAt, _bareOptions);
+
+  /// Writes what [updater] returns for the data cached now, and returns
+  /// what the cache then holds: [QueryEntryRef.update], for a caller that
+  /// holds the key and not the reference.
+  ///
+  /// [updater] receives the current data, `null` when there is none, and
+  /// returning `null` writes nothing and creates no entry. Otherwise as
+  /// [write]: the same checks, and an entry it creates is built from the
+  /// key and the data type alone.
+  T? update(
+    QueryClient client,
+    T? Function(T? previous) updater, {
+    DateTime? updatedAt,
+  }) =>
+      _updateEntry<T>(client, this, updater, updatedAt, _bareOptions);
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -233,6 +310,25 @@ final class TypedQueryKey<T> {
 
   @override
   String toString() => 'TypedQueryKey<$T>(${rawKey.debugString})';
+}
+
+/// The typed key an infinite reference and an infinite family hand out: a
+/// [TypedQueryKey] that also knows the two page types, which is what a
+/// write needs to store a value under them.
+///
+/// Nothing else is added. It holds the raw key and no function, so a key
+/// kept in a snapshot keeps no fetch function and no repository alive, and
+/// equality and `hashCode` are the base class's: the raw key and the data
+/// type.
+final class _InfiniteTypedQueryKey<TPageData, TPageParam>
+    extends TypedQueryKey<InfiniteData<TPageData, TPageParam>> {
+  const _InfiniteTypedQueryKey._(super.rawKey) : super._();
+
+  @override
+  InfiniteData<TPageData, TPageParam> _stored(
+    InfiniteData<TPageData, TPageParam> value,
+  ) =>
+      _exactInfinite<TPageData, TPageParam>(value);
 }
 
 /// One cache entry and the data type it holds: what a [QueryRef] and an
@@ -253,9 +349,7 @@ final class TypedQueryKey<T> {
 ///
 /// {@category Typed queries}
 sealed class QueryEntryRef<T> extends QueryTarget {
-  QueryEntryRef._(QueryKey rawKey)
-      : key = TypedQueryKey<T>._(rawKey),
-        super._();
+  QueryEntryRef._(this.key) : super._();
 
   /// The entry's key with its data type.
   final TypedQueryKey<T> key;
@@ -268,9 +362,6 @@ sealed class QueryEntryRef<T> extends QueryTarget {
 
   /// The options an entry created by a write is built with.
   QueryOptions<T> _entryOptions();
-
-  /// The value as the entry stores it. Identity except for paged data.
-  T _normalise(T value) => value;
 
   /// The cached data, or `null` when there is none. A plain read: it
   /// neither fetches nor subscribes. Throws [QueryDataTypeError] when the
@@ -308,11 +399,8 @@ sealed class QueryEntryRef<T> extends QueryTarget {
   /// the client's `setQueryData` is another type than `Device`), or when
   /// [value] is not of the reference's type, which only a reference held
   /// under a wider type argument lets through the analyzer.
-  T write(QueryClient client, T value, {DateTime? updatedAt}) {
-    final rawKey = key.rawKey;
-    final existing = client.queryCache.get<T>(rawKey);
-    return _store(client, existing, _checked<T>(value, rawKey), updatedAt);
-  }
+  T write(QueryClient client, T value, {DateTime? updatedAt}) =>
+      _writeEntry<T>(client, key, value, updatedAt, _entryOptions);
 
   /// Writes what [updater] returns for the data cached now, and returns
   /// what the cache then holds.
@@ -331,34 +419,8 @@ sealed class QueryEntryRef<T> extends QueryTarget {
     QueryClient client,
     T? Function(T? previous) updater, {
     DateTime? updatedAt,
-  }) {
-    final rawKey = key.rawKey;
-    final existing = client.queryCache.get<T>(rawKey);
-    final previous =
-        existing != null && existing.state.hasData ? existing.state.data : null;
-    final Object? next = updater(previous);
-    if (next == null) {
-      return null;
-    }
-    final value = _checked<T>(next, rawKey);
-    // Looked up again: the updater is the caller's code and may have
-    // removed the entry, or made it.
-    return _store(client, client.queryCache.get<T>(rawKey), value, updatedAt);
-  }
-
-  T _store(
-    QueryClient client,
-    Query<T>? existing,
-    T value,
-    DateTime? updatedAt,
-  ) =>
-      _write<T>(
-        client,
-        existing,
-        _normalise(value),
-        updatedAt,
-        _entryOptions,
-      );
+  }) =>
+      _updateEntry<T>(client, key, updater, updatedAt, _entryOptions);
 }
 
 /// A reference to one cache entry of a plain query: a definition bound to
@@ -391,7 +453,7 @@ sealed class QueryEntryRef<T> extends QueryTarget {
 ///
 /// {@category Typed queries}
 abstract final class QueryRef<T> extends QueryEntryRef<T> {
-  QueryRef._(super.rawKey) : super._();
+  QueryRef._(QueryKey rawKey) : super._(TypedQueryKey<T>._(rawKey));
 
   /// The options of this query, for an observer, [QueryClient.query] or
   /// any other consumer of [QueryObserverOptions].
@@ -410,6 +472,18 @@ abstract final class QueryRef<T> extends QueryEntryRef<T> {
   /// A `copyWith` cannot unset what the definition set (`null` means "keep"),
   /// and a `copyWith(queryKey: ...)` or `copyWith(queryFn: ...)` leaves the
   /// definition behind: the options then describe another query.
+  ///
+  /// Whether two calls return equal options depends on the definition. A
+  /// [QueryDefinition] hands out the fetch function it was declared with,
+  /// so the options of one that is held, in a top-level `final` or a
+  /// field, are equal from call to call, and an observer handed them again
+  /// sees no change. A [QueryFamily]'s reference binds its input into a
+  /// new function on every call, so its options never equal the ones
+  /// before, as options written inline with a closure do not: the observer
+  /// takes them as changed, and starts no fetch for that alone. A
+  /// `configure` that builds something new on every call, an
+  /// `Enabled.when` over a closure say, makes either kind's options
+  /// differ.
   QueryObserverOptions<T> options();
 
   @override
@@ -471,7 +545,8 @@ abstract final class QueryRef<T> extends QueryEntryRef<T> {
 /// {@category Typed queries}
 abstract final class InfiniteQueryRef<TPageData, TPageParam>
     extends QueryEntryRef<InfiniteData<TPageData, TPageParam>> {
-  InfiniteQueryRef._(super.rawKey) : super._();
+  InfiniteQueryRef._(QueryKey rawKey)
+      : super._(_InfiniteTypedQueryKey<TPageData, TPageParam>._(rawKey));
 
   /// The options of this query, for an `InfiniteQueryObserver`,
   /// [QueryClient.infiniteQuery] or any other consumer of
@@ -485,17 +560,17 @@ abstract final class InfiniteQueryRef<TPageData, TPageParam>
   /// `structuralSharing` from the client's defaults or from
   /// [QueryClient.setQueryDefaults]; only the definition's own are held to
   /// the declared page types.
+  ///
+  /// An [InfiniteQueryDefinition] hands out the paging functions it was
+  /// declared with, so the options of one that is held are equal from call
+  /// to call; an [InfiniteQueryFamily]'s reference binds its input into
+  /// new ones on every call. What that means to an observer is on
+  /// [QueryRef.options].
   InfiniteQueryObserverOptions<TPageData, TPageParam> options();
 
   @override
   QueryOptions<InfiniteData<TPageData, TPageParam>> _entryOptions() =>
       options();
-
-  @override
-  InfiniteData<TPageData, TPageParam> _normalise(
-    InfiniteData<TPageData, TPageParam> value,
-  ) =>
-      _exactInfinite<TPageData, TPageParam>(value);
 
   /// Fetches the query and completes with its pages:
   /// [QueryClient.infiniteQuery] with [options]. Fresh data is returned as
@@ -542,9 +617,10 @@ abstract final class InfiniteQueryRef<TPageData, TPageParam>
 /// `['devices', 'list']`. Declare it once, as a top-level `final` or as a
 /// field of a class that holds the repository it fetches from.
 ///
-/// With a fetch function the data type is inferred from what it returns.
-/// Without one, for an entry that is only ever written or that a default
-/// fetch function serves, write the type argument out:
+/// **Write the type argument out**, as on every definition. It says what
+/// the entry holds where the query is declared, and a definition without a
+/// fetch function, for an entry that is only ever written or that a
+/// default fetch function serves, has nothing else to take the type from:
 /// `QueryDefinition<Session?>(...)`.
 ///
 /// Paged data belongs in an [InfiniteQueryDefinition]. A plain definition
@@ -767,7 +843,7 @@ final class QueryFamily<TInput, T> extends QueryTarget {
   /// Throws [QueryDataTypeError] when an entry under the family's prefix
   /// holds another data type.
   List<(TypedQueryKey<T>, T?)> readAll(QueryClient client) =>
-      _readAll<T>(client, filters());
+      _readAll<T>(client, filters(), TypedQueryKey<T>._);
 
   /// Runs [updater] over the cached data of every input and writes what it
   /// returns; returns each typed key with what its entry then holds.
@@ -805,7 +881,13 @@ final class QueryFamily<TInput, T> extends QueryTarget {
     T? Function(T? previous) updater, {
     DateTime? updatedAt,
   }) =>
-      _updateAll<T>(client, filters(), updater, _asIs, updatedAt);
+      _updateAll<T>(
+        client,
+        filters(),
+        updater,
+        TypedQueryKey<T>._,
+        updatedAt,
+      );
 
   @override
   String toString() => 'QueryFamily<$TInput, $T>(${rawKey.debugString})';
@@ -840,9 +922,16 @@ final class _FamilyQueryRef<TInput, T> extends QueryRef<T> {
 /// ```
 ///
 /// Its key is `[...namespace, name]`. The paging functions are the ones
-/// `InfiniteQueryOptions` takes, and both type arguments are inferred from
-/// them: the page type from what [pageFn] returns, the page param type
-/// from [initialPageParam].
+/// `InfiniteQueryOptions` takes.
+///
+/// **Write the type arguments out.** Dart types the closures of one call
+/// together, and the page type is what it loses. Without
+/// `<List<Post>, int>`, a `getNextPageParam` that reads its page does not
+/// compile, because the page is `Object?` there; and with a `configure`
+/// the definition becomes an `InfiniteQueryDefinition<Object?, int>`
+/// without a word from the analyzer, which a debug build then refuses
+/// when it is made. A declared type on the field that holds the
+/// definition works as well.
 ///
 /// {@category Typed queries}
 final class InfiniteQueryDefinition<TPageData, TPageParam>
@@ -873,7 +962,8 @@ final class InfiniteQueryDefinition<TPageData, TPageParam>
   /// narrower type arguments.
   ///
   /// In a debug build the constructor refuses `dynamic`, `Object?` and
-  /// `void` for either type argument.
+  /// `void` for either type argument, which is what a page type left to
+  /// inference becomes beside a [configure].
   InfiniteQueryDefinition({
     required QueryNamespace namespace,
     required String name,
@@ -957,8 +1047,10 @@ final class InfiniteQueryDefinition<TPageData, TPageParam>
 /// it.
 ///
 /// What [QueryFamily] says about type arguments, inputs, `keyOf` and
-/// nested keys holds here too: **write the type arguments out**, and give
-/// a record input that holds a collection a `keyOf`.
+/// nested keys holds here too: **write the type arguments out** (left to
+/// inference the input is `Object?`, and the page type is lost as on
+/// [InfiniteQueryDefinition]), and give a record input that holds a
+/// collection a `keyOf`.
 ///
 /// {@category Typed queries}
 final class InfiniteQueryFamily<TInput, TPageData, TPageParam>
@@ -1111,7 +1203,11 @@ final class InfiniteQueryFamily<TInput, TPageData, TPageParam>
         InfiniteData<TPageData, TPageParam>?
       )> readAll(
           QueryClient client) =>
-      _readAll<InfiniteData<TPageData, TPageParam>>(client, filters());
+      _readAll<InfiniteData<TPageData, TPageParam>>(
+        client,
+        filters(),
+        _InfiniteTypedQueryKey<TPageData, TPageParam>._,
+      );
 
   /// Runs [updater] over the cached pages of every input and writes what
   /// it returns, as [QueryFamily.updateAll] does and with the same rules:
@@ -1133,7 +1229,7 @@ final class InfiniteQueryFamily<TInput, TPageData, TPageParam>
         client,
         filters(),
         updater,
-        _exactInfinite<TPageData, TPageParam>,
+        _InfiniteTypedQueryKey<TPageData, TPageParam>._,
         updatedAt,
       );
 
@@ -1156,6 +1252,59 @@ final class _FamilyInfiniteQueryRef<TInput, TPageData, TPageParam>
 }
 
 // ------------------------------------------------------------ the writes
+
+/// A single typed write, the reference's and the typed key's alike: the
+/// entry under [key] exact or absent, [value] a `T`, then the write.
+///
+/// The two callers differ in [optionsForNew] and in nothing else, which is
+/// why they share this: what a missing entry is built with, the
+/// definition's options for a reference and the key alone for a typed key.
+T _writeEntry<T>(
+  QueryClient client,
+  TypedQueryKey<T> key,
+  Object? value,
+  DateTime? updatedAt,
+  QueryOptions<T> Function() optionsForNew,
+) {
+  final rawKey = key.rawKey;
+  final existing = client.queryCache.get<T>(rawKey);
+  return _write<T>(
+    client,
+    existing,
+    key._stored(_checked<T>(value, rawKey)),
+    updatedAt,
+    optionsForNew,
+  );
+}
+
+/// A single typed update, shared as [_writeEntry] is: [updater] over what
+/// the entry under [key] holds, and its result written unless it is `null`.
+T? _updateEntry<T>(
+  QueryClient client,
+  TypedQueryKey<T> key,
+  T? Function(T? previous) updater,
+  DateTime? updatedAt,
+  QueryOptions<T> Function() optionsForNew,
+) {
+  final rawKey = key.rawKey;
+  final existing = client.queryCache.get<T>(rawKey);
+  final previous =
+      existing != null && existing.state.hasData ? existing.state.data : null;
+  final Object? next = updater(previous);
+  if (next == null) {
+    return null;
+  }
+  final value = _checked<T>(next, rawKey);
+  // Looked up again: the updater is the caller's code and may have removed
+  // the entry, or made it.
+  return _write<T>(
+    client,
+    client.queryCache.get<T>(rawKey),
+    key._stored(value),
+    updatedAt,
+    optionsForNew,
+  );
+}
 
 /// The one way a typed write reaches the cache: into [existing], or into an
 /// entry built for the key of [optionsForNew] when there is none.
@@ -1199,13 +1348,17 @@ List<Query<T>> _exactEntries<T>(QueryClient client, QueryFilters filters) {
   return entries;
 }
 
+/// [typedKey] makes the key each entry is returned under: the family's
+/// kind of typed key, so that a write through it stores a value as a
+/// reference of that family would.
 List<(TypedQueryKey<T>, T?)> _readAll<T>(
   QueryClient client,
   QueryFilters filters,
+  TypedQueryKey<T> Function(QueryKey rawKey) typedKey,
 ) =>
     [
       for (final (key, data) in client.getQueriesData<T>(filters: filters))
-        (TypedQueryKey<T>._(key), data),
+        (typedKey(key), data),
     ];
 
 /// A family's bulk update, in the order of the client's `updateQueriesData`:
@@ -1220,10 +1373,11 @@ List<(TypedQueryKey<T>, T?)> _updateAll<T>(
   QueryClient client,
   QueryFilters filters,
   T? Function(T? previous) updater,
-  T Function(T value) normalise,
+  TypedQueryKey<T> Function(QueryKey rawKey) typedKey,
   DateTime? updatedAt,
 ) {
   final entries = _exactEntries<T>(client, filters);
+  final keys = [for (final query in entries) typedKey(query.queryKey)];
   final previous = [
     for (final query in entries) query.state.hasData ? query.state.data : null,
   ];
@@ -1234,7 +1388,7 @@ List<(TypedQueryKey<T>, T?)> _updateAll<T>(
       switch (results[i]) {
         // A `null` writes nothing, whatever `T` is.
         null => null,
-        final value => normalise(_checked<T>(value, entries[i].queryKey)),
+        final value => keys[i]._stored(_checked<T>(value, keys[i].rawKey)),
       },
   ];
   // Every entry about to be written, looked up once more before the first
@@ -1243,25 +1397,26 @@ List<(TypedQueryKey<T>, T?)> _updateAll<T>(
   // write, after the writes before it.
   for (var i = 0; i < entries.length; i++) {
     if (next[i] != null) {
-      client.queryCache.get<T>(entries[i].queryKey);
+      client.queryCache.get<T>(keys[i].rawKey);
     }
   }
   return client.notifyManager.batch(
     () => [
       for (var i = 0; i < entries.length; i++)
         (
-          TypedQueryKey<T>._(entries[i].queryKey),
+          keys[i],
           switch (next[i]) {
             null => null,
             // Looked up by key, as the client's bulk update does: an entry
-            // removed since the first pass is made again, with plain
-            // options, because a family cannot tell the input from the key.
+            // removed since the first pass is made again, with the key's
+            // bare options, because a family cannot tell the input from
+            // the key.
             final T value => _write<T>(
                 client,
-                client.queryCache.get<T>(entries[i].queryKey),
+                client.queryCache.get<T>(keys[i].rawKey),
                 value,
                 updatedAt,
-                () => QueryOptions<T>(queryKey: entries[i].queryKey),
+                keys[i]._bareOptions,
               ),
           },
         ),
@@ -1269,13 +1424,12 @@ List<(TypedQueryKey<T>, T?)> _updateAll<T>(
   );
 }
 
-T _asIs<T>(T value) => value;
-
 /// [value] as a `T`, or [QueryDataTypeError] for the entry under [key].
 ///
 /// The parameter is `Object?` and the test an explicit `is`, on purpose.
-/// A reference held as `QueryEntryRef<Object?>` accepts any value
-/// statically. The VM refuses it at the call, but a JavaScript build
+/// A reference held as `QueryEntryRef<Object?>`, or a typed key held as
+/// `TypedQueryKey<Object?>`, accepts any value statically. The VM refuses
+/// it at the call, but a JavaScript build
 /// compiled with `-O3` or `-O4` (Flutter's web release mode) omits that
 /// check, and omits casts as well. An `is` test is kept at every level, so
 /// this is the line such a build stops at, and no other runtime reaches.

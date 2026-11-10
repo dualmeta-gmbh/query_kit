@@ -243,6 +243,48 @@ void main() {
       expect(byAuthor()('ada').options().getPreviousPageParam, isNull);
     });
 
+    test(
+        'a definition hands out the paging functions it was given, a '
+        'family\'s reference binds new ones: what an observer hears', () {
+      final client = testClient();
+      final events = <String>[];
+      client.queryCache.subscribe((event) {
+        if (event is QueryObserverOptionsUpdated) {
+          events.add(event.query.queryKey.parts.join('/'));
+        }
+      });
+
+      // No input: the same functions in new options.
+      final definition = feed();
+      final a = definition.options();
+      final b = definition.options();
+      expect(identical(a.pageFn, b.pageFn), isTrue);
+      expect(identical(a.getNextPageParam, b.getNextPageParam), isTrue);
+      expect(identical(a.getPreviousPageParam, b.getPreviousPageParam), isTrue);
+      final observer = InfiniteQueryObserver(client, definition.options());
+      observer
+        ..setInfiniteOptions(definition.options())
+        ..setInfiniteOptions(definition.options());
+      expect(events, isEmpty);
+      // The definition made again per rebuild holds other functions.
+      observer.setInfiniteOptions(feed().options());
+      expect(events, ['posts/feed']);
+      events.clear();
+
+      // A family binds the input into functions of its own, per call.
+      final ref = byAuthor()('ada');
+      expect(ref.options().pageFn == ref.options().pageFn, isFalse);
+      final refObserver = InfiniteQueryObserver(client, ref.options());
+      refObserver
+        ..setInfiniteOptions(ref.options())
+        ..setInfiniteOptions(ref.options());
+      expect(events, ['posts/byAuthor/ada', 'posts/byAuthor/ada']);
+
+      observer.destroy();
+      refObserver.destroy();
+      client.clear();
+    });
+
     testFakeAsync('fetch is client.infiniteQuery: fresh, stale, joined',
         (time) async {
       final client = testClient();
@@ -1074,6 +1116,191 @@ void main() {
       expect(ran, 0);
       expect(() => family.readAll(client), refused);
       expect(family('ada').state(client)!.dataUpdateCount, 1);
+      client.clear();
+    });
+  });
+
+  // The typed key of an infinite reference writes as the reference does:
+  // it knows the two page types, and nothing else of the definition.
+  group('the typed key of an infinite query writes under the page types', () {
+    test('a reference\'s key rebuilds a narrower value, written or returned',
+        () {
+      final client = testClient();
+      final key = feed().key;
+      final written = narrow();
+
+      final stored = key.write(client, written);
+      expect(stored, isNot(same(written)));
+      expect(stored.runtimeType, typeOf<Feed>());
+      expect(stored.pages, written.pages);
+      expect(key.read(client), same(stored));
+      expect(entry(client, key.rawKey).dataType, typeOf<Feed>());
+      expect(() => stored.pages.add(const []), throwsUnsupportedError);
+
+      final replaced = key.update(client, (data) => narrow(2));
+      expect(replaced.runtimeType, typeOf<Feed>());
+      // What it is for: the cached value takes a page of the declared type.
+      final grown = key.update(
+        client,
+        (data) => data!.copyWith(
+          pages: [
+            ...data.pages,
+            [const Post(3)],
+          ],
+          pageParams: [...data.pageParams, 3],
+        ),
+      );
+      expect(grown!.pages.last, [const Post(3)]);
+      client.clear();
+    });
+
+    test('an exact value is stored as it is, and an equal one is shared', () {
+      final client = testClient();
+      final key = feed().key;
+      final value = exact();
+      expect(key.write(client, value), same(value));
+      // Rebuilding is what lets sharing work: an equal narrower write
+      // keeps the cached instance, as through the reference.
+      final first = key.write(client, narrow());
+      expect(key.write(client, narrow()), same(first));
+      client.clear();
+    });
+
+    test('a family\'s reference, and the keys readAll and updateAll return',
+        () {
+      final client = testClient();
+      final family = byAuthor();
+      expect(
+        family('ada').key.write(client, narrow(1)).runtimeType,
+        typeOf<Feed>(),
+      );
+      family('bob').write(client, exact(2));
+
+      final snapshot = family.readAll(client);
+      final updated = family.updateAll(client, (data) => narrow(10));
+      for (final (key, data) in updated) {
+        expect(data.runtimeType, typeOf<Feed>());
+        expect(key.write(client, narrow(11)).runtimeType, typeOf<Feed>());
+        expect(
+          key.update(client, (data) => narrow(12)).runtimeType,
+          typeOf<Feed>(),
+        );
+      }
+      // The restore: the snapshot's keys, written what they were read with
+      // and, to show the key and not the value does it, a narrower copy.
+      for (final (key, data) in snapshot) {
+        final restored = key.write(
+          client,
+          InfiniteData<List<Pinned>, int>(
+            pages: [
+              [for (final post in data!.pages.single) Pinned(post.id)],
+            ],
+            pageParams: data.pageParams,
+          ),
+        );
+        expect(restored.runtimeType, typeOf<Feed>());
+      }
+      expect(family('ada').read(client)!.pages, [
+        [const Pinned(1)],
+      ]);
+      expect(family('bob').read(client)!.pages, [
+        [const Pinned(2)],
+      ]);
+      client.clear();
+    });
+
+    test('an entry it creates is bare: no hook, no seed of the definition\'s',
+        () {
+      final client = testClient();
+      var shared = 0;
+      var configured = 0;
+      final definition = feed(
+        configure: (base) {
+          configured++;
+          return base.copyWith(
+            structuralSharing: (previous, next) {
+              shared++;
+              return next;
+            },
+            initialData: InitialData.value(exact(9)),
+            gcTime: GcTime.never,
+          );
+        },
+      );
+      definition.key.write(client, exact(1));
+      definition.key.write(client, exact(2));
+      expect(configured, 0);
+      expect(shared, 0);
+      final made = entry(client, definition.key.rawKey);
+      expect(made.dataType, typeOf<Feed>());
+      expect(made.gcTime, GcTime.defaultValue);
+      expect(made.resetState.hasData, isFalse);
+
+      // The control: the reference's write makes it with the definition's.
+      definition.remove(client);
+      definition.write(client, exact(1));
+      definition.write(client, exact(2));
+      expect(configured, 1);
+      expect(shared, 2);
+      expect(entry(client, definition.key.rawKey).gcTime, GcTime.never);
+      client.clear();
+    });
+
+    test('over an entry of narrower page types it throws, nothing written', () {
+      final client = testClient();
+      final key = feed().key;
+      client.setQueryData(key.rawKey, narrow());
+      final refused = throwsA(
+        dataTypeError(
+          key.rawKey,
+          typeOf<Feed>(),
+          typeOf<InfiniteData<List<Pinned>, int>>(),
+        ),
+      );
+      expect(() => key.write(client, exact()), refused);
+      expect(() => key.update(client, (data) => exact()), refused);
+      expect(entry(client, key.rawKey).state.dataUpdateCount, 1);
+      client.clear();
+    });
+
+    // What the key carries is not part of what it is: the cache compares
+    // raw keys, and a typed key adds the data type and nothing more.
+    test(
+        'a plain definition\'s key of the same InfiniteData type is equal, '
+        'and stores a narrower value as it is', () {
+      final client = testClient();
+      final plain = QueryDefinition<Feed>(namespace: posts, name: 'feed').key;
+      final infinite = feed().key;
+      expect(plain, infinite);
+      expect(infinite, plain);
+      expect(plain.hashCode, infinite.hashCode);
+      expect(<Object>{plain, infinite}, hasLength(1));
+      expect(plain.toString(), infinite.toString());
+
+      // The plain definition's key has one type, the whole value's.
+      final asIs = plain.write(client, narrow());
+      expect(asIs.runtimeType, typeOf<InfiniteData<List<Pinned>, int>>());
+      // The infinite definition's key, over the same entry, rebuilds.
+      final rebuilt = infinite.write(client, narrow(2));
+      expect(rebuilt.runtimeType, typeOf<Feed>());
+      client.clear();
+    });
+
+    test('through a widened key a wrong value is refused, nothing written', () {
+      final client = testClient();
+      final TypedQueryKey<Object?> wide = feed().key;
+      final refused = throwsA(
+        anyOf(isA<TypeError>(), isA<QueryDataTypeError>()),
+      );
+      expect(
+        () => wide.write(
+          client,
+          InfiniteData<String, String>(pages: ['a'], pageParams: ['b']),
+        ),
+        refused,
+      );
+      expect(() => wide.update(client, (data) => const [Post(1)]), refused);
+      expect(client.queryCache.findAll(), isEmpty);
       client.clear();
     });
   });

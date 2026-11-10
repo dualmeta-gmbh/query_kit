@@ -100,6 +100,54 @@ void updates(QueryClient client) {
   queries.devices.detail.updateAll(client, (previous) => 'renamed');
 }
 
+void typedKeys(QueryClient client, Object anything) {
+  final key = queries.devices.detail('d1').key;
+  final feed = queries.devices.feed.key;
+
+  // A typed key's write is held to the key's type, as the reference's is.
+  // EXPECT error argument_type_not_assignable
+  key.write(client, 'not a device');
+  // EXPECT error argument_type_not_assignable
+  key.write(client, null);
+  // EXPECT error argument_type_not_assignable
+  key.write(client, anything);
+  // EXPECT error argument_type_not_assignable
+  key.write(client, [const Device('d1')]);
+
+  // And so is what its updater returns, and what it is handed.
+  // EXPECT error return_of_invalid_type_from_closure
+  key.update(client, (previous) => 'renamed');
+  // EXPECT error argument_type_not_assignable
+  key.update(client, (String? previous) => null);
+  // EXPECT error unchecked_use_of_nullable_value
+  key.update(client, (previous) => previous.copyWith(isOn: true));
+
+  // A snapshot of one family is not written back through another's keys.
+  for (final (_, data) in queries.devices.reading.readAll(client)) {
+    if (data != null) {
+      // EXPECT error argument_type_not_assignable
+      key.write(client, data);
+    }
+  }
+
+  // Paged data through its key: both page types are held.
+  // EXPECT error argument_type_not_assignable
+  feed.write(client, [const Device('d1')]);
+  feed.write(
+    client,
+    // EXPECT error list_element_type_not_assignable
+    InfiniteData(pages: [], pageParams: ['first']),
+  );
+  // EXPECT error return_of_invalid_type_from_closure
+  feed.update(client, (previous) => previous?.pages);
+
+  // What a key's write returns is the key's type.
+  // EXPECT error invalid_assignment
+  final String written = key.write(client, const Device('d1'));
+
+  _use([written]);
+}
+
 void selectors(QueryClient client) {
   final device = queries.devices.detail('d1');
 

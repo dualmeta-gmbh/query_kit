@@ -43,6 +43,23 @@ a "Done" block with the mutation recipes and the exit walked item by
 item; the review record ends with one table for the review and one for
 the phase. No signature changed.
 
+**Phase 3 is done (TQ3, [#134](https://github.com/dualmeta-gmbh/query_kit/issues/134),
+2026-11-10), and what its consumers reported was worked off the same
+day.** The binding and the hooks took the definitions with no library
+change; the task manager, the hooks example and two showcase screens run
+on them, and the showcase has a `typed-queries` screen
+([Phase 3](#phase-3--flutter-hooks-and-representative-consumers) has the
+"Done" block). Two of the reports became decisions of the product owner:
+a **typed key writes** (`TypedQueryKey.write` and `update`, the one
+addition to the surface since Phase 0; D1, D2, D5, D7), and **every
+definition's type arguments are written out**, because an infinite
+definition without them loses its page type in two ways Phase 0 had not
+measured (D10). One sentence of this plan was wrong and is corrected:
+only a *family's* reference makes a new fetcher closure per `options()`
+call (D4). The review record's
+[last section](#after-phase-3-the-consumers-reports-2026-11-10) has a row
+each, and the reports that were deliberately left.
+
 Date: 2026-10-18. Repository baseline: `a5afe7d` (`main`). Phase 0 ran over
 `51ab8ad`.
 
@@ -240,7 +257,8 @@ invalidation without lying about a data type.
   type comes from it. It does not retain a client, mount observers, fetch or
   register timers merely because it was constructed.
 - `TypedQueryKey<TCacheData>` wraps the existing raw `QueryKey` and retains the
-  cache type for key-only reads and state access. Creation goes through
+  cache type for key-only reads and state access, and since TQ3 for
+  key-only writes (below). Creation goes through
   definitions and references, not a public arbitrary `fromRaw<T>` cast. Its
   `==` is the raw key plus `TCacheData`; its `rawKey` is what filters take.
 - `QueryDefinition<TCacheData>` is itself a `QueryRef<TCacheData>`, and
@@ -299,7 +317,61 @@ reverse; `TypedQueryKey` has no public constructor, no `fromRaw`, no
 raw key is; `QueryRef<Device>()` does not exist; and none of
 `QueryTarget`, `QueryEntryRef`, `QueryRef`, `TypedQueryKey` can be
 implemented outside the library. Each is an analyzer error at its line
-(`negative/surface_limits.dart`).
+(`negative/surface_limits.dart`). (Since TQ3 a typed key has `write` and
+`update`, below; what it still lacks, and the fixture now refuses, is
+`options`, `fetch`, `invalidate` and `filters`.)
+
+**After TQ3: a typed key writes.** The product owner's decision, on two
+reports from Phase 3. The core's own bulk recipe could not put a snapshot
+back by key (P2-6: it restored through the data's own id, which works
+only for data that carries its key's input), and the task manager's
+delete rollback left the surface for the raw `setQueryData` with the
+key's `rawKey`. `readAll` and `updateAll` return typed keys, and a typed
+key could read its entry and not write it.
+
+- *What was added.* `TypedQueryKey<T>.write(client, value, {updatedAt})`
+  returning `T` and `update(client, updater, {updatedAt})` returning `T?`:
+  the reference's two writes, with the reference's one shape (D5) and
+  through the same private implementation, so the key's write and the
+  reference's cannot drift apart. Nothing else: no `options`, no `fetch`,
+  no lifecycle operation. A typed key is still not a target.
+- *A typed key knows the type, not the definition.* It has no options to
+  build an entry with. Options: (a) the key carries the options, or the
+  definition, it came from, which makes it retain a fetcher and whatever
+  that closes over, puts a second road to `options()` on a value that is
+  compared and hashed, and cannot be delivered where it matters most: a
+  family's `readAll` has keys and no inputs, and a `keyOf` cannot be run
+  backwards (D7); (b) a key's write refuses to create, which makes the
+  restore loop fail for exactly the entry a rollback most needs to put
+  back, one removed in between; (c) an entry a key's write creates is
+  built from the key and `T` alone. Answer: (c). The entry is what the raw
+  `setQueryData<T>` would create, with the declared type in place of the
+  value's own: the client's and the key's defaults apply, the
+  definition's `configure` does not, and it has no fetch function until
+  an observer or a `fetch` through the reference brings the definition's
+  (D5 has the comparison). An existing entry is written as it is, so for
+  the ordinary restore nothing differs.
+- *Infinite normalisation holds for an infinite key.* The key of an
+  infinite reference, and every key an infinite family's `readAll` and
+  `updateAll` return, rebuilds a narrower `InfiniteData` under the page
+  types exactly as the reference does. Options for how the key carries
+  that: (a) a function field `T Function(T)`, which D2 already rules out
+  (reading a contravariant field through a widened receiver can throw for
+  a valid value) and which is a held closure; (b) a type-erased
+  `Object? Function(Object?)` with casts, which `-O4` compiles out; (c) a
+  private subclass, `_InfiniteTypedQueryKey<P, Q>`, that overrides one
+  private method. Answer: (c). It holds the raw key and nothing else,
+  `==`, `hashCode` and `toString` are the base's, so the key of an
+  infinite reference and of a plain definition of the same key and
+  `InfiniteData` type stay equal (`D4-9`) while only the first
+  normalises: limit 20 reaches the key unchanged.
+- *What it does not open.* A typed key still has no public constructor,
+  so the only keys that exist are those a definition, a reference or a
+  bulk call handed out, each with the definition's own type. The write is
+  receiver-anchored like the reference's (D2), and a widened key is
+  refused at runtime like a widened reference
+  (`negative/reads_and_writes.dart`, twelve more refused lines;
+  `boundary/widened_receiver.dart`; observations `O7-key-1` to `-16`).
 
 `QueryKey` and its equality/hashing stay unchanged. It is final, so the typed
 key wraps it. No `T`, closure identity or definition instance identity enters
@@ -385,6 +457,27 @@ the explicit check through `Object?` fires for the single `write`, the
 single `update` and the family bulk update, before anything is written. An
 AOT executable of the same program (`dart compile exe`, Dart 3.10.7, run
 once by hand, not part of the runner) printed what the VM prints.
+
+**After TQ3 (the typed key's writes):** a `TypedQueryKey<T>` writes the
+way a reference does (D1), so it is anchored the same way, and widened the
+same way: `TypedQueryKey<Device>` is assignable to `TypedQueryKey<Object?>`
+and `key.write(client, 'x')` compiles there. The key's `write` and
+`update` are methods of the key over the reference's own implementation,
+with the same check through `Object?`. Observed on the five runtimes of
+the three SDKs (`O7-key-1` to `-16`, `D9-12`):
+
+| Observation | VM, dart2js default | dart2js `-O3`, `-O4` |
+|---|---|---|
+| `write` of a `String` through `TypedQueryKey<Device>` as `TypedQueryKey<Object?>`, entry absent or present | `TypeError` | `QueryDataTypeError`; no entry made, a cached value kept |
+| `update` returning an `int`, entry absent or present; an updater typed `Object? Function(Object?)` | `TypeError` | `QueryDataTypeError`; cached value kept |
+| a `Temperature` through the first element of `[TypedQueryKey<Device>, TypedQueryKey<Reading>]`, a `List<TypedQueryKey<Object>>` | `TypeError`; no entry | `QueryDataTypeError`; no entry |
+| an `InfiniteData<String, String>` through a widened infinite key | `TypeError` | `QueryDataTypeError`; cache unchanged |
+| the valid value through the widened key, entry absent; `null` through a widened nullable key | a `Query<Device>` is created; `null` is stored | the same |
+| a `Thermostat` through `TypedQueryKey<Device>`; a `Device` through `TypedQueryKey<Device?>` | `Query<Device>`, `Query<Device?>`: the declared type, where the raw call infers `Query<Thermostat>` | the same |
+| the key's write over a raw `Query<Object>` | `QueryDataTypeError`, where the raw `setQueryData<Device>` writes | the same |
+| a narrower `InfiniteData` through an infinite reference's key, and through a key of an infinite family's `readAll` | stored under the declared page types | the same |
+| the same through the key of a plain definition typed `InfiniteData` | stored as it came (limit 20) | the same |
+| a snapshot of `readAll` over two entries, both changed and one removed, each key's `write` | both as before; the removed one is a `Query<Device>` again | the same |
 
 **Phase 0 (the input, an addition):** the same widening reaches a family's
 *input*. `QueryFamily<String, Device>` held as `QueryFamily<Object?,
@@ -553,8 +646,12 @@ Consequences:
   differently, a distinction the cache does not make and no operation acts
   on. So a reference bound by a family and a zero-input definition whose
   key and type coincide are equal (`D4-10`).
-- `ref.options()` returns fresh options with a fresh bound closure each call,
-  as an options function does today; nothing memoises them.
+- `ref.options()` returns fresh options each call, as an options function
+  does today; nothing memoises them. A **family's** reference binds its
+  input in a fresh closure each time, so its options never resolve equal.
+  A zero-input definition has nothing to bind and hands out the function
+  it was given (corrected after TQ3, below; this bullet first claimed the
+  fresh closure for every reference).
 - A changed fetcher or a changed definition default is an options change and
   reaches the observer; nothing suppresses it.
 - Acceptance is parity with raw options, because the observer never sees
@@ -573,7 +670,8 @@ Open-4 of round 1 is closed by this decision.
 
 **Phase 0 (the fixture that is not about types):** observations `D4-1` to
 `D4-15` in `runtime/observations.dart`, the same on every runtime of every
-SDK.
+SDK. (`D4-16` to `D4-18` were added after TQ3, with the correction under
+the table.)
 
 | Observed | Result |
 |---|---|
@@ -585,9 +683,42 @@ SDK.
 | a plain and an infinite definition of one key and one data type | typed keys equal, references unequal: the kind (`D4-9`) |
 | a family's reference and a zero-input definition of one key and type | `==` both ways, same `hashCode` (`D4-10`) |
 | references and typed keys as set members and map keys | found (`D4-11`) |
-| the options of one reference, asked for twice | not identical, another fetcher closure, the same key (`D4-12`) |
+| the options of one reference of a family, asked for twice | not identical, another fetcher closure, the same key (`D4-12`) |
 | binding references and asking for options before a client is used | no entry in either client (`D4-13`) |
 | one reference written through one client, read through two | the first holds the value, the second nothing; then each its own (`D4-14`, `D4-15`) |
+| the options of a zero-input definition, asked for twice; of the same definition made again | not identical, the **same** fetcher, equal once a client resolved them; another fetcher (`D4-16`) |
+| the paging functions of an infinite definition, and of an infinite family's reference, asked for twice | the definition's are the same functions, the family's are not (`D4-17`) |
+| an observer handed the options again: of a held zero-input definition, then of a family's reference | `QueryObserverOptionsUpdated` heard 0 times, then once (`D4-18`) |
+
+**After TQ3 (which options are equal):** this decision, limit 14 and the
+dartdoc said that every `options()` call makes another fetcher closure.
+The binding's parity suite counted the events and found otherwise for one
+shape: a zero-input definition held in a field emitted **no**
+`QueryObserverOptionsUpdated` on a rebuild, where inline raw options, a
+family's reference and a definition recreated in `build` each emitted one.
+Reproduced in the core before a word changed: `QueryDefinition.options()`
+and `InfiniteQueryDefinition.options()` pass on the functions the
+constructor was given, and `Defaulted*Options.==` compares functions with
+`==`, so two calls resolve equal; `QueryFamily` and `InfiniteQueryFamily`
+wrap every function in a closure over the input, per call. So:
+
+- *held zero-input definition:* options equal from build to build, no
+  event, unless its `configure` builds something unequal per call (an
+  `Enabled.when` over a closure);
+- *family reference, however held:* options never equal, one event per
+  `setOptions`;
+- *a definition made again* (in `build`, or by a hot restart): unequal to
+  the old one's, because the function it was given is another closure.
+
+Nothing was changed to make the two alike. Options: (a) wrap the
+zero-input definition's function per call, so that every reference
+behaves the same, which adds an event and a cache scan per rebuild for
+nothing; (b) memoise the family's closures, which D4 declined for reasons
+that still hold; (c) say what is true. Answer: (c). The answer of D4
+stands as it was, since nothing gates on the equality either way: the
+observer runs `setOptions` and re-evaluates `enabled` in both cases
+(#84). Three tests in the core pin it (the definition's functions, the
+observer's event count for the plain and for the infinite kind).
 
 That a reference holds no client is also what the signatures say: every
 operation takes the client as its first argument, and a reference has no
@@ -634,6 +765,26 @@ must create an entry of the declared type, or the next typed read throws.
      entry is written through the same `Query.setData(manual: true)` the raw
      path uses, so sharing and timestamps behave identically.
   The raw `setQueryData` and `updateQueriesData` keep their leniency.
+- **A typed key's write has the same shape, and differs in step 4 only**
+  (after TQ3, D1): a key has the type and no definition, so an entry it
+  creates is bare, built from `QueryOptions<TCacheData>(queryKey: rawKey)`.
+
+  | An entry created by | Type | Options | Fetch function |
+  |---|---|---|---|
+  | `ref.write` / `ref.update` | the declared `TCacheData` | the definition's `options()`: its `configure` runs, its `gcTime`, sharing, `initialData` and `meta` apply, over the key's and the client's defaults | the definition's, from the first write |
+  | `key.write` / `key.update` | the declared `TCacheData` | the key's and the client's defaults only (`setQueryDefaults`, `defaultOptions`); `gcTime` five minutes unless they say otherwise | none, until an observer or `ref.fetch` brings the definition's |
+  | raw `setQueryData` with no type argument | the value's own static type | the same defaults | none |
+  | `updateAll`, for an entry an updater removed | the declared type | as `key.write` (D7) | none |
+
+  What "no fetch function" costs, a test: `family.refetch(client)`, or
+  any refetch of every entry, over a key-created entry that nothing
+  observes ends in `MissingQueryFunctionError` for that entry, status
+  `error`, data kept. That is the raw client's behaviour for an entry
+  `setQueryData` made, and upstream's; the first `ref.fetch` or observer
+  with the definition's options repairs it. An entry that exists is written as it
+  is, whoever writes: the difference is only ever about an entry that was
+  not there, and `ref.write` is the call for creating one with the
+  definition's options.
 - `write` and `update` take the raw path's `updatedAt`, which a rollback
   needs.
 - **Infinite normalisation** rebuilds an `InfiniteData` whose runtime type is
@@ -951,7 +1102,11 @@ list write).
   `family.updateAll(client, updater, {updatedAt})`, on both family kinds,
   and both return `List<(TypedQueryKey<T>, T?)>`: the raw calls' list of
   key and value with the key typed, so a result can be read again without
-  leaving the surface. Options for the names: `read` / `update` as on a
+  leaving the surface, and since TQ3 written again: each returned key is
+  the family's kind of typed key (an infinite family's normalises), and
+  `for (final (key, data) in snapshot) key.write(client, data)` is the
+  restore of a bulk snapshot (D1; the fifth mutation recipe). Options for
+  the names: `read` / `update` as on a
   reference (a family would then have a `read` that returns a list, and
   "a family has no `read`" would stop being a compile error for the
   commonest slip, a forgotten input); `readAll` / `updateAll`. Answer: the
@@ -1002,7 +1157,8 @@ test:
 - An entry an updater removed is written again, **bare**: with the key
   alone, as the raw path does it. The family could build it with the
   input's options only by turning a key back into an input, which a
-  `keyOf` does not allow.
+  `keyOf` does not allow. (It is the entry a typed key's `write` creates,
+  and since TQ3 the same code: D5's table.)
 - An entry an updater added is not part of the call.
 - An entry swapped for one of a wider type makes its own write throw, and
   the writes made before it stay. The raw path writes into the wider
@@ -1071,7 +1227,9 @@ infinite one is expected and the reverse, plain options handed to an
 infinite observer). A zero-input infinite definition without type
 arguments infers both types exactly, from `initialPageParam` and the page
 function's return; an infinite family without them has D10's `Object?`
-input.
+input. (True only of the declaration Phase 0 measured, whose
+`getNextPageParam` does not read its page and which has no `configure`.
+TQ3's consumers wrote the other two, and D10 has what they infer.)
 
 ### D9. Every consumer, no new state layer
 
@@ -1205,12 +1363,100 @@ in every row.
 | `InfiniteQueryDefinition(pageFn: …, initialPageParam: 0, …)` | `InfiniteQueryDefinition<List<Device>, int>`, exact | clean | clean |
 | `QueryFamily(queryFn: (String id, QueryFunctionContext context) => …)` | `QueryFamily<String, Device>`, exact | clean | clean |
 | `final QueryFamily<String, Device> x = QueryFamily(…)` | exact | clean | clean |
+| *added after TQ3:* | | | |
+| `InfiniteQueryDefinition(…)` whose `getNextPageParam` reads `page` or `pages` | the declaration exact, the closure's `page` an `Object?` | `unchecked_use_of_nullable_value` at the use | the same |
+| the same in an `InfiniteQueryFamily`, and in a raw `InfiniteQueryObserverOptions` | the same | the same error | the same |
+| `InfiniteQueryDefinition(…, configure: (base) => …)`, the page not read | `InfiniteQueryDefinition<Object?, int>` | clean | clean |
+| `InfiniteQueryFamily(…, configure: (base, id) => …)` | `InfiniteQueryFamily<Object?, Object?, int>` | clean | clean |
+| the same definition with the page parameter typed, `(List<Device> page, …)` | not inferred | `could_not_infer` at the declaration, `argument_type_not_assignable` at the closure | the same |
+| `QueryDefinition(queryFn: …, configure: (base) => …)` | `QueryDefinition<List<Device>>`, exact | clean | clean |
+| `QueryDefinition(configure: (base) => …)`, no fetcher | `QueryDefinition<Object?>` | clean | clean |
+| `QueryFamily(queryFn: (id, context) => …, configure: (base, id) => …)` | `QueryFamily<Object?, List<Device>>` | clean | clean |
+| `QueryFamily(queryFn: (String id, QueryFunctionContext context) => …, configure: …)` | `QueryFamily<String, Device>`, exact | clean | clean |
 
-So the decision is narrower than its heading, and better: **the limit is a
-family's input slot.** A zero-input definition with a fetcher has no slot
-that lacks a source, and it infers exactly; the examples may leave its type
-arguments out, and the guide says a family's are written. The output types
-are exact in every row that has a fetcher.
+Phase 0 concluded from the first nine rows that the decision was narrower
+than its heading: **the limit is a family's input slot**, a zero-input
+definition with a fetcher infers exactly, "the examples may leave its
+type arguments out, and the guide says a family's are written". TQ3's
+consumers wrote the declarations Phase 0 had not, and the conclusion did
+not survive them.
+
+**After TQ3: every definition's type arguments are written out.** The
+product owner's decision; what follows is the measurement behind it and
+the record of what else was tried. Two failures, both of an infinite
+definition without type arguments, both the same on Dart 3.6.2, 3.10.7
+and 3.13.4 and on every language version each of them offers:
+
+- *(a) A `getNextPageParam` that reads its page does not compile.* The
+  declaration's own type is still inferred exactly. The closure's `page`
+  parameter is not. The reading that fits every row: Dart infers the
+  closures of one call in stages by what each needs and supplies, and
+  these two need each other. `pageFn`'s untyped parameter needs the page
+  param type, which `getNextPageParam`'s return supplies;
+  `getNextPageParam`'s untyped parameters need the page type, which
+  `pageFn`'s return supplies. Closures in such a circle are typed
+  together, from what is known before either, and the page type is not.
+  So `page.isEmpty` is `unchecked_use_of_nullable_value`, and so is
+  `pages.last`. It is Dart's rule and not this surface's: the raw
+  `InfiniteQueryObserverOptions` written the same way fails the same way
+  (`negative/untyped_definition.dart`, five declarations). It fails
+  loudly, at the line that is wrong.
+- *(b) With a `configure` the page type is lost without a word.* The
+  `configure` closure joins the circle, and unlike `getNextPageParam` it
+  *returns* something that carries the page type: its untyped `base` is
+  typed with the page type unknown, what it returns is therefore options
+  of `Object?` pages, and that is a second source for the page type, which
+  joined with `pageFn`'s is `Object?`. The definition is an
+  `InfiniteQueryDefinition<Object?, int>`. Neither the analyzer's defaults
+  nor this repository's strict options report anything
+  (`boundary/untyped_definition.dart`; an unexpected diagnostic fails the
+  runner, and none appears). Every later use then fails or, worse, does
+  not: a read is `InfiniteData<Object?, int>?`, the definition is not
+  assignable where the typed one is expected, and a write of
+  `InfiniteData(pages: ['not a page'], …)` compiles. What refuses it is
+  the debug assertion of this decision and nothing else: `AssertionError`
+  at construction with assertions on, constructed without (`D10-9`).
+
+What cures each, each a pinned declaration in
+`positive/written_type_arguments.dart`:
+
+| Written | (a) the page is read | (b) there is a `configure` |
+|---|---|---|
+| the type arguments, `InfiniteQueryDefinition<List<Device>, int>(…)` | cured | cured |
+| a declared type on the field | cured | cured |
+| the page function's parameter typed, `(InfinitePageContext<int> context) => …` | cured | cured |
+| a named page function (a tear-off) | cured | cured |
+| the page parameter typed where it is read, `(List<Device> page, …) => …` | cured | **not cured:** `could_not_infer` and `argument_type_not_assignable` |
+| the `configure` parameter typed | not needed | cured |
+
+And what is not affected: a plain `QueryDefinition` with a fetcher keeps
+its data type beside any `configure` (its `configure` needs the type
+too, but the fetcher's parameter does not depend on it, so the fetcher is
+inferred first; the same reason a typed `pageFn` parameter or a tear-off
+cures both failures above); a family whose closure parameters are typed
+keeps its input. A plain definition *without* a fetcher and with a `configure` is
+a `QueryDefinition<Object?>`, silently, where the one without either is
+`dynamic` and reported by `strict-inference` (`D10-11`).
+
+Options for the rule: (a) keep Phase 0's "a family's are written" and add
+the two infinite cases as exceptions, which makes the reader learn Dart's
+inference order to know whether a declaration is safe, and one of the two
+failures is silent; (b) recommend a typed closure parameter, which is
+shorter in some declarations, but which parameter depends on which
+failure it is, and the obvious one (the page, where the error is
+reported) makes (b) worse; (c) change the signatures so that inference
+succeeds, which the product owner ruled out and which no reordering of named
+parameters achieves, because the dependency is between the closures and
+not their order; (d) **write the type arguments on every definition**,
+one rule with no case analysis, which cures both and also states at the
+declaration what the entry holds. Answer: (d). A plain zero-input
+definition with a fetcher still infers exactly; that stays measured
+(`boundary/untyped_definition.dart`, `untypedListConfigured`) and is not
+the documented form, because a rule with an exception for the one shape
+that happens to work is the rule Phase 0 wrote. The library's dartdoc,
+each definition's class comment and the limits list say (d); no
+signature changed, and the debug assertion stays the only backstop for
+(b), which is why the rule is stated first among the limits.
 
 What an untyped family costs, measured:
 
@@ -1364,7 +1610,8 @@ deleted by TQ1) and are now those of
 analyzes against; a signature that changes fails a fixture. Ten
 types, no new typedef, no new top-level function, nothing added to
 `QueryClient`. The names of the type parameters are not part of the
-contract.
+contract. One addition since: `TypedQueryKey.write` and `update`, after
+TQ3 (D1), marked in the block.
 
 ```dart
 /// What a lifecycle operation is aimed at. No data type.
@@ -1396,6 +1643,10 @@ final class TypedQueryKey<T> {
   Type get dataType;
   T? read(QueryClient client);
   QueryState<T>? state(QueryClient client);
+  // Added after TQ3:
+  T write(QueryClient client, T value, {DateTime? updatedAt});
+  T? update(QueryClient client, T? Function(T? previous) updater,
+      {DateTime? updatedAt});
 }
 
 sealed class QueryEntryRef<T> extends QueryTarget {
@@ -1515,12 +1766,19 @@ Behaviour that belongs to the signatures:
 - `write`, `update` and `updateAll` check the entry for the exact type
   first, then the value or every updater result through `Object?`, then
   write; they throw `QueryDataTypeError`. `call` checks the input the same
-  way and throws `ArgumentError` (D2, D5, D7).
+  way and throws `ArgumentError` (D2, D5, D7). A typed key's `write` and
+  `update` are the reference's, through one implementation; an entry they
+  create is built from the key and the type alone, with no fetch function
+  (D1, D5). The key of an infinite reference, and every key an infinite
+  family's bulk calls return, normalises as the reference does.
 - Every definition constructor asserts that none of its type arguments is a
   top type, and the plain ones that the data type is not `Null` (D10, D5).
   Debug builds only.
 - `options()` returns fresh options on every call, with the definition's
-  key and functions pinned after `configure` (D4, D6). The definition pins
+  key and functions pinned after `configure` (D4, D6). A zero-input
+  definition's carry the functions it was given, so they resolve equal
+  from call to call; a family's reference binds new ones each time (D4,
+  after TQ3). The definition pins
   what it declares; what it leaves unset, `configure` may set. Options of
   another runtime type than the definition's own are a `StateError` (D6,
   TQ2).
@@ -1543,12 +1801,19 @@ introduced.
 2. *dart2wasm at `-O3`/`-O4`* was not run in Phase 0; round 3's probe says
    it traps uncatchably there. Flutter's wasm default is `-O2`.
 3. *No generic client-style setter*, because one widens (D2).
-4. *A family without type arguments has an `Object?` input.* It fails to
-   compile when its fetcher uses the input as a type, and compiles
-   silently when it does not, under strict options too; the refusal is
-   then a debug assertion and absent from a release build. The assertion
-   also refuses a deliberate `Object?` or `void` input; `Object`, a
-   nullable or a sealed type pass (D10).
+4. *Every definition's type arguments are written out* (D10, after TQ3;
+   this limit first named a family only). Left to inference: a family has
+   an `Object?` input, which fails to compile when its fetcher uses the
+   input as a type and compiles silently when it does not; an infinite
+   definition whose `getNextPageParam` reads its page does not compile;
+   an infinite definition or family with a `configure` has `Object?`
+   pages, silently; a plain definition with a `configure` and no fetcher
+   is a `QueryDefinition<Object?>`, silently. "Silently" is under strict
+   options too; the refusal is then a debug assertion and absent from a
+   release build. The assertion also refuses a deliberate `Object?` or
+   `void` input; `Object`, a nullable or a sealed type pass. A plain
+   zero-input definition with a fetcher infers exactly, which is measured
+   and is not the documented form.
 5. *A key-only definition without type arguments is `dynamic`*; only
    `strict-inference` reports it, and the same debug assertion (D10).
 6. *`QueryDefinition<Null>`* is refused by a debug assertion only (D5).
@@ -1571,8 +1836,13 @@ introduced.
     which a typed read then refuses (D5).
 12. *`read` cannot tell a cached `null` from no data*; `state` can (D5).
 13. *A per-use `copyWith` cannot unset a definition's default* (D6).
-14. *Options carry no equality*, and each `options()` call makes a new
-    fetcher closure (D4).
+14. *Options carry no equality.* A family's reference makes a new fetcher
+    closure on every `options()` call, so its options never resolve equal
+    and an observer handed them again emits one
+    `QueryObserverOptionsUpdated`; a held zero-input definition's resolve
+    equal and emit none, unless its `configure` builds something new per
+    call (D4, after TQ3; this limit first claimed the new closure for
+    every reference).
 15. *A narrower `InfiniteData` supplied through a per-use `copyWith`* is
     outside the normalisation, and so is a `structuralSharing` from the
     client's or a key's defaults. The definition's own `structuralSharing`
@@ -1602,7 +1872,16 @@ introduced.
 20. *A plain definition typed `InfiniteData<P, Q>` does not normalise.*
     Its entry is exact and the value it stores keeps the type arguments it
     came with; only an infinite definition rebuilds a narrower
-    `InfiniteData` under the declared page types (D3, D5, TQ2).
+    `InfiniteData` under the declared page types (D3, D5, TQ2). Its typed
+    key does not either, though it is `==` to the key of an infinite
+    definition of the same raw key and data type, which does (D1).
+21. *A typed key knows the type, not the definition.* An entry its
+    `write` or `update` creates has the declared type, the client's and
+    the key's defaults, none of the definition's options and no fetch
+    function: a refetch of every entry before an observer or a `fetch`
+    through the reference supplied one fails that entry with
+    `MissingQueryFunctionError` and keeps its data. Create through the
+    reference when the definition's options matter (D1, D5, after TQ3).
 
 ## Implementation map
 
@@ -1763,6 +2042,13 @@ reports.
 The tree after TQ2: 24 files (seven positive, seven negative, four
 boundary, four support, the surface and the program), 119 `error` markers
 and 5 `strict` ones, 113 observations.
+
+The tree after TQ3's reports were worked off: 25 files (an eighth
+positive one, `written_type_arguments.dart`), 144 `error` markers (twelve
+for the typed key's writes, three for what a typed key still lacks, ten
+for the infinite definitions without type arguments) and 5 `strict`
+ones, 136 observations (`O7-key-1` to `-16`, `D9-12`, `D10-9` to `-11`,
+`D4-16` to `-18`).
 
 **Phase 1 points the fixtures at the real exports by deleting one line:**
 `surface.dart`'s `export 'prototype/typed_queries.dart';`. Nothing else
@@ -1928,6 +2214,19 @@ references, and the test file's own domain (`Device`, `DeviceQueries`,
 A last case runs every recipe against a refusing backend and compares
 the cache before and after: entries, types and data.
 
+**Recipe 5 after TQ3.** It restored "by id" because a typed key could
+not write (P2-6): the snapshot was a list of devices and the rollback
+bound each one's id to a reference again, which works only for data that
+carries its key's input. It now keeps `(TypedQueryKey<Device>, Device)`
+pairs from `readAll` and its rollback is `key.write(client, device)` for
+each. Options: (a) keep the id-based variant beside the new one; (b)
+replace it. Answer: (b). The old one teaches nothing the new one does
+not, and it is the workaround the addition exists to remove. Its three
+cases pass unchanged, and a fourth holds the one place the two differ: a
+changed device whose entry was removed between the patch and the refusal
+is made again by the key's write, from the key alone (D5's table), where
+the old rollback's `updateAll` left it gone. The file has 23 cases.
+
 **The exit, item by item.** Tests are named by group and case;
 "definition", "infinite" and "mutation" are the three files above.
 
@@ -1994,6 +2293,59 @@ and cancellation. Existing Playwright flows validate the migrated
 user behaviour against their documented backends; a widget-only test is not
 reported as backend/browser evidence.
 
+**Done (TQ3, 2026-11-10).** Four commits, one per consumer, and **no
+library change in the binding or in the hooks**: a reference's
+`options()` returns the options every consumer already takes. The counts
+are the implementers'; the suites were run again when this block was
+written, and where a count was not re-run the row says so.
+
+| Consumer | Commit | What exists | Runs |
+|---|---|---|---|
+| The binding | `f357e6e` | 105 cases in three files over one support file (`typed_support.dart`): `typed_parity_test.dart` (56), `typed_lifecycle_test.dart` (32), `typed_consumers_test.dart` (17). Every consumer and all four call styles take a reference's options with no type argument at the call | `flutter test` 546 → 651, re-run: 651; the 3.27.4 floor 651 and the three files in Chrome 105, not re-run here |
+| The hooks | `0d9fb87` | `typed_definitions_test.dart`, 21 cases; the example's todos and projects on definitions (`TodoQueries`, `ProjectQueries.list`), their keys moved to `['todos', 'list']` and `['projects', 'list']` under a namespace; posts stay raw on purpose | `flutter test` 335 → 356, re-run: 356; the example 61 and 10 skipped without a server, re-run: the same; Playwright 19, not re-run here |
+| The task manager | `6613558` | `TaskQueries`: `list`, a `QueryFamily<TaskFilters, TaskListResponse>` with `keyOf: (f) => [f.toJson()]`, and `byId`, a `QueryFamily<String, Task>`; the detail's seed from the list stays a per-use wrapper, `taskQuery(client, queries, id)` (D6) | widget and contract tests 44 and 14 skipped without a server, 29 contract cases against the real one; Playwright 26, twice. Re-run after its rollback moved to the typed key (T3-5): 44 and 14 skipped, Playwright 26 |
+| The showcase | `7a449a4`, `ba475cf` | a 31st screen, `typed-queries` (9 widget cases, 8 Playwright cases, the five artefacts of the catalogue rule, D11), and `load-more` and `max-pages` on infinite definitions | widget tests 342 and 25 skipped, contract 50, Playwright 214, the native suite on macOS green |
+
+**The exit, item by item.**
+
+| Exit item | Covered by |
+|---|---|
+| inference through every consumer | the binding's `typed_consumers_test.dart` and the first group of the hooks' file: each result type pinned by an invariant bound, so a wider and a narrower type both fail to compile |
+| a rebuild with a recreated equal reference starts no fetch and restarts no timer; `setOptions` still runs | `typed_parity_test.dart`: every case runs a typed tree and its raw twin (the same key and fetcher as inline options) and compares the two traces, requests and builds; the hooks' parity cases, ten rebuilds 30 ms apart under a 100 ms `refetchInterval` |
+| `Enabled.when` over outside state re-evaluated on such a rebuild | both suites, set by `configure` and by a per-use `copyWith` (#84 holds) |
+| parameter changes, identical recreated definitions, provider/client switches, unmount, cancellation | `typed_lifecycle_test.dart`; the hooks' lifecycle group |
+| a new fetcher is used by the next fetch (what D4 itself decides) | both suites: the rebuild fetches nothing, an invalidation afterwards runs the new fetcher |
+| Playwright against the documented backends | the task manager's 26 and the showcase's 214 against their own servers, the hooks example's 19 against the showcase's |
+| raw tests retained | no existing test was rewritten; the hooks example keeps its posts raw, the showcase its other 28 screens |
+
+**What the consumers measured that the plan had not.**
+
+- *`QueryObserverOptionsUpdated` per rebuild:* one for inline raw
+  options, for a family's reference and for a definition recreated in
+  `build`; **none** for a held zero-input definition. D4 said one for
+  every reference; corrected there.
+- *A list of options of two data types* handed to a
+  `QueriesController<Object, Object>` creates `Object` entries, after
+  which the references' typed `read` and `write` throw
+  `QueryDataTypeError`: D9's boundary, now observed through the binding
+  and the hooks (`useQueries`). HB-4, the debug check, stays backlog.
+- *An infinite definition without type arguments* does not infer its
+  page type once `getNextPageParam` reads the page (the hooks example,
+  the showcase), and loses it silently beside a `configure` (the
+  showcase's two infinite screens, which have one each). All three
+  consumers write the type arguments. D10, rewritten.
+- *A snapshot of `readAll` could not be written back by key* (the task
+  manager's delete rollback left the surface for `setQueryData`). D1:
+  the typed key writes; the task manager's rollback and the core's fifth
+  recipe use it.
+
+**What was reported and deliberately left.** Each is a row of the review
+record with its reason: `updateAll`'s updater takes `T?`; a definition
+whose fetcher needs a dependency is built with it even for cache-only
+operations; `MutationOptions` without type arguments; options handed
+through a wider parameter type; no typed single-entry snapshot and
+restore.
+
 ### Phase 4 — Documentation, migration and release readiness
 
 Lead new guides with definitions and typed references. Update
@@ -2010,7 +2362,11 @@ Check the site's statements about TanStack's key typing: `dart-type-safety.md`
 already credits `queryOptions()` and `DataTag`, and any page that says
 TanStack cannot type keys is corrected (it supports global key registration
 and query-options-associated data inference). State D10's limit, explicit
-type arguments on a definition, where definitions are introduced.
+type arguments on a definition, where definitions are introduced, and
+write them on every definition a guide shows (D10, after TQ3): the rule
+has no exception for the shape that happens to infer. The bulk rollback
+is shown through the typed keys (the fifth recipe), with limit 21 beside
+it, and the generic helper of L3-4 beside limit 1.
 
 **Exit:** migration examples and reference docs agree with the implemented API,
 all validation gates below are green for the final feature commit, and a release
@@ -2128,8 +2484,9 @@ until that separate tool exists and is explicitly enabled.
   from the safe path. Document that boundary rather than claiming total lock-down
   or silently breaking the existing API.
 - **Options churn, declined as a risk:** every call style runs `setOptions`
-  per build already, by #84's design; a fresh closure per build adds one
-  cache notification nobody subscribes to. Gating `setOptions` on equality
+  per build already, by #84's design; a fresh closure per build (a
+  family's reference; a held zero-input definition makes none, D4) adds
+  one cache notification that only the fetching counters hear. Gating `setOptions` on equality
   would be the real regression (D4).
 - **Web release builds:** dart2js `-O4` omits covariant parameter checks.
   D2 and D5 check explicitly; Open-7 proves it.
@@ -2274,7 +2631,7 @@ the fixture runner on Dart 3.6.2, 3.10.7 and 3.13.4; the paths are under
 | P0-9 | `write` returns `T`, `update` returns `T?` | `positive/plain_reference.dart` | D5 |
 | P0-10 | `queryFn` is optional on the plain definitions (the key-only definition is a parameter, not another class); no public typedef; no `isFetching` on a target | `positive/typed_inputs.dart` (`seeded`) | D6 |
 | P0-11 | The bulk operations are named `readAll` and `updateAll` and return `List<(TypedQueryKey<T>, T?)>`; the filter adapter is `QueryTarget.filters()` | `positive/typed_inputs.dart`, `D7-1` to `D7-13` | D7 |
-| P0-12 | D10 narrowed to a family's input: a zero-input definition with a fetcher infers exactly, plain and infinite. The backstop is recorded as debug-only, with what a release build does | the table under D10; `D10-1` to `D10-8` | D10 |
+| P0-12 | D10 narrowed to a family's input: a zero-input definition with a fetcher infers exactly, plain and infinite. The backstop is recorded as debug-only, with what a release build does. (Wrong for the infinite kind once its page is read or it has a `configure`: T3-2) | the table under D10; `D10-1` to `D10-8` | D10 |
 | P0-13 | The hooks release is `0.1.3`, its example `^0.1.3` | tags `query_kit_hooks-v0.1.1`, `-v0.1.2` | D11 |
 | P0-14 | Phase 1 lands the whole surface by promoting the prototype; Phase 2 adds depth. Phase 1's decision record is ADR-0007 | the sealed hierarchy needs one library, and Phase 1's exit asks for every fixture against the real exports; `docs/adr/` holds 0005 and 0006 | Phase 1, Phase 2, the implementation map |
 | P0-15 | The six refused DX lines carry their diagnostic codes; `detial` is `undefined_method`, not a getter | `negative/dx_misuses.dart` | the DX section |
@@ -2352,5 +2709,58 @@ the implementer's own, and the ticket ends in a review.
 | P2-3 | `reset(cancelRefetch:)` is observable after all, for an entry the reset leaves with data, and has three cases. P1-11's "cannot be observed" was wrong | tests; the "off" case fails against a copy of the library that drops the argument | D7, Phase 2 |
 | P2-4 | The two lines the VM cannot reach stay counted as missed; no `coverage:ignore`, no lowered floor | `tool/check_coverage.dart`: 3786 of 3792, 99.84 % | Phase 2 |
 | P2-5 | A rollback that must tell absence, an entry without data and a stored `null` apart snapshots `state`, and restores an entry without data with `reset`, which is not the state it had: an error it held, or a fetch failure count, is gone. The exact restore needs the raw cache | the recipe's cases; reported to the product owner as a possible helper, not built | Phase 2, D5 |
-| P2-6 | A snapshot taken with `readAll` cannot be written back by key: a `TypedQueryKey` has no `write`, and `updateAll`'s updater is not told which entry it is called for. The recipe restores through the data's own id | recipe 5; reported, not built | D7 |
+| P2-6 | A snapshot taken with `readAll` cannot be written back by key: a `TypedQueryKey` has no `write`, and `updateAll`'s updater is not told which entry it is called for. The recipe restores through the data's own id. (Built after TQ3: T3-1) | recipe 5; reported, not built | D7 |
 | P2-7 | The first optimistic write of an entry whose rollback is a plain `write` gets a new timestamp on rollback; a rollback through the snapshot keeps the old one (`updatedAt:`) | recipe 2's cases assert the kept timestamp; the last case compares the cache without timestamps because recipe 1's rollback moves one | Phase 2 |
+
+### After Phase 3: the consumers' reports (2026-11-10)
+
+Phase 3 had four implementers, one per consumer, and each reported what
+using the surface was like. The product owner decided two of the reports
+(T3-1, T3-2); the rest of this section is what one implementer made of
+them, the correction a measurement forced (T3-3), and what was left. No
+second reviewer has read it. "Run" is the fixture runner on Dart 3.6.2,
+3.10.7 and 3.13.4; "test" is a case in the core's three typed test files.
+
+| # | What changed or was settled | Evidence | Where |
+|---|---|---|---|
+| T3-1 | A typed key writes: `TypedQueryKey.write` and `update`, the reference's two writes through one private implementation. An entry a key creates is built from the key and the type alone (no definition's options, no fetch function). The key of an infinite reference and of an infinite family's bulk calls normalises, carried by a private subclass that adds no field and no equality. The one addition to the surface since Phase 0 | 24 tests (17 plain, 7 infinite) and one for the missing fetch function; twelve refused lines and three for what a key still lacks; `O7-key-1` to `-16` and `D9-12` on five runtimes; eight mutations of the library, each of which fails at least one test (below) | D1, D2, D5, D7, limits 20 and 21, ADR-0007 |
+| T3-2 | Every definition's type arguments are written out. An infinite definition without them fails to compile once `getNextPageParam` reads its page, and with a `configure` becomes `InfiniteQueryDefinition<Object?, int>` with no diagnostic under any option set. Typing the page parameter cures the first and not the second; the type arguments, a declared field type, a typed `pageFn` parameter or a tear-off cure both. No signature changed | ten refused lines in `negative/untyped_definition.dart`, six pinned declarations in `boundary/untyped_definition.dart`, twelve in `positive/written_type_arguments.dart`; `D10-9` to `-11`; identical on the three SDKs | D10, D8, limit 4 |
+| T3-3 | Only a family's reference makes a new fetcher closure per `options()` call. A zero-input definition hands out the function it was given, so a held one's options resolve equal and an observer emits no `QueryObserverOptionsUpdated` for them. The plan, limit 14 and the dartdoc had claimed the closure for every reference | reading `options()` of the four kinds; three tests; `D4-16` to `-18` | D4, limit 14 |
+| T3-4 | The fifth mutation recipe restores through the typed keys `readAll` returned, and the id-based variant is gone. One new case: an entry removed between the patch and the refusal is made again by the key's write | the recipe's three earlier cases unchanged | Phase 2 |
+| T3-5 | The task manager's delete rollback writes through the typed keys; no raw `setQueryData` and no `rawKey` is left in its `lib/` | its 44 widget and contract cases and its 26 Playwright cases against the real server | Phase 3 |
+| T3-6 | A typed key of an infinite definition and of a plain definition typed `InfiniteData`, on one raw key, are `==` and write differently: the first normalises, the second does not. It follows from limit 20 and from keeping the page types out of the key's equality (the product owner's rule: the key carries privately what it needs). Not a new hole: the two definitions already share one entry (limit 9) | `O7-key-14`, `-15` | D1, limit 20 |
+
+The core's suite went from 1338 to 1367 VM cases and from 1333 to 1362
+in Chrome (`query_definition_test.dart` 94 → 114,
+`infinite_query_definition_test.dart` 46 → 54,
+`query_definition_mutation_test.dart` 22 → 23), no existing case
+rewritten. Line coverage is 3796 of 3802 (99.84 %, floor 99.8 %), the
+typed library 270 of 272, the same two lines. `barrel_test` still pins
+ten exported names.
+
+**The eight mutations** (T3-1). A member that did not exist has no "red
+before", so the cases were checked the other way: the library changed in
+a scratch copy, the suite run, the change required to fail something.
+(Counted over the 186 cases the three files held at the time; five were
+added afterwards.)
+
+| Mutation | Cases that fail |
+|---|---|
+| the key's `write` delegates to the client's lenient `setQueryData<T>` | 5 |
+| an infinite key does not normalise | 10 |
+| `readAll` of an infinite family returns plain keys | 1 |
+| `updateAll` of an infinite family returns plain keys | 2 |
+| `update` writes into the entry it found before the updater ran | 4 |
+| the shared write takes any entry of a fitting type, not the exact one | 4 |
+| an infinite reference's `key` is a plain key | 9 |
+| a key-created entry takes the value's own type, as the raw call does | 12 |
+
+**Reported and deliberately left.** Each with the options weighed.
+
+| # | Report | Decision |
+|---|---|---|
+| L3-1 | `updateAll`'s updater takes `T?`, so every updater starts with a `null` test although a bulk update mostly meets entries that hold data | Left. The updater is the raw `updateQueriesData`'s, and an entry under a family's prefix can exist without data (a fetch in flight, a failed first fetch). Options: skip entries without data and take `T` (an updater could then never seed a pending entry, and the typed call would diverge from the raw one in which entries it visits); a second method. Neither is worth a signature |
+| L3-2 | A definition whose fetcher needs a dependency (an api, a repository) is built with it even where only cache operations are meant, so tests and callbacks pass the dependency along | Left, and named as the pattern: one holder class per resource that takes the dependency and declares its definitions as fields (`TaskQueries`, `TodoQueries`, the recipes' `DeviceQueries`). Options: a key-only twin of each definition (two declarations of one key, the collision D3 calls undetectable); a definition that takes its dependency per call (a different surface). A key-only definition already exists for an entry that has no fetcher at all |
+| L3-3 | `MutationOptions` without type arguments leaves an untyped `onMutate` parameter as `Object?`, beside a typed `mutationFn` | Left: existing behaviour of the mutation options, the same inference as T3-2, and mutations have no definitions (out of scope). The recipes write the type arguments |
+| L3-4 | Options handed through a wider parameter type (`QueryObserverOptions<Object>`) create a wider entry, which the family's typed calls then refuse | Left: D2's boundary reached through a helper's signature, and raw options do the same. The cure is a generic helper, `<T>(QueryObserverOptions<T> options)`; Phase 4's guide names it beside limit 1 |
+| L3-5 | No typed single-entry snapshot and restore: the recipe keeps a `QueryState` and restores an entry without data by `reset`, which is not the state it had (P2-5) | Left: the recipe stays a recipe. A helper that restored a state exactly would write status, error and counters, which no public typed or raw call does today, and would be a second way to put an entry into a state the observers did not produce. The approximation is stated in the recipe |

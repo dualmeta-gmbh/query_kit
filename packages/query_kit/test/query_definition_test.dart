@@ -1090,6 +1090,552 @@ void main() {
     });
   });
 
+  // A typed key writes as its reference does, through the same private
+  // function, with one difference: it has no definition, so an entry it
+  // creates is built from the key and the data type alone.
+  group('a typed key writes its entry', () {
+    /// One script, through whatever [write] and [update] are handed: the
+    /// events it caused and the state it left.
+    ({List<String> events, QueryState<List<Device>> state, bool shared}) script(
+      List<Device> Function(
+        QueryClient client,
+        List<Device> value, {
+        DateTime? updatedAt,
+      }) write,
+      List<Device>? Function(
+        QueryClient client,
+        List<Device>? Function(List<Device>? previous) updater, {
+        DateTime? updatedAt,
+      }) update,
+    ) {
+      final client = testClient();
+      final list = deviceList();
+      // The entry exists, made by the reference with the definition's
+      // options.
+      final first = [const Device('d1')];
+      list.write(client, first, updatedAt: DateTime.utc(2020));
+      final events = recordEvents(client);
+      // An equal value: sharing keeps and returns the cached instance.
+      final shared = identical(write(client, [const Device('d1')]), first);
+      write(
+        client,
+        const [Device('d1'), Device('d2')],
+        updatedAt: DateTime.utc(2021),
+      );
+      update(
+        client,
+        (previous) => [...previous!, const Device('d3')],
+        updatedAt: DateTime.utc(2022),
+      );
+      update(client, (previous) => null);
+      final state = list.state(client)!;
+      client.clear();
+      return (events: events, state: state, shared: shared);
+    }
+
+    test(
+        'on an entry that exists: the reference\'s write, event for event, '
+        'sharing and timestamp included', () {
+      final list = deviceList();
+      final byReference = script(list.write, list.update);
+      final byKey = script(list.key.write, list.key.update);
+
+      expect(byKey.events, byReference.events);
+      expect(byKey.events.take(3), [
+        'updated devices/list',
+        'updated devices/list',
+        'updated devices/list',
+      ]);
+      expect(byKey.shared, isTrue);
+      expect(byReference.shared, isTrue);
+      expect(byKey.state.data, byReference.state.data);
+      expect(byKey.state.data, const [
+        Device('d1'),
+        Device('d2'),
+        Device('d3'),
+      ]);
+      expect(byKey.state.dataUpdatedAt, DateTime.utc(2022));
+      expect(byKey.state.dataUpdatedAt, byReference.state.dataUpdatedAt);
+      expect(byKey.state.dataUpdateCount, byReference.state.dataUpdateCount);
+      expect(byKey.state.status, byReference.state.status);
+      expect(byKey.state.isInvalidated, byReference.state.isInvalidated);
+    });
+
+    testFakeAsync('the timestamp is now, or the one given', (time) async {
+      final client = testClient();
+      final key = deviceDetail()('d1').key;
+      await time.advance(ms(50));
+      key.write(client, const Device('d1'));
+      expect(key.state(client)!.dataUpdatedAt, time.now);
+
+      final at = DateTime.utc(2020, 2, 2);
+      key.write(client, const Device('d1', name: 'dated'), updatedAt: at);
+      expect(key.state(client)!.dataUpdatedAt, at);
+
+      final later = DateTime.utc(2021, 3, 3);
+      key.update(
+        client,
+        (previous) => previous!.renamed('later'),
+        updatedAt: later,
+      );
+      expect(key.state(client)!.dataUpdatedAt, later);
+      client.clear();
+    });
+
+    testFakeAsync('a subscribed observer sees the write synchronously',
+        (time) async {
+      final client = testClient();
+      final ref = deviceDetail()('d1');
+      final observer = QueryObserver<Device, Device>(
+        client,
+        ref.options().copyWith(enabled: Enabled.no),
+      );
+      final seen = <Device?>[];
+      final unsubscribe =
+          observer.subscribe((result) => seen.add(result.dataOrNull));
+      ref.key.write(client, const Device('d1', name: 'now'));
+      ref.key.update(client, (previous) => previous!.renamed('then'));
+      expect(seen, [
+        const Device('d1', name: 'now'),
+        const Device('d1', name: 'then'),
+      ]);
+      unsubscribe();
+      client.clear();
+    });
+
+    test('over a wider entry write and update throw, and write nothing', () {
+      final client = testClient();
+      final typed = deviceDetail()('d1').key;
+      final key = typed.rawKey;
+      client.setQueryData<Device?>(key, const Device('d1', name: 'raw'));
+      final events = recordEvents(client);
+      final refused = throwsA(dataTypeError(key, Device, typeOf<Device?>()));
+
+      expect(() => typed.write(client, const Device('d1')), refused);
+      var updaterRan = false;
+      expect(
+        () => typed.update(client, (previous) {
+          updaterRan = true;
+          return const Device('d1');
+        }),
+        refused,
+      );
+      expect(updaterRan, isFalse);
+      expect(events, isEmpty);
+      expect(
+        client.getQueryData<Device?>(key),
+        const Device('d1', name: 'raw'),
+      );
+      expect(entryType(client, key), typeOf<Device?>());
+
+      // The control: the client's own write takes the wider entry.
+      client.setQueryData<Device>(key, const Device('d1', name: 'lenient'));
+      expect(
+        client.getQueryData<Device?>(key),
+        const Device('d1', name: 'lenient'),
+      );
+      client.clear();
+    });
+
+    test('a narrower entry, and one of another type without data, are refused',
+        () {
+      final client = testClient();
+      final narrower = deviceDetail()('d1').key;
+      client.setQueryData<Thermostat>(narrower.rawKey, const Thermostat('d1'));
+      expect(
+        () => narrower.write(client, const Thermostat('d1', name: 'fits')),
+        throwsA(dataTypeError(narrower.rawKey, Device, Thermostat)),
+      );
+      expect(
+        client.getQueryData<Thermostat>(narrower.rawKey),
+        const Thermostat('d1'),
+      );
+
+      final empty = deviceDetail()('d2').key;
+      client.queryCache.build<String>(
+        client,
+        client.defaultQueryOptions<String>(
+          QueryOptions<String>(queryKey: empty.rawKey),
+        ),
+      );
+      expect(
+        () => empty.write(client, const Device('d2')),
+        throwsA(dataTypeError(empty.rawKey, Device, String)),
+      );
+      expect(
+        () => empty.update(client, (previous) => const Device('d2')),
+        throwsA(dataTypeError(empty.rawKey, Device, String)),
+      );
+      expect(entry(client, empty.rawKey).state.hasData, isFalse);
+      client.clear();
+    });
+
+    test('an entry it creates has the key\'s type, whatever the value\'s is',
+        () {
+      final client = testClient();
+      // A nullable type written a value: `Device?`, not `Device`.
+      final selected = QueryDefinition<Device?>(
+        namespace: devices,
+        name: 'selected',
+      ).key;
+      expect(selected.write(client, const Device('d1')), const Device('d1'));
+      expect(entryType(client, selected.rawKey), typeOf<Device?>());
+      expect(selected.read(client), const Device('d1'));
+      // And `null` is then a value the entry takes.
+      expect(selected.write(client, null), isNull);
+      expect(selected.state(client)!.hasData, isTrue);
+
+      // A sealed base written a variant, through `update`.
+      final reading = QueryFamily<String, Reading>(
+        namespace: devices,
+        name: 'reading',
+      )('d1')
+          .key;
+      expect(
+        reading.update(client, (previous) {
+          expect(previous, isNull);
+          return const Temperature(3);
+        }),
+        const Temperature(3),
+      );
+      expect(entryType(client, reading.rawKey), Reading);
+
+      // A list written a narrower literal.
+      final list = deviceList().key;
+      list.write(client, const <Thermostat>[Thermostat('t1')]);
+      expect(entryType(client, list.rawKey), typeOf<List<Device>>());
+      list.write(client, const [Device('d1')]);
+      expect(list.read(client), const [Device('d1')]);
+
+      // The control: the client's write, left to infer, makes an entry of
+      // the value's own type, which the typed key then refuses.
+      final other = deviceDetail()('raw').key;
+      client.setQueryData(other.rawKey, const Thermostat('raw'));
+      expect(entryType(client, other.rawKey), Thermostat);
+      expect(
+        () => other.read(client),
+        throwsA(dataTypeError(other.rawKey, Device, Thermostat)),
+      );
+      client.clear();
+    });
+
+    testFakeAsync(
+        'an entry it creates has none of the definition\'s options; the '
+        'reference\'s has them', (time) async {
+      var configured = 0;
+      final detail = deviceDetail(
+        configure: (base, id) {
+          configured++;
+          return base.copyWith(
+            gcTime: GcTime.duration(const Duration(minutes: 1)),
+            structuralSharing: noStructuralSharing(),
+            initialData: const InitialData.value(Device('seed')),
+            meta: 'detail',
+          );
+        },
+      );
+      final client = testClient();
+
+      // Through the key: the key and the type, and nothing of `configure`.
+      final byKey = detail('d1').key;
+      configured = 0;
+      byKey.write(client, const Device('d1'));
+      expect(configured, 0);
+      final keyEntry = entry(client, byKey.rawKey);
+      expect(keyEntry.dataType, Device);
+      expect(keyEntry.gcTime, GcTime.defaultValue);
+      expect(keyEntry.meta, isNull);
+      expect(keyEntry.resetState.hasData, isFalse);
+      expect(keyEntry.observersCount, 0);
+      expect(keyEntry.state.fetchStatus, FetchStatus.idle);
+      // Default sharing: an equal value keeps the cached instance.
+      final cached = byKey.read(client);
+      expect(byKey.write(client, const Device('d1')), same(cached));
+
+      // It is the entry the client's own typed write makes.
+      final raw = testClient();
+      raw.setQueryData<Device>(byKey.rawKey, const Device('d1'));
+      expect(keyEntry.options, entry(raw, byKey.rawKey).options);
+
+      // Through the reference: the definition's options, from that write.
+      final ref = detail('d2');
+      ref.write(client, const Device('d2'));
+      expect(configured, 1);
+      final refEntry = entry(client, ref.key.rawKey);
+      expect(refEntry.gcTime, GcTime.duration(const Duration(minutes: 1)));
+      expect(refEntry.meta, 'detail');
+      expect(refEntry.resetState.data, const Device('seed'));
+      expect(keyEntry.options, isNot(refEntry.options));
+
+      // Which is what collects the two: one minute, and the default five.
+      await time.advance(const Duration(minutes: 1));
+      expect(ref.state(client), isNull);
+      expect(byKey.state(client), isNotNull);
+      await time.advance(const Duration(minutes: 4));
+      expect(byKey.state(client), isNull);
+      raw.clear();
+    });
+
+    test('the client\'s and the key\'s defaults apply to an entry it creates',
+        () {
+      final client = testClient(
+        defaultOptions: const DefaultOptions(
+          queries: QueryDefaults(gcTime: GcTime.never, meta: 'client'),
+        ),
+      );
+      client.setQueryDefaults(
+        deviceDetail().rawKey,
+        const QueryDefaults(meta: 'key'),
+      );
+      final key = deviceDetail()('d1').key..write(client, const Device('d1'));
+      final made = entry(client, key.rawKey);
+      expect(made.gcTime, GcTime.never);
+      expect(made.meta, 'key');
+      client.clear();
+    });
+
+    testFakeAsync(
+        'an entry it creates has no fetch function until the definition '
+        'gives it one', (time) async {
+      var fetches = 0;
+      final detail = deviceDetail(
+        queryFn: (id, context) {
+          fetches++;
+          return Device(id, name: 'fetched');
+        },
+      );
+      final client = testClient();
+
+      // The key's entry: no function, as an entry of the client's own
+      // write. A refetch of everything fails it, and keeps its data.
+      final byKey = detail('d1').key
+        ..write(client, const Device('d1', name: 'written'));
+      expect(entry(client, byKey.rawKey).options.queryFn, isNull);
+      await detail.refetch(client);
+      expect(fetches, 0);
+      expect(byKey.state(client)!.status, QueryStatus.error);
+      expect(
+        byKey.state(client)!.error,
+        isA<MissingQueryFunctionError>(),
+      );
+      expect(byKey.read(client), const Device('d1', name: 'written'));
+
+      // The reference's entry has the definition's function from its
+      // first write.
+      final ref = detail('d2')
+        ..write(client, const Device('d2', name: 'written'));
+      expect(entry(client, ref.key.rawKey).options.queryFn, isNotNull);
+      await ref.refetch(client);
+      expect(fetches, 1);
+      expect(ref.read(client), const Device('d2', name: 'fetched'));
+
+      // And the first use of the definition's options gives the key's
+      // entry what it lacked: a fetch through the reference, an observer.
+      expect(await detail('d1').fetch(client), isA<Device>());
+      expect(entry(client, byKey.rawKey).options.queryFn, isNotNull);
+      await detail.refetch(client);
+      expect(byKey.state(client)!.status, QueryStatus.success);
+      expect(byKey.read(client), const Device('d1', name: 'fetched'));
+      client.clear();
+    });
+
+    test('an entry that exists keeps the options it has', () {
+      final client = testClient();
+      final unshared = deviceList(
+        configure: (base) =>
+            base.copyWith(structuralSharing: noStructuralSharing()),
+      );
+      final first = [const Device('d1')];
+      final second = [const Device('d1')];
+      // Made by the reference, with the definition's opt-out of sharing.
+      unshared.write(client, first);
+      expect(unshared.key.write(client, second), same(second));
+      client.clear();
+    });
+
+    test('an update returning null writes nothing and creates nothing', () {
+      final client = testClient();
+      final key = deviceDetail()('d1').key;
+      final events = recordEvents(client);
+      expect(key.update(client, (previous) => null), isNull);
+      expect(events, isEmpty);
+      expect(client.queryCache.findAll(), isEmpty);
+
+      key.write(client, const Device('d1', name: 'kept'));
+      events.clear();
+      final seen = <Device?>[];
+      expect(
+        key.update(client, (previous) {
+          seen.add(previous);
+          return null;
+        }),
+        isNull,
+      );
+      expect(seen, [const Device('d1', name: 'kept')]);
+      expect(events, isEmpty);
+      expect(key.state(client)!.dataUpdateCount, 1);
+      client.clear();
+    });
+
+    test('an updater that throws leaves the cache as it was', () {
+      final client = testClient();
+      final key = deviceDetail()('d1').key;
+      final events = recordEvents(client);
+      expect(
+        () => key.update(client, (previous) => throw StateError('no')),
+        throwsStateError,
+      );
+      expect(events, isEmpty);
+      expect(client.queryCache.findAll(), isEmpty);
+      client.clear();
+    });
+
+    test('an updater that removes the entry: the write makes it again, bare',
+        () {
+      final client = testClient();
+      final ref = deviceDetail(
+        configure: (base, id) => base.copyWith(meta: 'detail'),
+      )('d1');
+      ref.write(client, const Device('d1', name: 'one'));
+      expect(entry(client, ref.key.rawKey).meta, 'detail');
+
+      final written = ref.key.update(client, (previous) {
+        ref.remove(client);
+        return previous!.renamed('two');
+      });
+      expect(written, const Device('d1', name: 'two'));
+      expect(ref.read(client), const Device('d1', name: 'two'));
+      expect(ref.state(client)!.dataUpdateCount, 1);
+      expect(entry(client, ref.key.rawKey).meta, isNull);
+
+      // The control: the reference's update makes it with the definition's.
+      ref.update(client, (previous) {
+        ref.remove(client);
+        return previous!.renamed('three');
+      });
+      expect(entry(client, ref.key.rawKey).meta, 'detail');
+      client.clear();
+    });
+
+    test('an updater that swaps the entry for a wider one is refused', () {
+      final client = testClient();
+      final ref = deviceDetail()('d1');
+      final key = ref.key.rawKey;
+      ref.write(client, const Device('d1', name: 'one'));
+      expect(
+        () => ref.key.update(client, (previous) {
+          client
+            ..removeQueries(filters: ref.filters())
+            ..setQueryData<Device?>(key, const Device('d1', name: 'wider'));
+          return previous!.renamed('two');
+        }),
+        throwsA(dataTypeError(key, Device, typeOf<Device?>())),
+      );
+      expect(
+        client.getQueryData<Device?>(key),
+        const Device('d1', name: 'wider'),
+      );
+      client.clear();
+    });
+
+    test('through a widened key a wrong value is refused, nothing written', () {
+      final client = testClient();
+      final key = deviceDetail()('d1').key;
+      final TypedQueryKey<Object?> wide = key;
+      final events = recordEvents(client);
+
+      expect(() => wide.write(client, 'not a device'), refusedAtRuntime);
+      expect(() => wide.write(client, null), refusedAtRuntime);
+      expect(
+        () => wide.update(client, (previous) => 'not a device'),
+        refusedAtRuntime,
+      );
+      expect(events, isEmpty);
+      expect(client.queryCache.findAll(), isEmpty);
+
+      // The right type through the same widened key is an ordinary write,
+      // into an entry of the key's type and not of the receiver's.
+      wide.write(client, const Thermostat('d1'));
+      expect(entryType(client, key.rawKey), Device);
+      expect(key.read(client), const Thermostat('d1'));
+      client.clear();
+    });
+
+    test('two clients are independent: a typed key holds none', () {
+      final a = testClient();
+      final b = testClient();
+      final key = deviceDetail()('d1').key;
+      key.write(a, const Device('d1', name: 'a'));
+      expect(key.read(a), const Device('d1', name: 'a'));
+      expect(key.state(b), isNull);
+      key.write(b, const Device('d1', name: 'b'));
+      expect(key.read(a), const Device('d1', name: 'a'));
+      a.clear();
+      b.clear();
+    });
+
+    // What the two methods are for: `readAll` hands out keys and no
+    // references, and a family cannot turn a key back into an input.
+    test('a snapshot from readAll is put back through its keys', () {
+      final client = testClient();
+      final detail = deviceDetail();
+      final list = deviceList();
+      final at = DateTime.utc(2020);
+      detail('d1')
+          .write(client, const Device('d1', name: 'one'), updatedAt: at);
+      detail('d2')
+          .write(client, const Device('d2', name: 'two'), updatedAt: at);
+      // An entry without data: nothing to put back.
+      client.queryCache.build<Device>(
+        client,
+        client.defaultQueryOptions<Device>(detail('d3').options()),
+      );
+      list.write(client, const [Device('d1'), Device('d2')]);
+
+      final snapshot = detail.readAll(client);
+      // The optimistic patch; the second entry is removed meanwhile.
+      detail.updateAll(client, (device) => device?.renamed('patched'));
+      detail('d2').remove(client);
+      expect(detail('d1').read(client), const Device('d1', name: 'patched'));
+
+      final events = recordEvents(client);
+      for (final (key, data) in snapshot) {
+        if (data != null) {
+          key.write(client, data, updatedAt: at);
+        }
+      }
+      expect(events, [
+        'updated devices/detail/d1',
+        'added devices/detail/d2',
+        'updated devices/detail/d2',
+      ]);
+      expect(detail('d1').read(client), const Device('d1', name: 'one'));
+      expect(detail('d2').read(client), const Device('d2', name: 'two'));
+      expect(detail('d1').state(client)!.dataUpdatedAt, at);
+      expect(detail('d3').state(client)!.hasData, isFalse);
+      expect(entryType(client, detail('d2').key.rawKey), Device);
+      expect(list.read(client), const [Device('d1'), Device('d2')]);
+      client.clear();
+    });
+
+    test('the keys updateAll returns write as well', () {
+      final client = testClient();
+      final detail = deviceDetail();
+      detail('d1').write(client, const Device('d1', name: 'one'));
+      final [(key, patched)] = detail.updateAll(
+        client,
+        (device) => device!.renamed('patched'),
+      );
+      expect(patched, const Device('d1', name: 'patched'));
+      expect(
+        key.update(client, (device) => device!.renamed('again')),
+        const Device('d1', name: 'again'),
+      );
+      expect(detail('d1').read(client), const Device('d1', name: 'again'));
+      client.clear();
+    });
+  });
+
   group('options and defaults', () {
     test('options are made anew on every call, with the input', () {
       final inputs = <String>[];
@@ -1107,6 +1653,109 @@ void main() {
       expect(a.meta, 'd1');
       expect(a.queryKey, ref.key.rawKey);
       expect(detail('d2').options().meta, 'd2');
+    });
+
+    test(
+        'a definition without an input hands out the function it was '
+        'given; a family\'s reference binds a new one per call', () {
+      final client = testClient();
+      DefaultedQueryObserverOptions<T, T> resolved<T>(
+        QueryObserverOptions<T> options,
+      ) =>
+          client.defaultQueryObserverOptions<T, T>(options);
+
+      // No input: new options every call, the same function in them, and
+      // so equal once the client has resolved them.
+      final list = deviceList();
+      final a = list.options();
+      final b = list.options();
+      expect(identical(a, b), isFalse);
+      expect(identical(a.queryFn, b.queryFn), isTrue);
+      expect(resolved(a), resolved(b));
+      expect(resolved(a).hashCode, resolved(b).hashCode);
+
+      // With a `configure` that returns equal options, the same.
+      final configured = deviceList(
+        configure: (base) => base.copyWith(
+          staleTime: const StaleTime.duration(Duration(minutes: 1)),
+        ),
+      );
+      expect(resolved(configured.options()), resolved(configured.options()));
+
+      // A `configure` that makes something new per call is what it makes.
+      final churning = deviceList(
+        configure: (base) =>
+            base.copyWith(enabled: Enabled.when((query) => true)),
+      );
+      expect(
+        resolved(churning.options()),
+        isNot(resolved(churning.options())),
+      );
+
+      // A definition made again holds another function.
+      expect(resolved(deviceList().options()), isNot(resolved(a)));
+
+      // A family binds the input into a function of its own, per call.
+      final ref = deviceDetail()('d1');
+      final c = ref.options();
+      final d = ref.options();
+      expect(c.queryFn == d.queryFn, isFalse);
+      expect(resolved(c), isNot(resolved(d)));
+      // A family without a fetch function has nothing to bind.
+      final bare = QueryFamily<String, Device>(namespace: devices, name: 'b');
+      expect(resolved(bare('d1').options()), resolved(bare('d1').options()));
+      client.clear();
+    });
+
+    test(
+        'an observer handed a held definition\'s options again hears no '
+        'change; a family reference\'s are a change every time', () {
+      final client = testClient();
+      List<String> optionEvents(List<String> events) => [
+            for (final event in events)
+              if (event.startsWith('observerOptionsUpdated')) event,
+          ];
+
+      // A definition held in a field, its options asked for per rebuild.
+      final list = deviceList();
+      final listObserver = QueryObserver(client, list.options());
+      final events = recordEvents(client);
+      listObserver
+        ..setOptions(list.options())
+        ..setOptions(list.options());
+      expect(optionEvents(events), isEmpty);
+
+      // The same definition made again per rebuild: a new function.
+      listObserver.setOptions(deviceList().options());
+      expect(optionEvents(events), ['observerOptionsUpdated devices/list']);
+      events.clear();
+
+      // A family's reference, however it is held.
+      final ref = deviceDetail()('d1');
+      final refObserver = QueryObserver(client, ref.options());
+      events.clear();
+      refObserver
+        ..setOptions(ref.options())
+        ..setOptions(ref.options());
+      expect(optionEvents(events), [
+        'observerOptionsUpdated devices/detail/d1',
+        'observerOptionsUpdated devices/detail/d1',
+      ]);
+
+      // The control: raw options written inline, a closure per rebuild.
+      QueryObserverOptions<int> raw() => QueryObserverOptions<int>(
+            queryKey: QueryKey(const ['raw']),
+            queryFn: (context) => 1,
+          );
+      final rawObserver = QueryObserver(client, raw());
+      events.clear();
+      rawObserver.setOptions(raw());
+      expect(optionEvents(events), ['observerOptionsUpdated raw']);
+
+      listObserver.destroy();
+      refObserver.destroy();
+      rawObserver.destroy();
+      client.clear();
     });
 
     test('precedence: client, key defaults, definition, per use', () {

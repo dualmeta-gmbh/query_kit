@@ -10,10 +10,10 @@ fixture boundary/widened_receiver.dart errors=0 strict=3
 fixture negative/definitions.dart errors=26 strict=0
 fixture negative/dx_misuses.dart errors=6 strict=0
 fixture negative/generic_setter.dart errors=3 strict=0
-fixture negative/reads_and_writes.dart errors=23 strict=0
+fixture negative/reads_and_writes.dart errors=35 strict=0
 fixture negative/static_type_helper.dart errors=9 strict=0
-fixture negative/surface_limits.dart errors=47 strict=0
-fixture negative/untyped_definition.dart errors=5 strict=0
+fixture negative/surface_limits.dart errors=50 strict=0
+fixture negative/untyped_definition.dart errors=15 strict=0
 fixture positive/declaration_forms.dart errors=0 strict=0
 fixture positive/infinite.dart errors=0 strict=0
 fixture positive/plain_reference.dart errors=0 strict=0
@@ -21,12 +21,13 @@ fixture positive/reference_names.dart errors=0 strict=0
 fixture positive/selection_nullable_subtypes.dart errors=0 strict=0
 fixture positive/target_list.dart errors=0 strict=0
 fixture positive/typed_inputs.dart errors=0 strict=0
+fixture positive/written_type_arguments.dart errors=0 strict=0
 fixture runtime/observations.dart errors=0 strict=0
 fixture support/client_style_setter.dart errors=0 strict=0
 fixture support/models.dart errors=0 strict=0
 fixture support/namespace_factories.dart errors=0 strict=0
 fixture support/static_type.dart errors=0 strict=0
 fixture surface.dart errors=0 strict=0
-observations runtime/observations.debug.expect lines=113
-observations runtime/observations.release.expect lines=113
-observations runtime/observations.unchecked.expect lines=113
+observations runtime/observations.debug.expect lines=136
+observations runtime/observations.release.expect lines=136
+observations runtime/observations.unchecked.expect lines=136

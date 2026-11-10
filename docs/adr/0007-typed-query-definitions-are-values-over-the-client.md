@@ -35,7 +35,8 @@ The core exports ten types from one library,
 2. **Writes are anchored to the receiver.** `ref.write(client, value)` and
    `ref.update(client, updater)` take no type argument of their own: the
    type is the reference's before the argument is seen. There is no
-   `client.setData<T>(key, value)`.
+   `client.setData<T>(key, value)`. (Since the addition of 2026-11-10
+   below, a typed key has the same two writes, anchored the same way.)
 3. **Identity is structural, and nothing registers a definition.** A key
    is the namespace's parts, the name and the input (or what `keyOf` makes
    of it). References and typed keys are values: equal when they address
@@ -140,7 +141,8 @@ the one case that needs it.
   type from the fetch function and nothing tells it the input type, so
   `QueryFamily(...)` without them has an input of `Object?`. Every
   definition's constructor refuses a top type in a debug build; it is a
-  backstop, not a compile error, and the documentation says so.
+  backstop, not a compile error, and the documentation says so. (Widened
+  on 2026-11-10, below: on every definition.)
 - **Same-type collisions are not detected**: two definitions of one key
   with one data type are one entry, and the observer takes the fetch
   function it was last handed. Nor is an ordinary definition typed
@@ -192,3 +194,55 @@ the options that were weighed.
   entry is looked up again before the first write, so nothing an updater
   does to the cache leaves it half-written; a listener that replaces an
   entry in answer to one of the writes can.
+
+Added on 2026-11-10 after ticket #134, when the binding, the hooks, the
+task manager and the showcase had used the surface. The first two
+are an addition to the shape and the product owner's decision; the other
+two correct what this record said. The plan's D1, D4, D5 and D10 hold the
+options that were weighed, and its limits 4, 14 and 21 the wording.
+
+- **A typed key writes.** `TypedQueryKey` gains `write` and `update`, with
+  the reference's signatures, checks and return types, through the same
+  private implementation. A family's `readAll` and `updateAll` return
+  typed keys, and a key that could only read left a bulk snapshot with no
+  typed way back: the rollback either went through the data's own id or
+  left the surface for `setQueryData` with the raw key. The four lifetimes
+  of decision 1 stand, and the typed key stays the smallest of them: it
+  knows the entry's key and its data type and **not the definition**. So
+  an entry its write creates is built from those two alone, with the
+  client's and the key's defaults, none of the definition's options and
+  no fetch function, until an observer or a fetch through the reference
+  brings them. Carrying the definition in the key was the alternative,
+  and was declined: the key is a value that is compared, hashed and kept
+  in snapshots, it would keep a fetch function and what that closes over
+  alive, and a family's bulk calls have keys and no inputs to bind a
+  definition with. A typed key is still not a target: no `options`, no
+  `fetch`, no lifecycle operation.
+- **An infinite typed key normalises, and its equality does not say so.**
+  The key of an infinite reference, and each key an infinite family's
+  bulk calls return, stores a written `InfiniteData` under the declared
+  page types as the reference does. The page types it needs for that are
+  carried by a private subclass and are not part of `==` or `hashCode`,
+  which stay the raw key and the data type. The typed key of a plain
+  definition typed `InfiniteData<P, Q>` on the same raw key is therefore
+  equal to it and does not normalise: the collision this record already
+  lists as undetected, seen from the key.
+- **Type arguments are written out on every definition**, not on a family
+  only. An infinite definition without them does not compile once its
+  `getNextPageParam` reads the page, and with a `configure` it becomes a
+  definition of `Object?` pages with no diagnostic under the analyzer's
+  defaults or under strict options; only the debug check refuses it. A
+  plain definition with a fetch function and no input infers exactly.
+  That is measured and is not the documented form, because a rule with
+  an exception for the one shape that happens to work is a rule the
+  reader has to know Dart's inference order to apply. No signature
+  changed for it: the two closures need each other's types whatever
+  order the parameters are declared in.
+- **Which options are equal.** "Options are not values" stands: nothing
+  compares them and nothing may gate on them. What this record said about
+  the cost was too broad. A *family's* reference binds its input into new
+  functions on every `options()` call, so its options never resolve equal
+  and an observer handed them again emits one `QueryObserverOptionsUpdated`.
+  A definition without an input hands out the functions it was declared
+  with, so the options of one that is held resolve equal from build to
+  build and emit none. Neither was changed to match the other.

@@ -157,6 +157,8 @@ void typedInputs(QueryClient client) {
   );
 
   // A zero-input definition infers its data type from the fetcher alone.
+  // Measured here; the documented form writes the type argument
+  // (`written_type_arguments.dart`).
   QueryDefinition(
     namespace: _devices,
     name: 'inferred',
@@ -171,6 +173,22 @@ void typedInputs(QueryClient client) {
     previous.expectStaticType<Exactly<Device?>>();
     return previous?.copyWith(isOn: false);
   }).expectStaticType<Exactly<List<(TypedQueryKey<Device>, Device?)>>>();
+
+  // A snapshot is put back through the keys it came with, no annotation
+  // and no raw key anywhere.
+  for (final (key, data) in all) {
+    key.expectStaticType<Exactly<TypedQueryKey<Device>>>();
+    data.expectStaticType<Exactly<Device?>>();
+    if (data != null) {
+      key.write(client, data).expectStaticType<Exactly<Device>>();
+    }
+  }
+  for (final (key, _) in byId.updateAll(client, (previous) => previous)) {
+    key.update(client, (previous) {
+      previous.expectStaticType<Exactly<Device?>>();
+      return previous;
+    }).expectStaticType<Exactly<Device?>>();
+  }
 
   _use([typedAll]);
 }
