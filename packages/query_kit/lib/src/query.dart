@@ -548,12 +548,6 @@ class Query<TQueryData> extends Removable {
         ? replaceEqualDeep<TQueryData>(previous, newData)
         : sharing(previous, newData);
 
-    // The clock is read here, before the guard, and not in the reducer: a
-    // `Clock` is user code too, and one that removed this entry after the
-    // guard had answered would see the data stored anyway. The action still
-    // carries the caller's [updatedAt], `null` for "now", as upstream's does.
-    final storedAt = updatedAt ?? clock.now();
-
     // Sharing is user code and may reset/remove this entry or start another
     // fetch. A transport result commits only while its run still owns it.
     if (canCommit != null && !canCommit()) return data;
@@ -564,7 +558,6 @@ class Query<TQueryData> extends Removable {
         dataUpdatedAt: updatedAt,
         manual: manual,
       ),
-      storedAt: storedAt,
     );
 
     return data;
@@ -1196,10 +1189,8 @@ class Query<TQueryData> extends Removable {
     }
   }
 
-  /// [storedAt] dates a [QuerySuccessAction], and `setData` always passes
-  /// it: the time it read before its guard.
-  void _dispatch(QueryAction action, {DateTime? storedAt}) {
-    _state = _reduce(_state, action, storedAt);
+  void _dispatch(QueryAction action) {
+    _state = _reduce(_state, action);
 
     client.notifyManager.batch(() {
       // A stable copy: an observer may unsubscribe while being notified.
@@ -1222,7 +1213,6 @@ class Query<TQueryData> extends Removable {
   QueryState<TQueryData> _reduce(
     QueryState<TQueryData> state,
     QueryAction action,
-    DateTime? storedAt,
   ) {
     switch (action) {
       case QueryFailedAction(
@@ -1256,13 +1246,15 @@ class Query<TQueryData> extends Removable {
           clearError: !state.hasData,
         );
 
-      case QuerySuccessAction<TQueryData>(:final data, :final manual):
+      case QuerySuccessAction<TQueryData>(
+          :final data,
+          :final dataUpdatedAt,
+          :final manual,
+        ):
         final newState = state.copyWith(
           hasData: true,
           data: data,
-          // `setData`, the one place this action is made, read the action's
-          // `dataUpdatedAt` or the clock before its guard.
-          dataUpdatedAt: storedAt!,
+          dataUpdatedAt: dataUpdatedAt ?? clock.now(),
           dataUpdateCount: state.dataUpdateCount + 1,
           // A manual write is somebody's guess — an optimistic patch, mostly —
           // and says nothing about whether the source answers.

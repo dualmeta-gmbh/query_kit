@@ -16,6 +16,8 @@ library;
 
 import 'dart:async';
 
+import 'package:clock/clock.dart';
+
 import 'filters.dart';
 import 'infinite_query.dart';
 import 'query.dart';
@@ -441,8 +443,10 @@ sealed class QueryEntryRef<T> extends QueryTarget {
   ///
   /// The last two write nothing. A `Clock` installed with `withClock` is
   /// held to the same rule: without [updatedAt] the write asks it for the
-  /// time before it stores, and an entry the clock's code removed or
-  /// replaced is treated as one `structuralSharing` removed or replaced.
+  /// time before `structuralSharing` runs, and an entry the clock's code
+  /// removed or replaced is treated as one `structuralSharing` removed or
+  /// replaced. The `QuerySuccessAction` a cache listener hears then
+  /// carries that time, where the client's `setQueryData` leaves it `null`.
   /// What a listener does once the value is stored, in answer to the
   /// write, comes after it: the call returns what it stored.
   T write(QueryClient client, T value, {DateTime? updatedAt}) =>
@@ -1427,17 +1431,24 @@ T? _updateEntry<T>(
 ///
 /// * the cache's listeners hear `QueryAdded` for an entry made here, and
 ///   one may remove it or put another in its place: [_created] looks again;
-/// * the entry's `structuralSharing` is handed the value, and may do the
-///   same to the entry it is running for;
 /// * the clock dates the value when the caller gave no `updatedAt`, and a
-///   `Clock` installed with `withClock` is code as well.
+///   `Clock` installed with `withClock` is code as well;
+/// * the entry's `structuralSharing` is handed the value, and may do the
+///   same to the entry it is running for.
 ///
-/// `canCommit` is what `setData` asks after sharing and the clock, and
-/// nothing of the caller's runs between it and the stored value.
+/// `canCommit` is what `setData` asks after sharing, and nothing of the
+/// caller's runs between it and the stored value.
 ///
 /// Without those two a value went into an entry the cache had dropped and
 /// was returned as stored, where the next read found nothing or an entry
 /// of another type.
+///
+/// The clock is read here, and the time handed to `setData` as the
+/// caller's own, because `setData` reads it after its guard, in the
+/// reducer, where the client's `setQueryData` and a fetch read it as
+/// upstream's do. A cache listener therefore hears the time in the action
+/// where it hears `null` for a client's write without one; the entry's
+/// `dataUpdatedAt` is the same either way.
 T _write<T>(
   QueryClient client,
   QueryKey rawKey,
@@ -1448,17 +1459,18 @@ T _write<T>(
   final cache = client.queryCache;
   final query =
       cache.get<T>(rawKey) ?? _created<T>(client, rawKey, optionsForNew);
+  final storedAt = updatedAt ?? clock.now();
   var held = true;
   final stored = query.setData(
     value,
-    updatedAt: updatedAt,
+    updatedAt: storedAt,
     manual: true,
     canCommit: () => held = identical(cache.peek(rawKey), query),
   );
   if (!held) {
     // What sharing returned was computed against the entry that is gone,
-    // its previous value and its own callback: there is no entry left that
-    // it could be stored in.
+    // its previous value and its own callback, and a time the clock gave
+    // for it: there is no entry left that it could be stored in.
     _gone<T>(cache, rawKey, 'structuralSharing or clock');
   }
   return stored;

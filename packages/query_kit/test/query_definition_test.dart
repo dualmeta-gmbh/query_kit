@@ -2066,6 +2066,50 @@ void main() {
         });
       }
 
+      // The neighbours of the fix, which reads the clock before sharing:
+      // an entry of the same type the clock put in its place is refused as
+      // one sharing put there, and a clock that writes the entry itself
+      // leaves it held, so the typed write stores after that write.
+      test('a clock that replaces the entry, or writes it itself', () {
+        for (final replace in [true, false]) {
+          final client = testClient();
+          final ref = deviceDetail()('d1');
+          ref.write(client, const Device('d1', name: 'before'));
+          var ran = false;
+          Object? thrown;
+          Device? returned;
+          withClock(
+            Clock(() {
+              if (!ran) {
+                ran = true;
+                if (replace) ref.remove(client);
+                ref.write(client, other);
+              }
+              return DateTime.utc(2026);
+            }),
+            () {
+              try {
+                returned = ref.write(client, value);
+              } on Object catch (error) {
+                thrown = error;
+              }
+            },
+          );
+          if (replace) {
+            expect(thrown, isStateError);
+            expect(ref.read(client), other);
+            expect(ref.state(client)!.dataUpdateCount, 1);
+          } else {
+            expect(thrown, isNull);
+            expect(returned, value);
+            expect(ref.read(client), value);
+            // The first write, the clock's and this one.
+            expect(ref.state(client)!.dataUpdateCount, 3);
+          }
+          client.clear();
+        }
+      });
+
       // The control: the client's write stays upstream's. It dates the value
       // after sharing, as before, and stores it in the object it holds.
       test('the control: setQueryData stores into the removed object', () {
@@ -2082,9 +2126,14 @@ void main() {
         ]);
       });
 
-      // The neighbour: a fetch commits only while its run owns the entry,
-      // and the clock dates a fetched result through the same `setData`.
-      test('a fetched result is not stored in the entry the clock removed',
+      // The neighbour: a fetch dates its result in the reducer, after the
+      // ownership guard, as upstream's does. A clock that removes the entry
+      // there sees the result stored in the removed object, and a listener
+      // hears that update, as for the client's write above. (The first fix
+      // for R1 read the clock before the guard and pinned `['removed']`
+      // here; the verification pass's R4 and R5 showed what that moved on
+      // the shared paths, and the fix moved to the typed write.)
+      test('a fetched result is stored in the object the clock removed',
           () async {
         final client = testClient();
         final events = <String>[];
@@ -2110,15 +2159,21 @@ void main() {
           () => ref.fetch(client),
         );
         expect(removed, isTrue);
-        // The caller still gets what the source answered; the cache holds
-        // nothing and heard no update after the removal.
+        // The caller gets what the source answered; the cache holds
+        // nothing, and the removed object heard its update.
         expect(fetched, const Device('d1'));
         expect(ref.state(client), isNull);
-        expect(events, ['removed']);
+        expect(events, ['removed', 'updated']);
         client.clear();
       });
 
-      test('what a listener hears is the caller\'s timestamp, or none', () {
+      // The client's write hands its listeners the caller's timestamp, or
+      // none, as upstream's does. A typed write reads the clock itself,
+      // before sharing and the guard, so its listeners hear the time it
+      // read; the entry is dated the same either way.
+      test(
+          'what a listener hears: the caller\'s timestamp, or the typed '
+          'write\'s', () {
         final at = DateTime.utc(2030);
         final heard = <DateTime?>[];
         final stored = <DateTime?>[];
@@ -2142,9 +2197,154 @@ void main() {
             stored.add(ref.state(client)!.dataUpdatedAt);
           }
         });
-        expect(heard, [null, DateTime.utc(2000), null, DateTime.utc(2000)]);
+        expect(heard, [null, DateTime.utc(2000), at, DateTime.utc(2000)]);
         expect(stored, [at, DateTime.utc(2000), at, DateTime.utc(2000)]);
         client.clear();
+      });
+
+      // Verification pass over the first fix, R4. The client's write reads
+      // the clock in the reducer, as upstream's `setQueryData` does: what a
+      // clock does to the same entry there is overwritten by the state the
+      // reducer started from. Upstream at the pin prints the same table
+      // (`dataUpdateCount` 2 after an inner write and after a reset).
+      test('the client\'s write reads the clock where upstream does (R4)', () {
+        final at = DateTime.fromMillisecondsSinceEpoch(10000);
+        final rows = <String>[];
+        for (final mode in [
+          'plain',
+          'explicit',
+          'remove',
+          'inner-write',
+          'invalidate',
+          'reset',
+        ]) {
+          final client = testClient();
+          final key = QueryKey(['raw', mode]);
+          client.setQueryData<int>(key, 1);
+          final query = client.queryCache.get<int>(key)!;
+          var reads = 0;
+          final events = <String>[];
+          client.queryCache.subscribe((event) {
+            if (event is QueryRemoved) events.add('removed');
+            if (event case QueryUpdated(:final action)) {
+              events.add(switch (action) {
+                QuerySuccessAction<int>(:final data, :final dataUpdatedAt) =>
+                  'success($data, '
+                      '${dataUpdatedAt?.millisecondsSinceEpoch}, '
+                      '${query.state.dataUpdateCount})',
+                QueryInvalidateAction() => 'invalidate',
+                QuerySetStateAction<int>() => 'setState',
+                _ => '$action',
+              });
+            }
+          });
+          withClock(
+            Clock(() {
+              if (reads++ == 0) {
+                switch (mode) {
+                  case 'remove':
+                    client.removeQueries(filters: QueryFilters(queryKey: key));
+                  case 'inner-write':
+                    client.setQueryData<int>(key, 7,
+                        updatedAt: DateTime.fromMillisecondsSinceEpoch(7000));
+                  case 'invalidate':
+                    query.invalidate();
+                  case 'reset':
+                    query.reset();
+                }
+              }
+              return at;
+            }),
+            () => client.setQueryData<int>(
+              key,
+              2,
+              updatedAt: mode == 'explicit'
+                  ? DateTime.fromMillisecondsSinceEpoch(5000)
+                  : null,
+            ),
+          );
+          final state = query.state;
+          rows.add('$mode reads=$reads data=${state.data} '
+              'count=${state.dataUpdateCount} '
+              'at=${state.dataUpdatedAt?.millisecondsSinceEpoch} '
+              'invalid=${state.isInvalidated} events=$events');
+          client.clear();
+        }
+        expect(rows, [
+          'plain reads=1 data=2 count=2 at=10000 invalid=false '
+              'events=[success(2, null, 2)]',
+          'explicit reads=0 data=2 count=2 at=5000 invalid=false '
+              'events=[success(2, 5000, 2)]',
+          'remove reads=1 data=2 count=2 at=10000 invalid=false '
+              'events=[removed, success(2, null, 2)]',
+          'inner-write reads=1 data=2 count=2 at=10000 invalid=false '
+              'events=[success(7, 7000, 2), success(2, null, 2)]',
+          'invalidate reads=1 data=2 count=2 at=10000 invalid=false '
+              'events=[invalidate, success(2, null, 2)]',
+          'reset reads=1 data=2 count=2 at=10000 invalid=false '
+              'events=[setState, success(2, null, 2)]',
+        ]);
+      });
+
+      // Verification pass over the first fix, R5. A fetch whose
+      // `structuralSharing` removes the entry has lost its run's ownership:
+      // the result is returned and not stored, and the clock is not asked
+      // to date a value that nobody stores. One that throws when asked
+      // then fails nothing.
+      test(
+          'a fetch whose sharing removes the entry never reads the clock '
+          '(R5)', () async {
+        for (final throws in [false, true]) {
+          final client = testClient();
+          var armed = false;
+          var shared = false;
+          var reads = 0;
+          final events = <String>[];
+          late final QueryRef<Device> ref;
+          ref = deviceDetail(
+            queryFn: (id, _) {
+              armed = true;
+              return Device(id);
+            },
+            configure: (base, id) => base.copyWith(
+              structuralSharing: (previous, next) {
+                ref.remove(client);
+                shared = true;
+                return next;
+              },
+            ),
+          )('d1');
+          client.queryCache.subscribe((event) {
+            if (!armed) return;
+            if (event is QueryRemoved) events.add('removed');
+            if (event is QueryUpdated) events.add('updated');
+          });
+          Object? result;
+          Object? error;
+          await withClock(
+            Clock(() {
+              if (shared) {
+                reads++;
+                if (throws) throw StateError('read after ownership was lost');
+              }
+              return DateTime.utc(2026);
+            }),
+            () async {
+              try {
+                result = await ref.fetch(client);
+              } on Object catch (caught) {
+                error = caught;
+              }
+            },
+          );
+          expect(shared, isTrue);
+          expect(error, isNull, reason: 'throws=$throws');
+          expect(result, const Device('d1'));
+          expect(reads, 0);
+          expect(ref.state(client), isNull);
+          expect(events, ['removed']);
+          client.clear();
+        }
       });
     });
 

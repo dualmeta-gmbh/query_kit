@@ -3186,3 +3186,79 @@ runtime); analyzer and formatter clean; jargon scan clean; `dart doc
 --validate-links` 0 warnings for the core; site build green. Not run: the
 Playwright and native end-to-end suites (no screen's behaviour changed;
 the fix is reachable only by a `Clock` with cache side effects).
+
+The two paragraphs above describe the first fix, in `c480ef8`. The
+verification pass below moved it out of `query.dart`, and the fetch path
+is upstream's again.
+
+#### Verification pass (GPT-6.1-Sol, over `447e5dc`)
+
+A fresh pass over the R1 to R3 fixes, with its own scratch copy and
+probes (a raw `setQueryData` under a clock that acts on the entry, a fetch
+whose sharing removes the entry, and upstream's `setQueryData` at the pin
+under the same clock). Two P2s, both introduced by R1's fix in
+`query.dart`; R2 and R3 were confirmed.
+
+| # | Finding | Reproduced | Outcome |
+|---|---|---|---|
+| R4 (P2) | On the raw `setQueryData`, a clock that writes or resets the same entry ran before the reducer read the state, so `dataUpdateCount` and what a `QueryUpdated` listener heard differed from the parent and from upstream at the pin | yes: `inner-write … count=3` and `reset … count=1` against `447e5dc`, `count=2` for both on the parent and upstream | `query.dart` reverted to `0d83afc` byte for byte. "the client's write reads the clock where upstream does (R4)" pins the reviewer's six-row table (plain, explicit time, remove, inner write, invalidate, reset) as upstream prints it; red against `447e5dc` (`inner-write … count=3`), green after |
+| R5 (P2) | A fetch whose `structuralSharing` removes the entry has lost its run's ownership, and the clock was read anyway; a clock that throws then failed a fetch that had returned its result | yes: `sharing-removes-clock-throws result=null error=StateError` against `447e5dc`, `result=42` and no clock read on the parent | the same revert. "a fetch whose sharing removes the entry never reads the clock (R5)" (a clock that counts, and one that throws): red against `447e5dc` (`Expected: <0> Actual: <1>` clock reads), green after |
+
+**R1's fix moved from `query.dart` to the typed write.** The product owner
+decided that the raw path's fidelity to upstream is worth more than
+holding a pathological clock to the rule inside the code every path
+shares. `_write` in `query_definition.dart` now reads `updatedAt ??
+clock.now()` itself, before `setData`, and hands it in as the caller's
+time. A clock that removes or replaces the entry then runs before
+`structuralSharing` and the existing `canCommit` guard, which throws as it
+does for sharing (`StateError`, or `QueryDataTypeError` for another type).
+Neither the raw `setQueryData` nor a fetch changes.
+
+The design the product owner proposed, a check after `setData` that the
+cache still holds the same `Query` object, was measured in a scratch copy
+and dropped. Identity cannot tell a clock that removed the entry before
+the store from a `QueryUpdated` listener that removed it after: all four
+"what a listener does in answer to the write comes after it" cases threw.
+And because the reducer reads the clock before it notifies, a listener
+heard `updated` for the removed entry before the throw (the five R1 cases'
+`['removed …', 'updated …']`). Other ways to tell the two apart need a
+signal from inside `setData` (a cache subscription per write, a `Clock`
+wrapped around the store, a flag in the reducer); each costs more than
+reading the clock one step earlier and none stops that `updated` event.
+Reading it in the typed write has two visible effects, both on the typed
+path only. A cache listener hears the time in the `QuerySuccessAction` of
+a typed write without `updatedAt`, where the raw write's action carries
+`null`; the entry's `dataUpdatedAt` is the same. And a clock that writes
+the same entry itself is counted (`dataUpdateCount` 3, where the parent
+gave 2 as upstream's raw write does).
+
+Tests: the R1 cases stay as `c480ef8` wrote them (five typed calls and the
+infinite group's four), red against the reverted `query.dart` with
+`447e5dc`'s `query_definition.dart` (`Expected: <Instance of 'StateError'>
+Actual: <null>`), green after. Two `c480ef8` tests had pinned the
+regression and were changed back. The fetch neighbour now expects the
+parent's `['removed', 'updated']`, renamed "a fetched result is stored in
+the object the clock removed". "What a listener hears" expects the typed
+write's own time in its action. New: R4, R5, and "a clock that replaces
+the entry, or writes it itself" (`StateError` for a same-type replacement,
+`dataUpdateCount` 3 for the clock's own write; the replacement half is red
+without the fix).
+
+Reviewer's probes on the checkout (Flutter 3.38.8): `raw_clock.dart`
+prints upstream's six rows exactly (`inner-write … count=2`, `reset …
+count=2`); `fetch_clock.dart` prints the parent's lines
+(`sharing-removes-clock-throws result=42 error=null storeClockReads=0`);
+the original R1 probe `clock_reentrancy.dart` prints `removedByClock=true
+returned=null error=threw cached=null` for all five calls.
+
+Gate on this change (Flutter 3.38.8 unless named): core 1459 VM / 1453
+browser (+3 each), 1459 on the floor; core line coverage 99.84 % (3809 of
+3815); binding 659, hooks 361, hooks example 62 (+10 skipped), showcase
+345 (+25 skipped), task manager 46 (+14 skipped), doc snippets 80, all
+`--no-pub`; typed fixtures and their self-test OK on 3.38.8 and the floor
+(25 files, 144 misuses, 152 observations per runtime; no observation
+touches the clock); analyzer and formatter clean; jargon scan clean;
+`dart doc --validate-links` 0 warnings for the core. Not run: the site
+build (no page changed), the Playwright and native end-to-end suites.
+The core 1.1.0 changelog's "The raw `QueryKey` API is unchanged" is true
+again; it never mentioned the clock, so it needs no edit.

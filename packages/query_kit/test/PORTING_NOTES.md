@@ -8111,3 +8111,50 @@ round's rules forbid them) found nothing more.
 Core 1456 VM / 1450 browser (+12 each), 1456 on the floor, line coverage
 99.84 %; every consumer suite unchanged and green (binding 659, hooks 361,
 hooks example 62, showcase 345, task manager 46, doc snippets 80).
+
+The list above describes the first fix, in `c480ef8`. The verification
+pass below moved it out of `query.dart`: the raw write and the fetch path
+are upstream's again.
+
+#### Verification pass (GPT-6.1-Sol, over `447e5dc`)
+
+A fresh pass over the R1 to R3 fixes. Two P2s, both introduced by R1's fix
+in `query.dart`; R2 and R3 confirmed. Each reproduced with the reviewer's
+probes against `447e5dc` before anything changed.
+
+| # | What it was | Reproduced | Outcome |
+|---|---|---|---|
+| R4 (P2) | the raw `setQueryData` under a clock that writes or resets the same entry: the clock ran before the reducer read the state, so `dataUpdateCount` and what a listener heard left the parent's and upstream's | yes: `inner-write … count=3`, `reset … count=1`; parent and upstream at the pin `count=2` for both | `query.dart` reverted to `0d83afc` byte for byte. "the client's write reads the clock where upstream does (R4)" holds the reviewer's six rows as upstream prints them; red against `447e5dc` (`inner-write … count=3`), green after |
+| R5 (P2) | a fetch whose `structuralSharing` removes the entry read the clock after losing ownership; a clock that throws then failed a fetch that used to return its result | yes: `sharing-removes-clock-throws result=null error=StateError`; parent `result=42`, no clock read | the same revert. "a fetch whose sharing removes the entry never reads the clock (R5)", with a counting and a throwing clock; red against `447e5dc` (`Expected: <0> Actual: <1>`), green after |
+
+**R1's fix moved to the typed write.** The product owner's reasoning: the
+raw path's fidelity to upstream is worth more than holding a pathological
+clock to the rule inside the code every path shares. `_write` reads
+`updatedAt ?? clock.now()` before `setData` and passes it as the caller's
+time, so the clock runs before sharing and the existing `canCommit` guard
+catches what it did to the entry. Measured and dropped: a check after
+`setData` that the cache still holds the same `Query` (identity cannot
+tell a pre-store removal by the clock from a `QueryUpdated` listener's
+removal after the store; in a scratch copy all four "what a listener does
+in answer to the write comes after it" cases threw, and the five R1 cases
+heard `updated` for the removed entry before the throw). Visible on the
+typed path only: a listener hears the read time in a typed write's
+`QuerySuccessAction` where the raw write's carries `null` (the entry's
+`dataUpdatedAt` is the same), and a clock that writes the entry itself is
+counted (`dataUpdateCount` 3, not the parent's 2).
+
+Tests: R1's typed cases unchanged, red against the reverted `query.dart`
+with `447e5dc`'s `query_definition.dart` (`Expected: <Instance of
+'StateError'> Actual: <null>`, five calls and the infinite four), green
+after. Changed back, because they pinned the regression: the fetch
+neighbour, now "a fetched result is stored in the object the clock
+removed" expecting the parent's `['removed', 'updated']`; and "what a
+listener hears", whose typed half now expects the typed write's time. New:
+R4, R5, and "a clock that replaces the entry, or writes it itself"
+(replacement red without the fix). The reviewer's `raw_clock.dart` prints
+upstream's six rows on the checkout, `fetch_clock.dart` the parent's lines,
+and the original R1 probe `error=threw cached=null` for all five calls.
+
+Core 1459 VM / 1453 browser (+3 each), 1459 on the floor, line coverage
+99.84 %; every consumer suite unchanged and green (binding 659, hooks 361,
+hooks example 62, showcase 345, task manager 46, doc snippets 80).
